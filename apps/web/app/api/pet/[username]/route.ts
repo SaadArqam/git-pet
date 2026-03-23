@@ -6,8 +6,9 @@ import { authOptions } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { username: string } }
+  { params }: { params: Promise<{ username: string }> }
 ) {
+//   const { username } = await params;
   const session = await getServerSession(authOptions);
   const token = session?.accessToken;
 
