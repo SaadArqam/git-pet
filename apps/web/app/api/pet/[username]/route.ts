@@ -8,7 +8,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ) {
-//   const { username } = await params;
+  const { username } = await params; // ✅ FIX
+
   const session = await getServerSession(authOptions);
   const token = session?.accessToken;
 
@@ -18,7 +19,7 @@ export async function GET(
 
   try {
     const client = new GitHubClient(token);
-    const gitData = await client.fetchUserStats(params.username);
+    const gitData = await client.fetchUserStats(username); 
     const petState = derivePetState(gitData);
     return NextResponse.json(petState);
   } catch (err: any) {
