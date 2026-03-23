@@ -1,0 +1,20 @@
+{
+  "name": "git-pet",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tooling/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check"
+  },
+  "devDependencies": {
+    "turbo": "latest",
+    "typescript": "^5.4.0"
+  },
+  "packageManager": "npm@10.8.2"
+}
