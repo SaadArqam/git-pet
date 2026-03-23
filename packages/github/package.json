@@ -9,6 +9,9 @@
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit"
   },
+  "dependencies": {
+    "@git-pet/core": "*"
+  },
   "devDependencies": {
     "typescript": "^5.4.0"
   }
