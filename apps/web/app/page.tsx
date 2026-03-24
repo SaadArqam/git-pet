@@ -3,6 +3,8 @@ import { authOptions } from "@/lib/auth";
 import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
 import { PetCard } from "@/components/PetCard";
+import { SpeciesSelect } from "@/components/SpeciesSelect";
+import { getUserSpecies, autoAssignSpecies } from "@/lib/redis";
 import Link from "next/link";
 import type { PetState } from "@git-pet/core";
 
@@ -66,6 +68,20 @@ export default async function Home() {
           sign out and try again
         </Link>
       </main>
+    );
+  }
+
+  // Check if user has chosen a species yet
+  const savedSpecies = await getUserSpecies(username);
+  const isNewUser = savedSpecies === null;
+
+  if (isNewUser) {
+    return (
+      <SpeciesSelect
+        username={username}
+        suggestedSpecies={autoAssignSpecies(petState.gitData.languages)}
+        topLanguage={petState.gitData.languages[0] ?? null}
+      />
     );
   }
 
