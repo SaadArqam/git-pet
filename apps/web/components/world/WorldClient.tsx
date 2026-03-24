@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { PetState } from "@git-pet/core";
 import { drawPet } from "@git-pet/renderer";
+import PartySocket from "partysocket";
 import Link from "next/link";
 
 const TILE = 32;
@@ -68,6 +69,36 @@ const TILE_ACCENT: Record<number, string> = {
   3: "#3a2f22",
 };
 
+// Defined outside component so it's stable and not recreated on render
+function presenceToPlayer(presence: any): Player {
+  return {
+    username: presence.username,
+    x: presence.x,
+    y: presence.y,
+    lastSeen: presence.lastSeen,
+    petState: {
+      stage: presence.petState.stage,
+      mood: presence.petState.mood,
+      primaryColor: presence.petState.primaryColor,
+      stats: {
+        health: presence.petState.stats.health,
+        happiness: presence.petState.stats.happiness,
+        energy: presence.petState.stats.energy,
+        intelligence: presence.petState.stats.intelligence ?? 0,
+      },
+      gitData: {
+        username: presence.username,
+        commits: 0,
+        streak: 0,
+        stars: 0,
+        languages: [],
+        pullRequests: 0,
+        reviews: 0,
+      },
+    } as any,
+  };
+}
+
 export function WorldClient({ petState }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
@@ -101,6 +132,77 @@ export function WorldClient({ petState }: Props) {
       window.removeEventListener("keyup", up);
     };
   }, []);
+
+  // Socket connection
+  useEffect(() => {
+    const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    if (!host) return;
+
+    const socket = new PartySocket({ host, room: "world" });
+
+    socket.addEventListener("open", () => {
+      socket.send(JSON.stringify({
+        type: "join",
+        pet: {
+          username: petState.gitData.username,
+          x: posRef.current.x,
+          y: posRef.current.y,
+          petState: {
+            stage: petState.stage,
+            mood: petState.mood,
+            primaryColor: petState.primaryColor,
+            stats: {
+              health: petState.stats.health,
+              happiness: petState.stats.happiness,
+              energy: petState.stats.energy,
+              intelligence: petState.stats.intelligence, // ✅ included
+            },
+          },
+          lastSeen: Date.now(),
+        },
+      }));
+    });
+
+    socket.addEventListener("message", (evt: MessageEvent) => {
+      const msg = JSON.parse(evt.data);
+
+      if (msg.type === "snapshot") {
+        playersRef.current.clear();
+        for (const [uname, presence] of Object.entries(msg.pets as Record<string, any>)) {
+          if (uname === petState.gitData.username) continue;
+          playersRef.current.set(uname, presenceToPlayer(presence));
+        }
+        setOnlineCount(playersRef.current.size + 1);
+      }
+
+      if (msg.type === "pet_update") {
+        if (msg.pet.username === petState.gitData.username) return;
+        playersRef.current.set(msg.pet.username, presenceToPlayer(msg.pet));
+        setOnlineCount(playersRef.current.size + 1);
+      }
+
+      if (msg.type === "pet_left") {
+        playersRef.current.delete(msg.username);
+        setOnlineCount(playersRef.current.size + 1);
+      }
+    });
+
+    // Broadcast position every 50ms while a key is held
+    const interval = setInterval(() => {
+      if (keysRef.current.size > 0) {
+        socket.send(JSON.stringify({
+          type: "move",
+          x: posRef.current.x,
+          y: posRef.current.y,
+        }));
+      }
+    }, 50);
+
+    return () => {
+      clearInterval(interval);
+      socket.close();
+    };
+  }, [petState]);
 
   // Click to inspect
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
