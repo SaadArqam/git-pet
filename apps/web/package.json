@@ -15,6 +15,7 @@
     "@vercel/og": "^0.11.1",
     "next": "16.2.1",
     "next-auth": "^4.24.13",
+    "partysocket": "^1.1.16",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -26,6 +27,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "partykit": "^0.0.115",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

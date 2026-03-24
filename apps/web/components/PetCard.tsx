@@ -29,7 +29,7 @@ export function PetCard({ petState }: Props) {
 
   const handleCopy = () => {
     navigator.clipboard.writeText(
-      `![My Git Pet](https://gitpet.app/api/card/${gitData.username})`
+      `![My Git Pet](https://git-pet-beta.vercel.app/api/card/${gitData.username})`
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -69,10 +69,16 @@ export function PetCard({ petState }: Props) {
           {copied ? "COPIED!" : "COPY README EMBED"}
         </button>
         <Link
+          href="/world"
+          style={{ background: "transparent", border: "1px solid #3b82f644", color: "#3b82f6", fontFamily: "monospace", fontSize: 9, padding: "10px 14px", borderRadius: 6, textDecoration: "none", display: "flex", alignItems: "center", letterSpacing: 1 }}
+        >
+          WORLD
+        </Link>
+        <Link
           href="/api/auth/signout"
           style={{ background: "transparent", border: "1px solid #1e293b", color: "#334155", fontFamily: "monospace", fontSize: 9, padding: "10px 14px", borderRadius: 6, textDecoration: "none", display: "flex", alignItems: "center" }}
         >
-          SIGN OUT
+          OUT
         </Link>
       </div>
 
