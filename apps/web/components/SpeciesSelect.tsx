@@ -270,7 +270,7 @@ export function SpeciesSelect({ username, suggestedSpecies, topLanguage }: Props
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ species: effectiveSpecies }),
     });
-    router.refresh();
+    router.push("/");
   };
 
   return (

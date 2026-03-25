@@ -1,14 +1,36 @@
 import type { PetState } from "@git-pet/core";
-import { getSprite } from "./sprites";
+import { getSprite, getSpriteView } from "./sprites";
+import type { PetView } from "./sprites";
 
 const PIXEL_SIZE = 6;
+
+/**
+ * Cycles through the four cardinal views at a given cadence.
+ *
+ * @param frame    Current animation frame counter.
+ * @param fps      Frames per second used by the render loop (default 30).
+ * @param holdSecs How many seconds to hold each view before rotating (default 1.5).
+ * @returns The current PetView for this frame.
+ */
+export function turntableView(
+  frame: number,
+  fps = 30,
+  holdSecs = 1.5
+): PetView {
+  const views: PetView[] = ["front", "right", "back", "left"];
+  const holdFrames = Math.round(fps * holdSecs);
+  const index = Math.floor(frame / holdFrames) % views.length;
+  return views[index];
+}
 
 export function drawPet(
   ctx: CanvasRenderingContext2D,
   state: PetState,
   frame: number,
   canvasWidth: number,
-  canvasHeight: number
+  canvasHeight: number,
+  view: PetView = "front",
+  species?: string
 ): void {
   // Background
   ctx.fillStyle = "#020617";
@@ -30,8 +52,7 @@ export function drawPet(
     ctx.fillRect(0, y, canvasWidth, 1);
   }
 
-  const pixels = getSprite(state.stage, state.mood, state.primaryColor, frame);
-
+  const pixels = getSprite(state.stage, state.mood, state.primaryColor, frame, view, species);
   const spriteW = 13 * PIXEL_SIZE;
   const spriteH = 11 * PIXEL_SIZE;
   const ox = Math.floor((canvasWidth - spriteW) / 2) - PIXEL_SIZE;
@@ -63,5 +84,14 @@ export function drawPet(
     ctx.font = `${Math.round(8 + zf * 4)}px monospace`;
     ctx.fillStyle = `rgba(148,163,184,${0.8 - zf * 0.6})`;
     ctx.fillText("z", ox + 10 * PIXEL_SIZE + zf * 10, oy + 2 * PIXEL_SIZE - zf * 20);
+  }
+
+  // View label (subtle, bottom center)
+  if (view !== "front") {
+    ctx.font = "8px monospace";
+    ctx.fillStyle = "rgba(71,85,105,0.8)";
+    ctx.textAlign = "center";
+    ctx.fillText(view.toUpperCase(), canvasWidth / 2, canvasHeight - 6);
+    ctx.textAlign = "left";
   }
 }

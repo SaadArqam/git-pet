@@ -87,7 +87,7 @@ export default async function Home() {
 
   return (
     <main style={centerStyle}>
-      <PetCard petState={petState} />
+      <PetCard petState={petState} species={savedSpecies} />
     </main>
   );
 }
