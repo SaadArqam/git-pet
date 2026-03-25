@@ -30,9 +30,7 @@ export function PetCard({ petState, species }: Props) {
 
   const [copied, setCopied] = useState(false);
 
-  // 🔄 NEW: Turntable controls
-  const [autoRotate, setAutoRotate] = useState(true);
-  const [rotationSpeed, setRotationSpeed] = useState(0.01);
+
 
   const handleCopy = () => {
     navigator.clipboard.writeText(
@@ -53,45 +51,12 @@ export function PetCard({ petState, species }: Props) {
           <span style={{ fontSize: 10, color: "#334155" }}>{STAGE_LABEL[stage]}</span>
         </div>
 
-        {/* 🔥 Pass rotation props */}
         <PetCanvas 
           petState={petState}
           species={species}
-          autoRotate={autoRotate}
-          rotationSpeed={rotationSpeed}
         />
 
-        {/* 🔄 Turntable Controls UI */}
-        <div style={{ padding: "8px 12px", borderTop: "1px solid #1e293b" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontSize: 9, color: "#475569" }}>ROTATE</span>
-            <button
-              onClick={() => setAutoRotate(prev => !prev)}
-              style={{
-                fontSize: 9,
-                padding: "4px 8px",
-                borderRadius: 4,
-                border: "1px solid #1e293b",
-                background: autoRotate ? "#22c55e22" : "transparent",
-                color: autoRotate ? "#22c55e" : "#475569",
-                cursor: "pointer"
-              }}
-            >
-              {autoRotate ? "ON" : "OFF"}
-            </button>
-          </div>
 
-          {/* Speed Slider */}
-          <input
-            type="range"
-            min="0.001"
-            max="0.05"
-            step="0.001"
-            value={rotationSpeed}
-            onChange={(e) => setRotationSpeed(parseFloat(e.target.value))}
-            style={{ width: "100%" }}
-          />
-        </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 12px", borderTop: "1px solid #1e293b" }}>
           <span style={{ fontSize: 9, color: "#334155" }}>STREAK: {gitData.streak}d</span>
@@ -145,6 +110,24 @@ export function PetCard({ petState, species }: Props) {
           }}
         >
           WORLD
+        </Link>
+
+        <Link
+          href="/settings"
+          style={{
+            background: "transparent",
+            border: "1px solid #1e293b",
+            color: "#334155",
+            fontFamily: "monospace",
+            fontSize: 9,
+            padding: "10px 14px",
+            borderRadius: 6,
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center"
+          }}
+        >
+          SETTINGS
         </Link>
 
         <Link

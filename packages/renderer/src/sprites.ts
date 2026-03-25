@@ -37,47 +37,56 @@ export function getSpriteView(
   view: SpriteView,
   species?: string
 ): Pixel[] {
-  if (species) {
+  let pixels: Pixel[] = [];
+
+  if (species && species !== "default") {
     const custom = getSpeciesSpriteView(species, stage, mood, primaryColor, frame, view);
-    if (custom) return custom;
+    if (custom) pixels = custom;
   }
 
-  const dark = darken(primaryColor, 40);
-  const light = lighten(primaryColor, 40);
-  const blink = frame % 40 === 0;
-  const eye = mood === "coma" ? "#334155"
-    : mood === "sad" ? "#64748b"
-      : "#1e293b";
+  if (pixels.length === 0) {
+    const dark = darken(primaryColor, 40);
+    const light = lighten(primaryColor, 40);
+    const blink = frame % 40 === 0;
+    const eye = mood === "coma" ? "#334155" : mood === "sad" ? "#64748b" : "#1e293b";
 
-  if (view === "front") {
-    switch (stage) {
-      case "egg": return eggSprite(primaryColor, dark, light, frame);
-      case "hatchling": return hatchlingSprite(primaryColor, dark, light, eye, mood, blink, frame);
-      case "adult": return adultSprite(primaryColor, dark, light, eye, mood, blink, frame);
-      case "legend": return legendSprite(primaryColor, dark, light, eye, mood, blink, frame);
+    if (view === "front") {
+      switch (stage) {
+        case "egg": pixels = eggSprite(primaryColor, dark, light, frame); break;
+        case "hatchling": pixels = hatchlingSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
+        case "adult": pixels = adultSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
+        case "legend": pixels = legendSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
+      }
+    } else if (view === "side") {
+      switch (stage) {
+        case "egg": pixels = eggSideSprite(primaryColor, dark, light, frame); break;
+        case "hatchling": pixels = hatchlingSideSprite(primaryColor, dark, light, eye, mood, frame); break;
+        case "adult": pixels = adultSideSprite(primaryColor, dark, light, eye, mood, frame); break;
+        case "legend": pixels = legendSideSprite(primaryColor, dark, light, eye, mood, frame); break;
+      }
+    } else if (view === "back") {
+      switch (stage) {
+        case "egg": pixels = eggBackSprite(primaryColor, dark, light, frame); break;
+        case "hatchling": pixels = hatchlingBackSprite(primaryColor, dark, light, frame); break;
+        case "adult": pixels = adultBackSprite(primaryColor, dark, light, frame); break;
+        case "legend": pixels = legendBackSprite(primaryColor, dark, light, frame); break;
+      }
     }
   }
 
-  if (view === "side") {
-    switch (stage) {
-      case "egg": return eggSideSprite(primaryColor, dark, light, frame);
-      case "hatchling": return hatchlingSideSprite(primaryColor, dark, light, eye, mood, frame);
-      case "adult": return adultSideSprite(primaryColor, dark, light, eye, mood, frame);
-      case "legend": return legendSideSprite(primaryColor, dark, light, eye, mood, frame);
-    }
+  if (pixels.length === 0) {
+    pixels = getSprite(stage, mood, primaryColor, frame);
   }
 
-  if (view === "back") {
-    switch (stage) {
-      case "egg": return eggBackSprite(primaryColor, dark, light, frame);
-      case "hatchling": return hatchlingBackSprite(primaryColor, dark, light, frame);
-      case "adult": return adultBackSprite(primaryColor, dark, light, frame);
-      case "legend": return legendBackSprite(primaryColor, dark, light, frame);
-    }
-  }
-
-  return getSprite(stage, mood, primaryColor, frame);
+  // 🛡️ Clamp coordinates to prevent them from rendering out of the 13x11 bounding box
+  return pixels.map(([x, y, color]) => [
+    Math.max(0, Math.min(12, x)),
+    Math.max(0, Math.min(10, y)),
+    color
+  ]);
 }
+
+
 
 // ─── FRONT SPRITES (unchanged) ───────────────────────────────────────────────
 

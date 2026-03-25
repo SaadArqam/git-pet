@@ -1,27 +1,9 @@
 import type { PetState } from "@git-pet/core";
-import { getSprite, getSpriteView } from "./sprites";
-import type { PetView } from "./sprites";
+import { getSpriteView } from "./sprites";
+import type { SpriteView } from "./sprites";
+import type { Species } from "./species";
 
 const PIXEL_SIZE = 6;
-
-/**
- * Cycles through the four cardinal views at a given cadence.
- *
- * @param frame    Current animation frame counter.
- * @param fps      Frames per second used by the render loop (default 30).
- * @param holdSecs How many seconds to hold each view before rotating (default 1.5).
- * @returns The current PetView for this frame.
- */
-export function turntableView(
-  frame: number,
-  fps = 30,
-  holdSecs = 1.5
-): PetView {
-  const views: PetView[] = ["front", "right", "back", "left"];
-  const holdFrames = Math.round(fps * holdSecs);
-  const index = Math.floor(frame / holdFrames) % views.length;
-  return views[index];
-}
 
 export function drawPet(
   ctx: CanvasRenderingContext2D,
@@ -29,8 +11,8 @@ export function drawPet(
   frame: number,
   canvasWidth: number,
   canvasHeight: number,
-  view: PetView = "front",
-  species?: string
+  view: SpriteView = "front",
+  species: Species = "default"
 ): void {
   // Background
   ctx.fillStyle = "#020617";
@@ -52,7 +34,7 @@ export function drawPet(
     ctx.fillRect(0, y, canvasWidth, 1);
   }
 
-  const pixels = getSprite(state.stage, state.mood, state.primaryColor, frame, view, species);
+  const pixels = getSpriteView(state.stage, state.mood, state.primaryColor, frame, view, species);
   const spriteW = 13 * PIXEL_SIZE;
   const spriteH = 11 * PIXEL_SIZE;
   const ox = Math.floor((canvasWidth - spriteW) / 2) - PIXEL_SIZE;

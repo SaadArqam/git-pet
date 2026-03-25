@@ -3,60 +3,56 @@
 import { useEffect, useRef, useState } from "react";
 import type { PetState } from "@git-pet/core";
 import { drawPet } from "@git-pet/renderer";
-import type { PetView } from "@git-pet/renderer";
+import type { SpriteView } from "@git-pet/renderer";
 import type { Species } from "@/lib/redis";
+
+type ViewStep = "front" | "side" | "back";
+const VIEWS: ViewStep[] = ["front", "side", "back"];
+// Cycle order: front -> side -> back -> side -> front
+const CYCLE: ViewStep[] = ["front", "side", "back", "side"];
 
 interface Props {
   petState: PetState;
   species: Species;
-  autoRotate?: boolean;
-  rotationSpeed?: number;
 }
 export function PetCanvas({
   petState,
   species,
-  autoRotate = true,
-  rotationSpeed = 0.01,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const rafRef = useRef<number>(0);
 
   // 👁️ View state (auto-cycles every 2s)
-  const [view, setView] = useState<PetView>("front");
+  const [view, setView] = useState<ViewStep>("front");
   const cycleIndexRef = useRef(0);
   
   // We mirror the view state in a ref so the requestAnimationFrame loop
-  // doesn't need to be re-bound on every view change (prevents re-mounting listeners/loop frame drops)
-  const viewRef = useRef<PetView>("front");
+  // doesn't need to be re-bound on every view change
+  const viewRef = useRef<ViewStep>("front");
   viewRef.current = view;
 
-  // 🔄 Rotation state
-  const rotationRef = useRef(0);
-  const isDraggingRef = useRef(false);
-  const lastXRef = useRef(0);
+  const autoRotateRef = useRef(true);
+  const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetAutoRotate = () => {
+    autoRotateRef.current = false;
+    if (pauseTimeoutRef.current) clearTimeout(pauseTimeoutRef.current);
+    pauseTimeoutRef.current = setTimeout(() => {
+      autoRotateRef.current = true;
+    }, 4000);
+  };
 
   // Auto-cycle view every 2 seconds
   useEffect(() => {
-    if (!autoRotate) return;
-
-    const cycle: PetView[] = ["front", "right", "back", "left"];
-
     const interval = setInterval(() => {
-      cycleIndexRef.current = (cycleIndexRef.current + 1) % cycle.length;
-      setView(cycle[cycleIndexRef.current]);
+      if (!autoRotateRef.current) return;
+      cycleIndexRef.current = (cycleIndexRef.current + 1) % CYCLE.length;
+      setView(CYCLE[cycleIndexRef.current]!);
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [autoRotate]);
-
-  const handleViewClick = (target: PetView) => {
-    setView(target);
-    if (target === "front") cycleIndexRef.current = 0;
-    else if (target === "right") cycleIndexRef.current = 1;
-    else if (target === "back") cycleIndexRef.current = 2;
-    else if (target === "left") cycleIndexRef.current = 3;
-  };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,42 +63,11 @@ export function PetCanvas({
 
     ctx.imageSmoothingEnabled = false;
 
-    // 🖱️ Mouse Events
-    const handleMouseDown = (e: MouseEvent) => {
-      isDraggingRef.current = true;
-      lastXRef.current = e.clientX;
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      const delta = e.clientX - lastXRef.current;
-      rotationRef.current += delta * 0.01;
-      lastXRef.current = e.clientX;
-    };
-
-    canvas.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("mousemove", handleMouseMove);
-
     const loop = () => {
       frameRef.current++;
 
-      // 🔄 Auto rotation
-      if (autoRotate && !isDraggingRef.current) {
-        rotationRef.current += rotationSpeed;
-      }
-
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // 🎯 Apply rotation (centered)
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(rotationRef.current);
 
       drawPet(
         ctx,
@@ -114,8 +79,6 @@ export function PetCanvas({
         species
       );
 
-      ctx.restore();
-
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -123,18 +86,8 @@ export function PetCanvas({
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      canvas.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("mousemove", handleMouseMove);
     };
-  }, [petState, autoRotate, rotationSpeed]);
-
-  const getDotStyle = (target: PetView) => ({
-    cursor: "pointer",
-    color: view === target ? petState.primaryColor : "#475569",
-    fontWeight: view === target ? "bold" : "normal",
-    transition: "color 0.2s ease-in-out",
-  });
+  }, [petState, species]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
@@ -145,28 +98,29 @@ export function PetCanvas({
         style={{
           width: "100%",
           imageRendering: "pixelated",
-          cursor: "grab",
         }}
       />
       
-      {/* 🔄 View Indicator F · R · B · L */}
-      <div
-        style={{
-          marginTop: "12px",
-          display: "flex",
-          gap: "12px",
-          fontFamily: "monospace",
-          fontSize: "12px",
-          userSelect: "none",
-        }}
-      >
-        <span style={getDotStyle("front")} onClick={() => handleViewClick("front")}>F</span>
-        <span style={{ color: "#334155" }}>·</span>
-        <span style={getDotStyle("right")} onClick={() => handleViewClick("right")}>R</span>
-        <span style={{ color: "#334155" }}>·</span>
-        <span style={getDotStyle("back")} onClick={() => handleViewClick("back")}>B</span>
-        <span style={{ color: "#334155" }}>·</span>
-        <span style={getDotStyle("left")} onClick={() => handleViewClick("left")}>L</span>
+      {/* 🔄 View Indicator F · S · B */}
+      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8 }}>
+        {VIEWS.map(v => (
+          <span
+            key={v}
+            onClick={() => { setView(v); resetAutoRotate(); }}
+            style={{
+              fontFamily: "monospace",
+              fontSize: 10,
+              letterSpacing: 2,
+              cursor: "pointer",
+              color: view === v ? petState.primaryColor : "#334155",
+              borderBottom: view === v ? `1px solid ${petState.primaryColor}` : "1px solid transparent",
+              paddingBottom: 2,
+              transition: "color 0.2s",
+            }}
+          >
+            {v === "front" ? "F" : v === "side" ? "S" : "B"}
+          </span>
+        ))}
       </div>
     </div>
   );

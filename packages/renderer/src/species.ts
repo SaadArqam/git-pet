@@ -2,6 +2,8 @@ import type { Mood, Stage } from "@git-pet/core";
 import type { Pixel, SpriteView } from "./sprites";
 import { darken, lighten } from "./colors";
 
+export type Species = "default" | "wolf" | "sabertooth" | "capybara" | "dragon" | "axolotl";
+
 type CharMap = Record<string, string>;
 
 function parseSolid(art: string[], colorMap: CharMap, bobFactor: number) {
