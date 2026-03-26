@@ -9,6 +9,6 @@ export default async function SettingsPage() {
   const username = (session as { login?: string } | null)?.login;
   if (!username) redirect("/");
   
-  const currentSpecies = await getUserSpecies(username) ?? "default";
+  const currentSpecies = await getUserSpecies(username) ?? "wolf";
   return <SpeciesSwitch currentSpecies={currentSpecies} />;
 }
