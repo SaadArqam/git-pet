@@ -4,48 +4,74 @@ import { darken, lighten } from "./colors";
 
 export type Species = "default" | "wolf" | "sabertooth" | "capybara" | "dragon" | "axolotl";
 
-type CharMap = Record<string, string>;
+// ─── ART PARSER ──────────────────────────────────────────────────────────────
+// Each art string is a 13-wide row. Chars map to color tokens which are
+// substituted at render time with real CSS colors.
+//
+// Token chars:
+//   C  = primaryColor        D  = darken(primary)    L  = lighten(primary)
+//   e  = eye color           w  = white pupil (#fff)
+//   y  = gold (#eab308)      o  = orange (#f97316)
+//   p  = pink (#db2777)      s  = light pink (#f472b6)
+//   b  = ice blue (#0ea5e9)  (space) = transparent/skip
 
-function parseSolid(art: string[], colorMap: CharMap, bobFactor: number) {
+type DrawFn = (
+  C: string, dark: string, light: string,
+  eye: string, mood: Mood, blink: boolean, frame: number
+) => Pixel[];
+
+function parseSolid(art: string[], bobFactor: number): DrawFn {
+  // Pre-parse: store [x, y, tokenChar] for every non-space cell
   const coords: [number, number, string][] = [];
-  for (let y = 0; y < art.length; y++) {
-    for (let x = 0; x < art[y].length; x++) {
-      const char = art[y][x];
-      if (char && char !== ' ' && colorMap[char]) {
-        coords.push([x, y, colorMap[char]]);
-      }
+  for (let row = 0; row < art.length; row++) {
+    const line = art[row]!;
+    for (let col = 0; col < line.length; col++) {
+      const ch = line[col]!;
+      if (ch !== " ") coords.push([col, row, ch]);
     }
   }
-  return function(C: string, dark: string, light: string, eye: string, mood: Mood, blink: boolean, frame: number) {
+
+  return function(C, dark, light, eye, mood, blink, frame): Pixel[] {
     const px: Pixel[] = [];
     const bob = Math.floor(Math.sin(frame * bobFactor) * 1);
-    
-    // We handle logic for eyes missing on blink, or mood shifting for pupil
-    coords.forEach(([x, y, colorId]) => {
-      if (blink && (colorId === "EYE" || colorId === "PUPIL")) return;
-      
-      let finalColor = colorId;
-      if (colorId === "C") finalColor = C;
-      else if (colorId === "D") finalColor = dark;
-      else if (colorId === "L") finalColor = light;
-      else if (colorId === "EYE") finalColor = eye;
-      else if (colorId === "PUPIL") finalColor = "#fff";
-      
-      // Basic mood logic for pupils going down if sad
-      let finalY = y + bob;
-      if (colorId === "PUPIL" && (mood === "sad" || mood === "coma")) {
-        finalY += 1; // Look down
+
+    for (const [x, y, ch] of coords) {
+      // Skip eyes on blink frames
+      if (blink && (ch === "e" || ch === "w")) continue;
+
+      // Resolve token → CSS color
+      let color: string;
+      switch (ch) {
+        case "C": color = C;          break;
+        case "D": color = dark;       break;
+        case "L": color = light;      break;
+        case "e": color = eye;        break;
+        case "w": color = "#fff";     break;
+        case "y": color = "#eab308";  break;
+        case "o": color = "#f97316";  break;
+        case "p": color = "#db2777";  break;
+        case "s": color = "#f472b6";  break;
+        case "b": color = "#0ea5e9";  break;
+        default:  continue; // unknown char — skip
       }
-      
-      px.push([x, finalY, finalColor]);
-    });
+
+      // Mood: pupils look down when sad/coma
+      const finalY = (ch === "w" && (mood === "sad" || mood === "coma"))
+        ? y + bob + 1
+        : y + bob;
+
+      // Clamp to 13x11 grid
+      const cx = Math.max(0, Math.min(12, x));
+      const cy = Math.max(0, Math.min(10, finalY));
+      px.push([cx, cy, color]);
+    }
+
     return px;
   };
 }
 
-const map = { C: "C", D: "D", L: "L", e: "EYE", w: "PUPIL", y: "#eab308", r: "#ef4444", o: "#f97316", g: "#22c55e", p: "#db2777", s: "#f472b6" };
+// ─── WOLF ─────────────────────────────────────────────────────────────────────
 
-// ---------- WOLF ----------
 const wolfAdultFront = parseSolid([
   "   D   D     ",
   "  LCL LCL    ",
@@ -55,8 +81,8 @@ const wolfAdultFront = parseSolid([
   "   CDDDC     ",
   "   DDDDD     ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.07);
+  "  D     D    ",
+], 0.07);
 
 const wolfAdultSide = parseSolid([
   "      D      ",
@@ -67,8 +93,8 @@ const wolfAdultSide = parseSolid([
   "    CDDDC    ",
   " DD DDDDD    ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.07);
+  "  D     D    ",
+], 0.07);
 
 const wolfAdultBack = parseSolid([
   "   D   D     ",
@@ -78,35 +104,35 @@ const wolfAdultBack = parseSolid([
   "  CCCCCCC    ",
   "   CCCCC     ",
   "   CCCCC     ",
-  "  D     D    "
-], map, 0.07);
+  "  D     D    ",
+], 0.07);
 
-const wolfHatchlingFront = parseSolid([
+const wolfHatchFront = parseSolid([
   "   D   D     ",
   "  LCL LCL    ",
   "  CCewCCC    ",
   "  CCCCCCC    ",
   "   CDDDC     ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
-const wolfHatchlingSide = parseSolid([
+const wolfHatchSide = parseSolid([
   "      D      ",
   "     LCL     ",
   "     CewC    ",
   "    CCCCC    ",
   " DD CDDDC    ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
-const wolfHatchlingBack = parseSolid([
+const wolfHatchBack = parseSolid([
   "   D   D     ",
   "  LCL LCL    ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
   "   CCCCC     ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
 const wolfEgg = parseSolid([
   "    CCC      ",
@@ -115,71 +141,73 @@ const wolfEgg = parseSolid([
   "  LCCCCDD    ",
   "  LCCCCDD    ",
   "   CCCDD     ",
-  "    CCC      "
-], map, 0.05);
+  "    CCC      ",
+], 0.05);
 
-// ---------- SABERTOOTH ----------
+// ─── SABERTOOTH ───────────────────────────────────────────────────────────────
+// Uses 'b' (ice blue #0ea5e9) for eyes so they show on white primary
+
 const saberAdultFront = parseSolid([
   "   D   D     ",
-  "  CCC CCC    ",
+  "  CDC CDC    ",
   "  CCCwCCC    ",
-  "  CCeCeCC    ",
+  "  CCbCbCC    ",
   "  CCCCCCC    ",
   "   CDDDC     ",
   "   ww ww     ",
   "  CCCCCCC    ",
-  "  D  D  D    "
-], map, 0.07);
+  "  D  D  D    ",
+], 0.07);
 
 const saberAdultSide = parseSolid([
   "      D      ",
-  "     CCC     ",
+  "     CDC     ",
   "     CCCw    ",
-  "     CCeC    ",
+  "     CCbC    ",
   "    CCCCC    ",
   "    CDDDC    ",
   "DD  Dwww     ",
   " CCCCCCCC    ",
-  " D   D  D    "
-], map, 0.07);
+  " D   D  D    ",
+], 0.07);
 
 const saberAdultBack = parseSolid([
   "   D   D     ",
-  "  CCC CCC    ",
+  "  CDC CDC    ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
   "   CCCCC     ",
   "   CCCCC     ",
-  "  D  D  D    "
-], map, 0.07);
+  "  D  D  D    ",
+], 0.07);
 
-const saberHatchlingFront = parseSolid([
+const saberHatchFront = parseSolid([
   "   D   D     ",
-  "  CCC CCC    ",
-  "  CCewCCC    ",
+  "  CDC CDC    ",
+  "  CCbwCCC    ",
   "   CDDDC     ",
   "   ww ww     ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
-const saberHatchlingSide = parseSolid([
+const saberHatchSide = parseSolid([
   "      D      ",
-  "     CCC     ",
-  "     CewC    ",
+  "     CDC     ",
+  "     CbwC    ",
   "    CDDDC    ",
   "DD  Dwww     ",
-  " D      D    "
-], map, 0.08);
+  " D      D    ",
+], 0.08);
 
-const saberHatchlingBack = parseSolid([
+const saberHatchBack = parseSolid([
   "   D   D     ",
-  "  CCC CCC    ",
+  "  CDC CDC    ",
   "  CCCCCCC    ",
   "   CCCCC     ",
   "   CCCCC     ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
 const saberEgg = parseSolid([
   "    CCC      ",
@@ -188,11 +216,11 @@ const saberEgg = parseSolid([
   "  LCCCCDD    ",
   "  LDDDDDD    ",
   "   CCCDD     ",
-  "    CCC      "
-], map, 0.05);
+  "    CCC      ",
+], 0.05);
 
+// ─── CAPYBARA ─────────────────────────────────────────────────────────────────
 
-// ---------- CAPYBARA ----------
 const capyAdultFront = parseSolid([
   "             ",
   "   D   D     ",
@@ -202,8 +230,8 @@ const capyAdultFront = parseSolid([
   "   CDDDC     ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.06);
+  "  D     D    ",
+], 0.06);
 
 const capyAdultSide = parseSolid([
   "             ",
@@ -214,8 +242,8 @@ const capyAdultSide = parseSolid([
   "    CDDDC    ",
   " CCCCCCCC    ",
   " CCCCCCCC    ",
-  " D   D  D    "
-], map, 0.06);
+  " D   D  D    ",
+], 0.06);
 
 const capyAdultBack = parseSolid([
   "             ",
@@ -226,47 +254,48 @@ const capyAdultBack = parseSolid([
   "   CCCCC     ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.06);
+  "  D     D    ",
+], 0.06);
 
-const capyHatchlingFront = parseSolid([
+const capyHatchFront = parseSolid([
   "             ",
   "   D   D     ",
   "  CCCCCCC    ",
   "  CeCCCeC    ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
-const capyHatchlingSide = parseSolid([
+const capyHatchSide = parseSolid([
   "             ",
   "      D      ",
   "     CCCC    ",
   "     CCCe    ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
-const capyHatchlingBack = parseSolid([
+const capyHatchBack = parseSolid([
   "             ",
   "   D   D     ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
   "  CCCCCCC    ",
-  "  D     D    "
-], map, 0.08);
+  "  D     D    ",
+], 0.08);
 
 const capyEgg = parseSolid([
-  "     g       ",
+  "     s       ",
   "    CCC      ",
   "   LCCCD     ",
   "  LLCCCDD    ",
   "  LCCCCDD    ",
   "   CCCDD     ",
-  "    CCC      "
-], map, 0.05);
+  "    CCC      ",
+], 0.05);
 
-// ---------- DRAGON ----------
+// ─── DRAGON ───────────────────────────────────────────────────────────────────
+
 const dragAdultFront = parseSolid([
   "   D   D     ",
   "   C   C     ",
@@ -276,8 +305,8 @@ const dragAdultFront = parseSolid([
   " p CDDDC p   ",
   "p CCCCCCC p  ",
   " pCCCCCCCp   ",
-  "  D  D  D    "
-], map, 0.1);
+  "  D  D  D    ",
+], 0.1);
 
 const dragAdultSide = parseSolid([
   "      D      ",
@@ -288,8 +317,8 @@ const dragAdultSide = parseSolid([
   "  p CDDDC    ",
   " DDCCCCCC p  ",
   "  pCCCCCCp   ",
-  " D  D   D    "
-], map, 0.1);
+  " D  D   D    ",
+], 0.1);
 
 const dragAdultBack = parseSolid([
   "   D   D     ",
@@ -300,34 +329,34 @@ const dragAdultBack = parseSolid([
   " p CCCCC p   ",
   "p CCCCCCC p  ",
   " pCCCCCCCp   ",
-  "  D  D  D    "
-], map, 0.1);
+  "  D  D  D    ",
+], 0.1);
 
-const dragHatchlingFront = parseSolid([
+const dragHatchFront = parseSolid([
   "   D   D     ",
   "  DCCwCCD    ",
   "  oCeCeCo    ",
   "  CCCCCCC    ",
   " p CDDDC p   ",
-  "  D     D    "
-], map, 0.1);
+  "  D     D    ",
+], 0.1);
 
-const dragHatchlingSide = parseSolid([
+const dragHatchSide = parseSolid([
   "      D      ",
   "     CCwD    ",
   "     CeCo    ",
   "    CCCCC    ",
   " DD CDDDC p  ",
-  "  D     D    "
-], map, 0.1);
+  "  D     D    ",
+], 0.1);
 
-const dragHatchlingBack = parseSolid([
+const dragHatchBack = parseSolid([
   "   D   D     ",
   "  DCCCCCD    ",
   "  CCCCCCC    ",
   " p CCCCC p   ",
-  "  D     D    "
-], map, 0.1);
+  "  D     D    ",
+], 0.1);
 
 const dragEgg = parseSolid([
   "    CCC      ",
@@ -336,111 +365,115 @@ const dragEgg = parseSolid([
   "  DCCCCDD    ",
   "  ooCCCDD    ",
   "   CCoDD     ",
-  "    CCC      "
-], map, 0.05);
+  "    CCC      ",
+], 0.05);
 
-// ---------- AXOLOTL ----------
+// ─── AXOLOTL ──────────────────────────────────────────────────────────────────
+
 const axoAdultFront = parseSolid([
   " s     s     ",
   "  CCCCC      ",
-  "pCwCCCwC    p",
-  " CeeCeC    s ",
-  "pCCCCCCC    p",
+  "sCwCCCwCs    ",
+  " CeeCeCC     ",
+  "sCCCCCCCs    ",
   "  CDDDC      ",
   "  CCCCC      ",
   "  CCCCC      ",
-  "  D   D      "
-], map, 0.09);
+  "  D   D      ",
+], 0.09);
 
 const axoAdultSide = parseSolid([
   "       s     ",
-  "     CCCCC   ",
-  "    CCwCCCp  ",
-  "    eeCeC s  ",
-  "   CCCCCCCp  ",
+  "     CCCCCs  ",
+  "    CCwCCCs  ",
+  "    eeCeCC   ",
+  "   CCCCCCCs  ",
   "    CDDDC    ",
-  "p  CCCCCC    ",
-  " p  CCCCC    ",
-  " D  D   D    "
-], map, 0.09);
+  "s  CCCCCC    ",
+  "   CCCCC     ",
+  " D  D   D    ",
+], 0.09);
 
 const axoAdultBack = parseSolid([
   " s     s     ",
   "  CCCCC      ",
-  "pCCCCCCC    p",
-  " CCCCCCC   s ",
-  "pCCCCCCC    p",
-  "  CCCCC      ",
-  "  CCCCC      ",
-  "p CCCCC p    ",
-  "  D   D      "
-], map, 0.09);
-
-const axoHatchlingFront = parseSolid([
-  " s     s     ",
-  "pCwCCCwC    p",
-  " CeeCeC      ",
-  "p CDDDC     p",
-  "  CCCCC      ",
-  "  D   D      "
-], map, 0.09);
-
-const axoHatchlingSide = parseSolid([
-  "       s     ",
-  "    CCwCCCp  ",
-  "    eeCeC    ",
-  "   CDDDC  p  ",
-  " p CCCCC     ",
-  " D D   D     "
-], map, 0.09);
-
-const axoHatchlingBack = parseSolid([
-  " s     s     ",
-  "pCCCCCCC    p",
+  "sCCCCCCCs    ",
   " CCCCCCC     ",
-  "p CCCCC     p",
+  "sCCCCCCCs    ",
   "  CCCCC      ",
-  "  D   D      "
-], map, 0.09);
+  "  CCCCC      ",
+  "s CCCCC s    ",
+  "  D   D      ",
+], 0.09);
+
+const axoHatchFront = parseSolid([
+  " s     s     ",
+  "sCwCCCwCs    ",
+  " CeeCeCC     ",
+  "s CDDDC s    ",
+  "  CCCCC      ",
+  "  D   D      ",
+], 0.09);
+
+const axoHatchSide = parseSolid([
+  "       s     ",
+  "    CCwCCCs  ",
+  "    eeCeCC   ",
+  "   CDDDC  s  ",
+  " s CCCCC     ",
+  " D D   D     ",
+], 0.09);
+
+const axoHatchBack = parseSolid([
+  " s     s     ",
+  "sCCCCCCCs    ",
+  " CCCCCCC     ",
+  "s CCCCC s    ",
+  "  CCCCC      ",
+  "  D   D      ",
+], 0.09);
 
 const axoEgg = parseSolid([
   "    CCC      ",
-  "   pCCCD     ",
+  "   sCCCD     ",
   "  LLCCCDD    ",
-  "  LpCCCDD    ",
+  "  LsCCCDD    ",
   "  LCCCCDD    ",
-  "   pCCDD     ",
-  "    CCC      "
-], map, 0.05);
+  "   sCCDD     ",
+  "    CCC      ",
+], 0.05);
 
-// We define a lookup table
+// ─── LOOKUP TABLE ─────────────────────────────────────────────────────────────
+
 const SPECIES_SPRITE_FNS = {
   wolf: {
     adultFront: wolfAdultFront, adultSide: wolfAdultSide, adultBack: wolfAdultBack,
-    hatchFront: wolfHatchlingFront, hatchSide: wolfHatchlingSide, hatchBack: wolfHatchlingBack,
-    egg: wolfEgg
+    hatchFront: wolfHatchFront, hatchSide: wolfHatchSide, hatchBack: wolfHatchBack,
+    egg: wolfEgg,
   },
   sabertooth: {
     adultFront: saberAdultFront, adultSide: saberAdultSide, adultBack: saberAdultBack,
-    hatchFront: saberHatchlingFront, hatchSide: saberHatchlingSide, hatchBack: saberHatchlingBack,
-    egg: saberEgg
+    hatchFront: saberHatchFront, hatchSide: saberHatchSide, hatchBack: saberHatchBack,
+    egg: saberEgg,
   },
   capybara: {
     adultFront: capyAdultFront, adultSide: capyAdultSide, adultBack: capyAdultBack,
-    hatchFront: capyHatchlingFront, hatchSide: capyHatchlingSide, hatchBack: capyHatchlingBack,
-    egg: capyEgg
+    hatchFront: capyHatchFront, hatchSide: capyHatchSide, hatchBack: capyHatchBack,
+    egg: capyEgg,
   },
   dragon: {
     adultFront: dragAdultFront, adultSide: dragAdultSide, adultBack: dragAdultBack,
-    hatchFront: dragHatchlingFront, hatchSide: dragHatchlingSide, hatchBack: dragHatchlingBack,
-    egg: dragEgg
+    hatchFront: dragHatchFront, hatchSide: dragHatchSide, hatchBack: dragHatchBack,
+    egg: dragEgg,
   },
   axolotl: {
     adultFront: axoAdultFront, adultSide: axoAdultSide, adultBack: axoAdultBack,
-    hatchFront: axoHatchlingFront, hatchSide: axoHatchlingSide, hatchBack: axoHatchlingBack,
-    egg: axoEgg
-  }
+    hatchFront: axoHatchFront, hatchSide: axoHatchSide, hatchBack: axoHatchBack,
+    egg: axoEgg,
+  },
 } as const;
+
+// ─── PUBLIC API ───────────────────────────────────────────────────────────────
 
 export function getSpeciesSpriteView(
   speciesKey: string,
@@ -448,53 +481,49 @@ export function getSpeciesSpriteView(
   mood: Mood,
   primaryColor: string,
   frame: number,
-  view: SpriteView
+  view: SpriteView,
 ): Pixel[] | null {
   const fns = SPECIES_SPRITE_FNS[speciesKey as keyof typeof SPECIES_SPRITE_FNS];
-  if (!fns) return null; // Fallback
+  if (!fns) return null;
 
-  const dark = darken(primaryColor, 40);
+  const dark  = darken(primaryColor, 40);
   const light = lighten(primaryColor, 40);
-  const eye = mood === "coma" ? "#334155" : mood === "sad" ? "#64748b" : "#1e293b";
+  const eye   = mood === "coma" ? "#334155" : mood === "sad" ? "#64748b" : "#1e293b";
   const blink = frame % 40 === 0;
 
-  // Render the base body
-  let px: Pixel[] = [];
-  
+  let px: Pixel[];
+
   if (stage === "egg") {
-    // eggs look mostly similar from all sides, just reuse
     px = fns.egg(primaryColor, dark, light, eye, mood, blink, frame);
   } else if (stage === "hatchling") {
-    if (view === "front") px = fns.hatchFront(primaryColor, dark, light, eye, mood, blink, frame);
-    else if (view === "side") px = fns.hatchSide(primaryColor, dark, light, eye, mood, blink, frame);
-    else px = fns.hatchBack(primaryColor, dark, light, eye, mood, blink, frame);
+    if (view === "front")     px = fns.hatchFront(primaryColor, dark, light, eye, mood, blink, frame);
+    else if (view === "side") px = fns.hatchSide(primaryColor,  dark, light, eye, mood, blink, frame);
+    else                      px = fns.hatchBack(primaryColor,  dark, light, eye, mood, blink, frame);
   } else {
-    // adult or legend
-    if (view === "front") px = fns.adultFront(primaryColor, dark, light, eye, mood, blink, frame);
-    else if (view === "side") px = fns.adultSide(primaryColor, dark, light, eye, mood, blink, frame);
-    else px = fns.adultBack(primaryColor, dark, light, eye, mood, blink, frame);
+    // adult + legend both use adult art; legend gets crown overlay below
+    if (view === "front")     px = fns.adultFront(primaryColor, dark, light, eye, mood, blink, frame);
+    else if (view === "side") px = fns.adultSide(primaryColor,  dark, light, eye, mood, blink, frame);
+    else                      px = fns.adultBack(primaryColor,  dark, light, eye, mood, blink, frame);
   }
 
-  // If legend, add golden aura on top
+  // Legend crown + aura overlay
   if (stage === "legend") {
     const bob = Math.floor(Math.sin(frame * 0.07) * 1);
-    
-    if (view === "front" || view === "back") {
-      [[3, 0], [5, 0], [7, 0]].forEach(([x, y]) => px.push([x, y + bob, "#EAB308"]));
-      [[3, 1], [4, 1], [5, 1], [6, 1], [7, 1]].forEach(([x, y]) => px.push([x, y + bob, "#EAB308"]));
-    } else { // side
-      [[4, 0], [5, 0], [6, 0]].forEach(([x, y]) => px.push([x, y + bob, "#EAB308"]));
-      [[3, 1], [4, 1], [5, 1], [6, 1]].forEach(([x, y]) => px.push([x, y + bob, "#EAB308"]));
+    if (view !== "side") {
+      [[3,0],[5,0],[7,0]].forEach(([x,y]) => px.push([x, y!+bob, "#EAB308"]));
+      [[3,1],[4,1],[5,1],[6,1],[7,1]].forEach(([x,y]) => px.push([x, y!+bob, "#EAB308"]));
+    } else {
+      [[4,0],[5,0],[6,0]].forEach(([x,y]) => px.push([x, y!+bob, "#EAB308"]));
+      [[3,1],[4,1],[5,1],[6,1]].forEach(([x,y]) => px.push([x, y!+bob, "#EAB308"]));
     }
-
     const auraFrame = Math.floor(frame * 0.15) % 4;
-    const auras: [number, number][][] = [
-      [[0, 4], [12, 4], [6, -1]],
-      [[0, 6], [12, 6], [1, 1], [11, 1]],
-      [[0, 5], [12, 5], [6, 10]],
-      [[1, 3], [11, 3], [1, 8], [11, 8]],
+    const auras: [number,number][][] = [
+      [[0,4],[12,4],[6,-1]],
+      [[0,6],[12,6],[1,1],[11,1]],
+      [[0,5],[12,5],[6,10]],
+      [[1,3],[11,3],[1,8],[11,8]],
     ];
-    auras[auraFrame]!.forEach(([x, y]) => px.push([x, y + bob, "#FDE047"]));
+    auras[auraFrame]!.forEach(([x,y]) => px.push([x, y!+bob, "#FDE047"]));
   }
 
   return px;
