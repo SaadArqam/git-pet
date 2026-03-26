@@ -1,11 +1,9 @@
 import type { Mood, Stage } from "@git-pet/core";
 import { darken, lighten } from "./colors";
+import { getSpeciesSpriteView } from "./species";
 
 export type Pixel = [number, number, string]; // [x, y, color]
 export type SpriteView = "front" | "side" | "back";
-
-import { getSpeciesSpriteView } from "./species";
-
 export type PetView = "front" | "left" | "right" | "back";
 
 export function getSprite(
@@ -37,58 +35,58 @@ export function getSpriteView(
   view: SpriteView,
   species?: string
 ): Pixel[] {
-  let pixels: Pixel[] = [];
-
+  // ── 1. Try species-specific sprite first ──────────────────────────────────
   if (species && species !== "default") {
     const custom = getSpeciesSpriteView(species, stage, mood, primaryColor, frame, view);
-    if (custom) pixels = custom;
-  }
-
-  if (pixels.length === 0) {
-    const dark = darken(primaryColor, 40);
-    const light = lighten(primaryColor, 40);
-    const blink = frame % 40 === 0;
-    const eye = mood === "coma" ? "#334155" : mood === "sad" ? "#64748b" : "#1e293b";
-
-    if (view === "front") {
-      switch (stage) {
-        case "egg": pixels = eggSprite(primaryColor, dark, light, frame); break;
-        case "hatchling": pixels = hatchlingSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
-        case "adult": pixels = adultSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
-        case "legend": pixels = legendSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
-      }
-    } else if (view === "side") {
-      switch (stage) {
-        case "egg": pixels = eggSideSprite(primaryColor, dark, light, frame); break;
-        case "hatchling": pixels = hatchlingSideSprite(primaryColor, dark, light, eye, mood, frame); break;
-        case "adult": pixels = adultSideSprite(primaryColor, dark, light, eye, mood, frame); break;
-        case "legend": pixels = legendSideSprite(primaryColor, dark, light, eye, mood, frame); break;
-      }
-    } else if (view === "back") {
-      switch (stage) {
-        case "egg": pixels = eggBackSprite(primaryColor, dark, light, frame); break;
-        case "hatchling": pixels = hatchlingBackSprite(primaryColor, dark, light, frame); break;
-        case "adult": pixels = adultBackSprite(primaryColor, dark, light, frame); break;
-        case "legend": pixels = legendBackSprite(primaryColor, dark, light, frame); break;
-      }
+    if (custom && custom.length > 0) {
+      return custom.map(([x, y, color]) => [
+        Math.max(0, Math.min(12, x)),
+        Math.max(0, Math.min(10, y)),
+        color,
+      ]);
     }
   }
 
-  if (pixels.length === 0) {
-    pixels = getSprite(stage, mood, primaryColor, frame);
+  // ── 2. Default generic sprite ─────────────────────────────────────────────
+  const dark = darken(primaryColor, 40);
+  const light = lighten(primaryColor, 40);
+  const blink = frame % 40 === 0;
+  const eye = mood === "coma" ? "#334155" : mood === "sad" ? "#64748b" : "#1e293b";
+
+  let pixels: Pixel[] = [];
+
+  if (view === "front") {
+    switch (stage) {
+      case "egg":       pixels = eggSprite(primaryColor, dark, light, frame); break;
+      case "hatchling": pixels = hatchlingSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
+      case "adult":     pixels = adultSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
+      case "legend":    pixels = legendSprite(primaryColor, dark, light, eye, mood, blink, frame); break;
+    }
+  } else if (view === "side") {
+    switch (stage) {
+      case "egg":       pixels = eggSideSprite(primaryColor, dark, light, frame); break;
+      case "hatchling": pixels = hatchlingSideSprite(primaryColor, dark, light, eye, mood, frame); break;
+      case "adult":     pixels = adultSideSprite(primaryColor, dark, light, eye, mood, frame); break;
+      case "legend":    pixels = legendSideSprite(primaryColor, dark, light, eye, mood, frame); break;
+    }
+  } else if (view === "back") {
+    switch (stage) {
+      case "egg":       pixels = eggBackSprite(primaryColor, dark, light, frame); break;
+      case "hatchling": pixels = hatchlingBackSprite(primaryColor, dark, light, frame); break;
+      case "adult":     pixels = adultBackSprite(primaryColor, dark, light, frame); break;
+      case "legend":    pixels = legendBackSprite(primaryColor, dark, light, frame); break;
+    }
   }
 
-  // 🛡️ Clamp coordinates to prevent them from rendering out of the 13x11 bounding box
+  // 🛡️ Clamp coordinates to 13×11 bounding box
   return pixels.map(([x, y, color]) => [
     Math.max(0, Math.min(12, x)),
     Math.max(0, Math.min(10, y)),
-    color
+    color,
   ]);
 }
 
-
-
-// ─── FRONT SPRITES (unchanged) ───────────────────────────────────────────────
+// ─── FRONT SPRITES ───────────────────────────────────────────────────────────
 
 function eggSprite(C: string, dark: string, light: string, frame: number): Pixel[] {
   const wobble = Math.sin(frame * 0.05) > 0.8 ? 1 : 0;
@@ -227,7 +225,6 @@ function hatchlingSideSprite(
 ): Pixel[] {
   const px: Pixel[] = [];
   const bob = Math.floor(Math.sin(frame * 0.08) * 1);
-  // Side profile — narrower body
   const body: [number, number][] = [
     [3, 2], [4, 2], [5, 2],
     [2, 3], [3, 3], [4, 3], [5, 3], [6, 3],
@@ -238,11 +235,8 @@ function hatchlingSideSprite(
   ];
   body.forEach(([x, y]) => px.push([x, y + bob, C]));
   [[3, 2], [4, 2]].forEach(([x, y]) => px.push([x, y + bob, light]));
-  // Single side eye
   px.push([5, 3 + bob, eye]);
-  // Tail stub
   px.push([2, 5 + bob, dark]); px.push([1, 4 + bob, dark]);
-  // Legs
   px.push([3, 8 + bob, dark]); px.push([5, 8 + bob, dark]);
   return px;
 }
@@ -253,14 +247,12 @@ function adultSideSprite(
 ): Pixel[] {
   const px: Pixel[] = [];
   const bob = Math.floor(Math.sin(frame * 0.07) * 1);
-  // Body side view
   const body: [number, number][] = [
     [3, 5], [4, 5], [5, 5], [6, 5],
     [2, 6], [3, 6], [4, 6], [5, 6], [6, 6], [7, 6],
     [2, 7], [3, 7], [4, 7], [5, 7], [6, 7], [7, 7],
     [3, 8], [4, 8], [5, 8], [6, 8],
   ];
-  // Head side view
   const head: [number, number][] = [
     [3, 2], [4, 2], [5, 2], [6, 2],
     [2, 3], [3, 3], [4, 3], [5, 3], [6, 3], [7, 3],
@@ -268,18 +260,12 @@ function adultSideSprite(
   ];
   body.forEach(([x, y]) => px.push([x, y + bob, C]));
   head.forEach(([x, y]) => px.push([x, y + bob, C]));
-  // Single ear
   px.push([6, 1 + bob, dark]);
-  // Tail going back
   [[8, 6], [9, 5], [9, 4], [8, 4]].forEach(([x, y]) => px.push([x, y + bob, dark]));
-  // Light patch
   [[3, 2], [4, 2]].forEach(([x, y]) => px.push([x, y + bob, light]));
-  // Single side eye
   px.push([6, 3 + bob, eye]); px.push([7, 3 + bob, eye]);
   px.push([6, 3 + bob, "#fff"]);
-  // Nose
   px.push([7, 4 + bob, dark]);
-  // Legs — alternating walk
   const walk = Math.floor(frame * 0.1) % 2;
   if (walk === 0) {
     px.push([3, 9 + bob, dark]); px.push([6, 9 + bob, dark]);
@@ -295,10 +281,8 @@ function legendSideSprite(
 ): Pixel[] {
   const px = adultSideSprite(C, dark, light, eye, mood, frame);
   const bob = Math.floor(Math.sin(frame * 0.07) * 1);
-  // Crown side view
   [[4, 0], [5, 0], [6, 0]].forEach(([x, y]) => px.push([x, y + bob, "#EAB308"]));
   [[3, 1], [4, 1], [5, 1], [6, 1]].forEach(([x, y]) => px.push([x, y + bob, "#EAB308"]));
-  // Aura
   const auraFrame = Math.floor(frame * 0.15) % 4;
   const auras: [number, number][][] = [
     [[0, 4], [10, 4]],
@@ -313,7 +297,6 @@ function legendSideSprite(
 // ─── BACK SPRITES ────────────────────────────────────────────────────────────
 
 function eggBackSprite(C: string, dark: string, light: string, frame: number): Pixel[] {
-  // Egg looks almost same from back, slightly different shading
   const wobble = Math.sin(frame * 0.05) > 0.8 ? 1 : 0;
   const px: Pixel[] = [];
   const shell: [number, number][] = [
@@ -326,7 +309,6 @@ function eggBackSprite(C: string, dark: string, light: string, frame: number): P
     [3, 7], [4, 7], [5, 7], [6, 7],
   ];
   shell.forEach(([x, y]) => px.push([x + wobble, y, C]));
-  // Shading reversed — dark on left, light on right
   [[2, 3], [2, 4], [3, 5]].forEach(([x, y]) => px.push([x + wobble, y, dark]));
   [[6, 2], [7, 2], [7, 3]].forEach(([x, y]) => px.push([x + wobble, y, light]));
   return px;
@@ -344,10 +326,8 @@ function hatchlingBackSprite(C: string, dark: string, light: string, frame: numb
     [3, 7], [4, 7], [5, 7], [6, 7],
   ];
   body.forEach(([x, y]) => px.push([x, y + bob, C]));
-  // Back — no eyes, show back of head with dark shading
   [[5, 2], [6, 2]].forEach(([x, y]) => px.push([x, y + bob, light]));
   [[2, 4], [2, 5], [7, 4], [7, 5]].forEach(([x, y]) => px.push([x, y + bob, dark]));
-  // Tail nub at bottom
   px.push([4, 8 + bob, dark]); px.push([5, 8 + bob, dark]);
   px.push([3, 8 + bob, dark]); px.push([6, 8 + bob, dark]);
   return px;
@@ -369,15 +349,11 @@ function adultBackSprite(C: string, dark: string, light: string, frame: number):
   ];
   body.forEach(([x, y]) => px.push([x, y + bob, C]));
   head.forEach(([x, y]) => px.push([x, y + bob, C]));
-  // Back ears
   px.push([3, 1 + bob, dark]); px.push([7, 1 + bob, dark]);
-  // Tail prominent from back
   [[9, 6], [10, 5], [10, 4], [9, 4]].forEach(([x, y]) => px.push([x, y + bob, dark]));
-  // Back shading — darker sides, lighter center back
   [[5, 2], [6, 2]].forEach(([x, y]) => px.push([x, y + bob, light]));
   [[2, 3], [2, 4], [8, 3], [8, 4]].forEach(([x, y]) => px.push([x, y + bob, dark]));
   [[2, 6], [2, 7], [8, 6], [8, 7]].forEach(([x, y]) => px.push([x, y + bob, dark]));
-  // Legs from back
   [[3, 9], [5, 9], [7, 9]].forEach(([x, y]) => px.push([x, y + bob, dark]));
   return px;
 }

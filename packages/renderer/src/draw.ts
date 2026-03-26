@@ -1,7 +1,6 @@
 import type { PetState } from "@git-pet/core";
 import { getSpriteView } from "./sprites";
 import type { SpriteView } from "./sprites";
-import type { Species } from "./species";
 
 const PIXEL_SIZE = 6;
 
@@ -12,7 +11,7 @@ export function drawPet(
   canvasWidth: number,
   canvasHeight: number,
   view: SpriteView = "front",
-  species: Species = "default"
+  species?: string
 ): void {
   // Background
   ctx.fillStyle = "#020617";
