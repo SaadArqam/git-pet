@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+
 import type { Species } from "@/lib/redis";
 
 interface Props {
@@ -254,7 +254,7 @@ function SpeciesCanvas({ species, isSelected, isHovered }: {
 }
 
 export function SpeciesSelect({ username, suggestedSpecies, topLanguage }: Props) {
-  const router = useRouter();
+
   const [selected, setSelected] = useState<Species | null>(null);
   const [hovered, setHovered] = useState<Species | null>(null);
   const [mode, setMode] = useState<"choose" | "auto">("choose");
@@ -270,8 +270,8 @@ export function SpeciesSelect({ username, suggestedSpecies, topLanguage }: Props
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ species: effectiveSpecies }),
     });
-    router.refresh();
-    router.push("/");
+    // Hard navigate so Next.js server component re-runs fresh from Redis
+    window.location.href = "/";
   };
 
   return (

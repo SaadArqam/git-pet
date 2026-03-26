@@ -226,8 +226,8 @@ export function SpeciesSwitch({ currentSpecies }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ species: selected }),
     });
-    router.refresh();
-    router.push("/");
+    // Hard navigate so Next.js server component re-runs fresh from Redis
+    window.location.href = "/";
   };
 
   return (
