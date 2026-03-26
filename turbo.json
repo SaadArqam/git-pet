@@ -9,7 +9,10 @@
         "GITHUB_CLIENT_SECRET",
         "NEXTAUTH_SECRET",
         "NEXTAUTH_URL",
-        "GITHUB_CARD_TOKEN"
+        "GITHUB_CARD_TOKEN",
+        "NEXT_PUBLIC_PARTYKIT_HOST",
+        "UPSTASH_REDIS_REST_URL",
+        "UPSTASH_REDIS_REST_TOKEN"
       ]
     },
     "dev": {
