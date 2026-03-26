@@ -3,6 +3,8 @@ import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
 import type { PetState } from "@git-pet/core";
 import { NextRequest } from "next/server";
+import { getSpriteView } from "@git-pet/renderer";
+import { getUserSpecies } from "@/lib/redis";
 
 export const runtime = "edge";
 
@@ -26,50 +28,7 @@ function shiftColor(hex: string, amount: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
-type Pixel = [number, number, string];
-
-function getStaticSprite(stage: string, mood: string, C: string): Pixel[] {
-  const dark  = shiftColor(C, -40);
-  const light = shiftColor(C, +40);
-  const eye   = mood === "sad" || mood === "coma" ? "#64748b" : "#1e293b";
-
-  if (stage === "egg") {
-    const px: Pixel[] = [];
-    [[3,1],[4,1],[5,1],[6,1],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2],
-     [2,3],[3,3],[4,3],[5,3],[6,3],[7,3],[2,4],[3,4],[4,4],[5,4],[6,4],[7,4],
-     [2,5],[3,5],[4,5],[5,5],[6,5],[7,5],[3,6],[4,6],[5,6],[6,6],
-     [3,7],[4,7],[5,7],[6,7],
-    ].forEach(([x,y]) => px.push([x, y, C]));
-    [[4,2],[5,2],[4,3]].forEach(([x,y]) => px.push([x, y, light]));
-    [[6,3],[7,3],[7,4],[6,5]].forEach(([x,y]) => px.push([x, y, dark]));
-    return px;
-  }
-
-  const px: Pixel[] = [];
-  [[3,5],[4,5],[5,5],[6,5],[7,5],
-   [2,6],[3,6],[4,6],[5,6],[6,6],[7,6],[8,6],
-   [2,7],[3,7],[4,7],[5,7],[6,7],[7,7],[8,7],
-   [3,8],[4,8],[5,8],[6,8],[7,8],
-  ].forEach(([x,y]) => px.push([x, y, C]));
-  [[3,2],[4,2],[5,2],[6,2],[7,2],
-   [2,3],[3,3],[4,3],[5,3],[6,3],[7,3],[8,3],
-   [2,4],[3,4],[4,4],[5,4],[6,4],[7,4],[8,4],
-  ].forEach(([x,y]) => px.push([x, y, C]));
-  px.push([3, 1, dark]); px.push([7, 1, dark]);
-  [[9,6],[10,5],[10,4]].forEach(([x,y]) => px.push([x, y, dark]));
-  [[3,2],[4,2]].forEach(([x,y]) => px.push([x, y, light]));
-  px.push([3,3,eye]); px.push([4,3,eye]); px.push([6,3,eye]); px.push([7,3,eye]);
-  if (mood === "happy") {
-    px.push([4,5,dark]); px.push([5,5,dark]); px.push([6,5,dark]);
-  } else {
-    px.push([4,5,dark]); px.push([5,4,dark]); px.push([6,5,dark]);
-  }
-  [[3,9],[5,9],[7,9]].forEach(([x,y]) => px.push([x, y, dark]));
-  if (stage === "legend") {
-    [[3,0],[5,0],[7,0],[3,1],[4,1],[5,1],[6,1],[7,1]].forEach(([x,y]) => px.push([x, y, "#EAB308"]));
-  }
-  return px;
-}
+// Uses renderer to generate sprites
 
 export async function GET(
   req: NextRequest,
@@ -93,7 +52,8 @@ export async function GET(
 
   const { stats, mood, stage, gitData, primaryColor } = petState;
   const moodColor = MOOD_COLOR[mood] ?? "#94a3b8";
-  const pixels = getStaticSprite(stage, mood, primaryColor);
+  const species = await getUserSpecies(username) ?? "default";
+  const pixels = getSpriteView(stage as any, mood as any, primaryColor, 0, "front", species);
   const PIXEL = 7;
 
   return new ImageResponse(

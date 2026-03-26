@@ -16,11 +16,13 @@ interface Player {
   x: number;
   y: number;
   petState: PetState;
+  species: string;
   lastSeen: number;
 }
 
 interface Props {
   petState: PetState;
+  species: string;
 }
 
 function spawnPosition(username: string): { x: number; y: number } {
@@ -76,6 +78,7 @@ function presenceToPlayer(presence: any): Player {
     x: presence.x,
     y: presence.y,
     lastSeen: presence.lastSeen,
+    species: presence.species ?? "default",
     petState: {
       stage: presence.petState.stage,
       mood: presence.petState.mood,
@@ -99,7 +102,7 @@ function presenceToPlayer(presence: any): Player {
   };
 }
 
-export function WorldClient({ petState }: Props) {
+export function WorldClient({ petState, species }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const rafRef = useRef<number>(0);
@@ -147,6 +150,7 @@ export function WorldClient({ petState }: Props) {
           username: petState.gitData.username,
           x: posRef.current.x,
           y: posRef.current.y,
+          species: species,
           petState: {
             stage: petState.stage,
             mood: petState.mood,
@@ -298,7 +302,7 @@ export function WorldClient({ petState }: Props) {
         offscreen.width = 72; offscreen.height = 72;
         const octx = offscreen.getContext("2d")!;
         octx.imageSmoothingEnabled = false;
-        drawPet(octx, player.petState, pf, 72, 72);
+        drawPet(octx, player.petState, pf, 72, 72, "front", player.species as any);
         ctx.drawImage(offscreen, player.x - cam.x - 36, player.y - cam.y - 36, 72, 72);
         ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.fillRect(player.x - cam.x - 28, player.y - cam.y + 28, 56, 14);
@@ -313,7 +317,7 @@ export function WorldClient({ petState }: Props) {
       offscreen.width = 72; offscreen.height = 72;
       const octx = offscreen.getContext("2d")!;
       octx.imageSmoothingEnabled = false;
-      drawPet(octx, petState, frame, 72, 72);
+      drawPet(octx, petState, frame, 72, 72, "front", species as any);
       ctx.drawImage(offscreen, x - cam.x - 36, y - cam.y - 36, 72, 72);
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.fillRect(x - cam.x - 28, y - cam.y + 28, 56, 14);

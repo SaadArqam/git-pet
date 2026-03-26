@@ -25,6 +25,9 @@ export default async function WorldPage() {
   const client = new GitHubClient(token);
   const gitData = await client.fetchUserStats(username);
   const petState = derivePetState(gitData);
+  
+  const { getUserSpecies } = await import("@/lib/redis");
+  const species = await getUserSpecies(username) ?? "default";
 
-  return <WorldClient petState={petState} />;
+  return <WorldClient petState={petState} species={species} />;
 }
