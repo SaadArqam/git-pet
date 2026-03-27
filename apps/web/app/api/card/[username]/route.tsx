@@ -3,7 +3,7 @@ import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
 import type { PetState } from "@git-pet/core";
 import { NextRequest } from "next/server";
-import { getSpriteView } from "@git-pet/renderer";
+import { getSpriteView, getSpeciesRects } from "@git-pet/renderer";
 import { getUserSpecies } from "@/lib/redis";
 
 export const runtime = "edge";
@@ -53,7 +53,8 @@ export async function GET(
   const { stats, mood, stage, gitData, primaryColor } = petState;
   const moodColor = MOOD_COLOR[mood] ?? "#94a3b8";
   const species = await getUserSpecies(username) ?? "default";
-  const pixels = getSpriteView(stage as any, mood as any, primaryColor, 0, "front", species);
+  const rects = (species && species !== "default") ? getSpeciesRects(species, 0, primaryColor) : null;
+  const pixels = rects ? [] : getSpriteView(stage as any, mood as any, primaryColor, 0, "front", species);
   const PIXEL = 7;
 
   return new ImageResponse(
@@ -67,8 +68,10 @@ export async function GET(
             <span style={{ fontSize: 8, color: moodColor }}>{mood.toUpperCase()}</span>
           </div>
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#020617", position: "relative", minHeight: 90 }}>
-            {pixels.map(([x, y, color], i) => (
-              <div key={i} style={{ position: "absolute", left: x * PIXEL, top: y * PIXEL, width: PIXEL, height: PIXEL, background: color }} />
+            {rects ? rects.map(([rx, ry, rw, rh, color]: [number, number, number, number, string], i: number) => (
+              <div key={i} style={{ position: "absolute", left: rx * 2 + 25, top: ry * 2 + 5, width: rw * 2, height: rh * 2, background: color }} />
+            )) : pixels.map(([x, y, color]: [number, number, string], i: number) => (
+              <div key={i} style={{ position: "absolute", left: x * PIXEL + 20, top: y * PIXEL + 5, width: PIXEL, height: PIXEL, background: color }} />
             ))}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", borderTop: "1px solid #1e293b" }}>
