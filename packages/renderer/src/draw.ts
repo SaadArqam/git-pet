@@ -35,20 +35,18 @@ export function drawPet(
   }
 
   const rects = (species && species !== "default") 
-    ? getSpeciesRects(species, frame, state.primaryColor) 
+    ? getSpeciesRects(species, frame, state.primaryColor, view as "front" | "side" | "back") 
     : null;
 
   let ox = 0, oy = 0;
 
   if (rects && rects.length > 0) {
-    // dynamically scale based on canvasWidth (base width of 80 looks good with scale 1)
-    const scale = Math.min(canvasWidth / 80, canvasHeight / 80) * 1.5; 
-    const spriteW = 40 * scale;
-    const spriteH = 40 * scale;
+    // scale 1 is equivalent to 100% of the 80x80 local coordinate bounds
+    const scale = Math.min(canvasWidth / 80, canvasHeight / 80) * 1.0;
     
-    // adjust centering for rects
-    ox = Math.floor((canvasWidth - spriteW) / 2) + 8 * scale;
-    oy = Math.floor((canvasHeight - spriteH) / 2) + 2 * scale;
+    // adjust centering for rects assuming they center around (20, 22) locally
+    ox = Math.floor(canvasWidth / 2 - 20 * scale);
+    oy = Math.floor(canvasHeight / 2 - 22 * scale);
 
     // Drop shadow
     ctx.fillStyle = "rgba(0,0,0,0.3)";

@@ -69,7 +69,7 @@ export async function GET(
           </div>
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#020617", position: "relative", minHeight: 90 }}>
             {rects ? rects.map(([rx, ry, rw, rh, color]: [number, number, number, number, string], i: number) => (
-              <div key={i} style={{ position: "absolute", left: rx * 2 + 25, top: ry * 2 + 5, width: rw * 2, height: rh * 2, background: color }} />
+              <div key={i} style={{ position: "absolute", left: rx * 1.4 + 42, top: ry * 1.4 + 14, width: rw * 1.4, height: rh * 1.4, background: color }} />
             )) : pixels.map(([x, y, color]: [number, number, string], i: number) => (
               <div key={i} style={{ position: "absolute", left: x * PIXEL + 20, top: y * PIXEL + 5, width: PIXEL, height: PIXEL, background: color }} />
             ))}
