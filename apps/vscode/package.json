@@ -1,0 +1,56 @@
+{
+  "name": "git-pet",
+  "displayName": "Git Pet",
+  "description": "Your GitHub activity as a virtual pet, living in VS Code",
+  "version": "0.1.0",
+  "publisher": "SaadArqam",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "icon": "media/icon.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitPet.openPanel",
+        "title": "Git Pet: Open Pet Panel"
+      },
+      {
+        "command": "gitPet.setUsername",
+        "title": "Git Pet: Set GitHub Username"
+      },
+      {
+        "command": "gitPet.refresh",
+        "title": "Git Pet: Refresh Pet"
+      }
+    ],
+    "configuration": {
+      "title": "Git Pet",
+      "properties": {
+        "gitPet.apiBase": {
+          "type": "string",
+          "default": "https://git-pet-beta.vercel.app",
+          "description": "Base URL of your Git Pet deployment"
+        },
+        "gitPet.refreshIntervalMinutes": {
+          "type": "number",
+          "default": 5,
+          "description": "How often (in minutes) to refresh pet data"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "simple-git": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
