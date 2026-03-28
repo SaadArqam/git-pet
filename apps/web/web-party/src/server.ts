@@ -8,27 +8,31 @@ export interface PetPresence {
     stage: string;
     mood: string;
     primaryColor: string;
-    // in web-party/src/server.ts
-stats: {
-  health: number;
-  happiness: number;
-  energy: number;
-  intelligence: number; // add this
-};
+    stats: {
+      health: number;
+      happiness: number;
+      energy: number;
+      intelligence: number;
+    };
   };
   lastSeen: number;
+  friendCount?: number;
+  buffs?: string[];
+  lastInteraction?: number;
 }
 
 type ServerMessage =
   | { type: "snapshot"; pets: Record<string, PetPresence> }
   | { type: "pet_update"; pet: PetPresence }
   | { type: "pet_left"; username: string }
-  | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string };
+  | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
+  | { type: "presence_update"; pet: PetPresence };
 
 type ClientMessage =
   | { type: "join"; pet: PetPresence }
   | { type: "move"; x: number; y: number }
-  | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string };
+  | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
+  | { type: "presence_update"; pet: PetPresence };
 
 export default class WorldServer implements Party.Server {
   pets: Record<string, PetPresence> = {};
@@ -58,6 +62,18 @@ export default class WorldServer implements Party.Server {
         this.pets[username].y = data.y;
         this.pets[username].lastSeen = Date.now();
         const msg: ServerMessage = { type: "pet_update", pet: this.pets[username] };
+        this.room.broadcast(JSON.stringify(msg));
+      }
+    }
+
+    if (data.type === "presence_update") {
+      const username = this.connToUser.get(sender.id);
+      if (username && this.pets[username]) {
+        this.pets[username].friendCount = data.pet.friendCount;
+        this.pets[username].buffs = data.pet.buffs;
+        this.pets[username].lastInteraction = data.pet.lastInteraction;
+        this.pets[username].lastSeen = Date.now();
+        const msg: ServerMessage = { type: "presence_update", pet: this.pets[username] };
         this.room.broadcast(JSON.stringify(msg));
       }
     }
