@@ -4,11 +4,16 @@
   "description": "Your GitHub activity as a virtual pet, living in VS Code",
   "version": "0.1.0",
   "publisher": "SaadArqam",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
-  "icon": "media/icon.png",
   "contributes": {
     "commands": [
       {
@@ -45,12 +50,14 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
-  "dependencies": {
-    "simple-git": "^3.22.0"
-  },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
     "typescript": "^5.3.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SaadArqam/git-pet"
   }
 }

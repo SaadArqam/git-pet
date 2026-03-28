@@ -71,6 +71,63 @@ const TILE_ACCENT: Record<number, string> = {
   3: "#3a2f22",
 };
 
+function playSound(type: "fight" | "befriend" | "play" | "trade") {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    if (type === "fight") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === "befriend") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === "play") {
+      for (let i = 0; i < 3; i++) {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.type = "square";
+        o.frequency.setValueAtTime(330, ctx.currentTime + i * 0.15);
+        g.gain.setValueAtTime(0.05, ctx.currentTime + i * 0.15);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.15 + 0.1);
+        o.start(ctx.currentTime + i * 0.15);
+        o.stop(ctx.currentTime + i * 0.15 + 0.1);
+      }
+    } else if (type === "trade") {
+      const freqs = [261, 329, 392, 523];
+      freqs.forEach((f, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.type = "sine";
+        o.frequency.setValueAtTime(f, ctx.currentTime + i * 0.1);
+        g.gain.setValueAtTime(0.1, ctx.currentTime + i * 0.1);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.1 + 0.15);
+        o.start(ctx.currentTime + i * 0.1);
+        o.stop(ctx.currentTime + i * 0.1 + 0.15);
+      });
+    }
+  } catch(e) {}
+}
+
 // Defined outside component so it's stable and not recreated on render
 function presenceToPlayer(presence: any): Player {
   return {
@@ -112,6 +169,13 @@ export function WorldClient({ petState, species }: Props) {
   const playersRef = useRef<Map<string, Player>>(new Map());
   const petFramesRef = useRef<Map<string, number>>(new Map());
 
+  const socketRef = useRef<PartySocket | null>(null);
+  const activeInteractionsRef = useRef<{id:string, type:string, emoji:string, resultText:string, color:string, uA:string, uB:string, startedAt:number, expiresAt:number}[]>([]);
+  const tempMoodsRef = useRef<Map<string, { mood: string, expiresAt: number }>>(new Map());
+  const cooldownsRef = useRef<Map<string, number>>(new Map());
+  const nearPlayersRef = useRef<Map<string, number>>(new Map());
+  const [interactionTarget, setInteractionTarget] = useState<Player | null>(null);
+
   const [inspecting, setInspecting] = useState<Player | null>(null);
   const [onlineCount, setOnlineCount] = useState(1);
   const [size, setSize] = useState({ w: 1280, h: 800 });
@@ -126,7 +190,36 @@ export function WorldClient({ petState, species }: Props) {
 
   // Keyboard
   useEffect(() => {
-    const down = (e: KeyboardEvent) => keysRef.current.add(e.key.toLowerCase());
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      keysRef.current.add(k);
+      
+      if (k === "e") {
+        const now = Date.now();
+        let nearest: Player | null = null;
+        let minDist = 80;
+        
+        for (const player of playersRef.current.values()) {
+           const dist = Math.hypot(player.x - posRef.current.x, player.y - posRef.current.y);
+           if (dist <= minDist) {
+              const cdKey = [petState.gitData.username, player.username].sort().join(":");
+              const cd = cooldownsRef.current.get(cdKey) || 0;
+              if (now > cd) { 
+                nearest = player;
+                minDist = dist;
+              }
+           }
+        }
+        
+        if (nearest) {
+           setInteractionTarget(nearest);
+        }
+      }
+      
+      if (k === "escape") {
+         setInteractionTarget(null);
+      }
+    };
     const up = (e: KeyboardEvent) => keysRef.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -134,7 +227,7 @@ export function WorldClient({ petState, species }: Props) {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [petState]);
 
   // Socket connection
   useEffect(() => {
@@ -142,6 +235,7 @@ export function WorldClient({ petState, species }: Props) {
     if (!host) return;
 
     const socket = new PartySocket({ host, room: "world" });
+    socketRef.current = socket;
 
     socket.addEventListener("open", () => {
       socket.send(JSON.stringify({
@@ -189,16 +283,99 @@ export function WorldClient({ petState, species }: Props) {
         playersRef.current.delete(msg.username);
         setOnlineCount(playersRef.current.size + 1);
       }
+
+      if (msg.type === "interaction") {
+        const { fromUsername, toUsername, interactionType, result } = msg;
+
+        const isMe =
+          fromUsername === petState.gitData.username ||
+          toUsername === petState.gitData.username;
+
+        let emoji = "✨";
+        let color = "255, 215, 0"; 
+        if (interactionType === "fight") { emoji = "⚔️"; color = "239, 68, 68"; }
+        else if (interactionType === "befriend") { emoji = "💛"; color = "16, 185, 129"; }
+        else if (interactionType === "play") { emoji = "🎮"; color = "59, 130, 246"; }
+
+        const now = Date.now();
+
+        if (interactionType === "fight") {
+           tempMoodsRef.current.set(toUsername, { mood: "sad", expiresAt: now + 30000 });
+        } else if (interactionType === "befriend") {
+           tempMoodsRef.current.set(fromUsername, { mood: "happy", expiresAt: now + 30000 });
+           tempMoodsRef.current.set(toUsername, { mood: "happy", expiresAt: now + 30000 });
+        }
+
+        activeInteractionsRef.current.push({
+          id: Math.random().toString(),
+          type: interactionType,
+          emoji,
+          resultText: result,
+          color,
+          uA: fromUsername,
+          uB: toUsername,
+          startedAt: now,
+          expiresAt: now + 1500,
+        });
+
+        const key = [fromUsername, toUsername].sort().join(":");
+        cooldownsRef.current.set(key, now + 10000);
+
+        if (isMe) {
+          playSound(interactionType as any);
+        }
+      }
     });
 
     // Broadcast position every 50ms while a key is held
     const interval = setInterval(() => {
-      if (keysRef.current.size > 0) {
+      if (keysRef.current.size > 0 && socket.readyState === 1) {
         socket.send(JSON.stringify({
           type: "move",
           x: posRef.current.x,
           y: posRef.current.y,
         }));
+      }
+
+      const now = Date.now();
+      const meName = petState.gitData.username;
+      
+      for (const [id, player] of playersRef.current.entries()) {
+        const dist = Math.hypot(player.x - posRef.current.x, player.y - posRef.current.y);
+        if (dist <= 80) {
+          if (!nearPlayersRef.current.has(id)) {
+            nearPlayersRef.current.set(id, now);
+          } else {
+            const timeNear = now - nearPlayersRef.current.get(id)!;
+            const key = [meName, id].sort().join(":");
+            const cd = cooldownsRef.current.get(key) || 0;
+            
+            if (timeNear >= 3000 && now > cd) {
+              const types = ["fight", "befriend", "play", "trade"] as const;
+              const type = types[Math.floor(Math.random() * types.length)];
+              
+              let result = "INTERACTED!";
+              if (type === "fight") result = "FOUGHT!";
+              else if (type === "befriend") result = "NEW FRIEND!";
+              else if (type === "play") result = "LET'S PLAY!";
+              else if (type === "trade") result = "TRADED!";
+
+              if (socket.readyState === 1) {
+                socket.send(JSON.stringify({
+                  type: "interaction",
+                  fromUsername: meName,
+                  toUsername: id,
+                  interactionType: type,
+                  result
+                }));
+              }
+              cooldownsRef.current.set(key, now + 10000);
+              nearPlayersRef.current.set(id, now); 
+            }
+          }
+        } else {
+          nearPlayersRef.current.delete(id);
+        }
       }
     }, 50);
 
@@ -293,6 +470,9 @@ export function WorldClient({ petState, species }: Props) {
         }
       }
 
+      const now = Date.now();
+      activeInteractionsRef.current = activeInteractionsRef.current.filter(i => i.expiresAt > now);
+
       // Other players
       for (const [id, player] of playersRef.current.entries()) {
         if (id === petState.gitData.username) continue;
@@ -302,14 +482,32 @@ export function WorldClient({ petState, species }: Props) {
         offscreen.width = 72; offscreen.height = 72;
         const octx = offscreen.getContext("2d")!;
         octx.imageSmoothingEnabled = false;
-        drawPet(octx, player.petState, pf, 72, 72, "front", player.species as any);
-        ctx.drawImage(offscreen, player.x - cam.x - 36, player.y - cam.y - 36, 72, 72);
+
+        const tempState = { ...player.petState };
+        const tempMoodInfo = tempMoodsRef.current.get(player.username);
+        if (tempMoodInfo && tempMoodInfo.expiresAt > now) {
+           tempState.mood = tempMoodInfo.mood as any;
+        }
+        let bounceOffY = 0;
+        const playInteraction = activeInteractionsRef.current.find(i => i.type === "play" && (i.uA === id || i.uB === id));
+        if (playInteraction) bounceOffY = Math.abs(Math.sin((now - playInteraction.startedAt) / 100)) * 10;
+
+        drawPet(octx, tempState, pf, 72, 72, "front", player.species as any, { transparent: true });
+        ctx.drawImage(offscreen, player.x - cam.x - 36, player.y - cam.y - 36 - bounceOffY, 72, 72);
         ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.fillRect(player.x - cam.x - 28, player.y - cam.y + 28, 56, 14);
         ctx.fillStyle = player.petState.primaryColor;
         ctx.font = "8px monospace";
         ctx.textAlign = "center";
         ctx.fillText(`@${player.username}`, player.x - cam.x, player.y - cam.y + 38);
+
+        const cdKey = [petState.gitData.username, player.username].sort().join(":");
+        const cd = cooldownsRef.current.get(cdKey);
+        if (cd && cd > now) {
+            ctx.fillStyle = "white";
+            ctx.font = "8px monospace";
+            ctx.fillText(`⏳ ${Math.ceil((cd - now) / 1000)}s`, player.x - cam.x, player.y - cam.y - 40);
+        }
       }
 
       // Own pet
@@ -317,14 +515,65 @@ export function WorldClient({ petState, species }: Props) {
       offscreen.width = 72; offscreen.height = 72;
       const octx = offscreen.getContext("2d")!;
       octx.imageSmoothingEnabled = false;
-      drawPet(octx, petState, frame, 72, 72, "front", species as any);
-      ctx.drawImage(offscreen, x - cam.x - 36, y - cam.y - 36, 72, 72);
+
+      const myTempState = { ...petState };
+      const myMoodInfo = tempMoodsRef.current.get(petState.gitData.username);
+      if (myMoodInfo && myMoodInfo.expiresAt > now) {
+         myTempState.mood = myMoodInfo.mood as any;
+      }
+      let myBounceOffY = 0;
+      const myPlayInteraction = activeInteractionsRef.current.find(i => i.type === "play" && (i.uA === petState.gitData.username || i.uB === petState.gitData.username));
+      if (myPlayInteraction) myBounceOffY = Math.abs(Math.sin((now - myPlayInteraction.startedAt) / 100)) * 10;
+
+      drawPet(octx, myTempState, frame, 72, 72, "front", species as any, { transparent: true });
+      ctx.drawImage(offscreen, x - cam.x - 36, y - cam.y - 36 - myBounceOffY, 72, 72);
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.fillRect(x - cam.x - 28, y - cam.y + 28, 56, 14);
       ctx.fillStyle = "#22c55e";
       ctx.font = "8px monospace";
       ctx.textAlign = "center";
       ctx.fillText(`@${petState.gitData.username}`, x - cam.x, y - cam.y + 38);
+
+      for (const interaction of activeInteractionsRef.current) {
+         const progress = (now - interaction.startedAt) / 1500;
+         const offsetY = progress * 40;
+         const alpha = Math.max(0, 1 - progress);
+         
+         ctx.textAlign = "center";
+         
+         const renderAt = (pX: number, pY: number) => {
+            ctx.globalAlpha = alpha;
+            ctx.font = "24px sans-serif";
+            ctx.fillText(interaction.emoji, pX - cam.x, pY - cam.y - 40 - offsetY);
+            ctx.font = "10px monospace";
+            ctx.fillStyle = "white";
+            ctx.fillText(interaction.resultText, pX - cam.x, pY - cam.y - 20 - offsetY);
+            if (interaction.type === "play") {
+               ctx.fillStyle = "#f59e0b";
+               ctx.fillText("-NRG", pX - cam.x + 20, pY - cam.y - 30 - offsetY);
+            }
+            ctx.globalAlpha = 1;
+         };
+
+         if (interaction.uA === petState.gitData.username) renderAt(posRef.current.x, posRef.current.y);
+         else {
+            const p = playersRef.current.get(interaction.uA);
+            if (p) renderAt(p.x, p.y);
+         }
+
+         if (interaction.uB === petState.gitData.username) renderAt(posRef.current.x, posRef.current.y);
+         else {
+            const p = playersRef.current.get(interaction.uB);
+            if (p) renderAt(p.x, p.y);
+         }
+      }
+
+      for (const interaction of activeInteractionsRef.current) {
+         if (now - interaction.startedAt < 300) {
+            ctx.fillStyle = `rgba(${interaction.color}, 0.15)`;
+            ctx.fillRect(0, 0, W, H);
+         }
+      }
 
       // HUD
       ctx.fillStyle = "rgba(2,6,23,0.85)";
@@ -382,17 +631,21 @@ export function WorldClient({ petState, species }: Props) {
         onClick={handleClick}
       />
 
-      {inspecting && (
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", background: "#0f172a", border: "2px solid #1e293b", borderRadius: 16, padding: 20, width: 280, fontFamily: "monospace", zIndex: 100 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-            <span style={{ color: "#e2e8f0", fontSize: 12 }}>@{inspecting.username}</span>
-            <button onClick={() => setInspecting(null)} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14 }}>✕</button>
+      {interactionTarget && (
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", background: "rgba(2,6,23,0.95)", border: "2px solid #3b82f6", borderRadius: 16, padding: 24, width: 320, fontFamily: "monospace", zIndex: 101, boxShadow: "0 0 40px rgba(0,0,0,0.5), inset 0 0 20px rgba(59,130,246,0.3)", backdropFilter: "blur(8px)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <div>
+               <h3 style={{ margin: 0, color: "white", fontSize: 16 }}>@{interactionTarget.username}</h3>
+               <span style={{ color: "#64748b", fontSize: 12 }}>{interactionTarget.species.toUpperCase()}</span>
+            </div>
+            <button onClick={() => setInteractionTarget(null)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>✕</button>
           </div>
+          
           {[
-            { label: "HP",  value: inspecting.petState.stats.health,       color: "#22c55e" },
-            { label: "NRG", value: inspecting.petState.stats.energy,       color: "#f59e0b" },
-            { label: "INT", value: inspecting.petState.stats.intelligence, color: "#3b82f6" },
-            { label: "JOY", value: inspecting.petState.stats.happiness,    color: "#ec4899" },
+            { label: "HP",  value: interactionTarget.petState.stats.health,       color: "#22c55e" },
+            { label: "NRG", value: interactionTarget.petState.stats.energy,       color: "#f59e0b" },
+            { label: "INT", value: interactionTarget.petState.stats.intelligence, color: "#3b82f6" },
+            { label: "JOY", value: interactionTarget.petState.stats.happiness,    color: "#ec4899" },
           ].map(({ label, value, color }) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 10, color: "#64748b", width: 28 }}>{label}</span>
@@ -402,12 +655,42 @@ export function WorldClient({ petState, species }: Props) {
               <span style={{ fontSize: 10, color: "#e2e8f0", width: 24, textAlign: "right" }}>{value}</span>
             </div>
           ))}
-          <div style={{ marginTop: 12, fontSize: 9, color: "#334155", display: "flex", justifyContent: "space-between" }}>
-            <span>{inspecting.petState.stage.toUpperCase()}</span>
-            <span>{inspecting.petState.gitData.streak}d streak</span>
-            <span style={{ color: inspecting.petState.primaryColor }}>{inspecting.petState.gitData.languages[0]?.toUpperCase()}</span>
+          
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 24 }}>
+             <button onClick={() => {
+                if (!socketRef.current) return;
+                socketRef.current.send(JSON.stringify({ type: "interaction", fromUsername: petState.gitData.username, toUsername: interactionTarget.username, interactionType: "fight", result: "FOUGHT!" }));
+                cooldownsRef.current.set([petState.gitData.username, interactionTarget.username].sort().join(":"), Date.now() + 10000);
+                nearPlayersRef.current.set(interactionTarget.username, Date.now());
+                setInteractionTarget(null);
+             }} style={{ padding: "12px", background: "#7f1d1d", border: "1px solid #ef4444", borderRadius: 8, color: "white", cursor: "pointer" }}>⚔️ FIGHT</button>
+             <button onClick={() => {
+                if (!socketRef.current) return;
+                socketRef.current.send(JSON.stringify({ type: "interaction", fromUsername: petState.gitData.username, toUsername: interactionTarget.username, interactionType: "befriend", result: "NEW FRIEND!" }));
+                cooldownsRef.current.set([petState.gitData.username, interactionTarget.username].sort().join(":"), Date.now() + 10000);
+                nearPlayersRef.current.set(interactionTarget.username, Date.now());
+                setInteractionTarget(null);
+             }} style={{ padding: "12px", background: "#064e3b", border: "1px solid #10b981", borderRadius: 8, color: "white", cursor: "pointer" }}>💛 BEFRIEND</button>
+             <button onClick={() => {
+                if (!socketRef.current) return;
+                socketRef.current.send(JSON.stringify({ type: "interaction", fromUsername: petState.gitData.username, toUsername: interactionTarget.username, interactionType: "play", result: "LET'S PLAY!" }));
+                cooldownsRef.current.set([petState.gitData.username, interactionTarget.username].sort().join(":"), Date.now() + 10000);
+                nearPlayersRef.current.set(interactionTarget.username, Date.now());
+                setInteractionTarget(null);
+             }} style={{ padding: "12px", background: "#1e3a8a", border: "1px solid #3b82f6", borderRadius: 8, color: "white", cursor: "pointer" }}>🎮 PLAY</button>
+             <button onClick={() => {
+                if (!socketRef.current) return;
+                socketRef.current.send(JSON.stringify({ type: "interaction", fromUsername: petState.gitData.username, toUsername: interactionTarget.username, interactionType: "trade", result: "TRADED!" }));
+                cooldownsRef.current.set([petState.gitData.username, interactionTarget.username].sort().join(":"), Date.now() + 10000);
+                nearPlayersRef.current.set(interactionTarget.username, Date.now());
+                setInteractionTarget(null);
+             }} style={{ padding: "12px", background: "#713f12", border: "1px solid #eab308", borderRadius: 8, color: "white", cursor: "pointer" }}>✨ TRADE</button>
           </div>
         </div>
+      )}
+
+      {interactionTarget && (
+         <div onClick={() => setInteractionTarget(null)} style={{position: "absolute", top:0, left:0, width:"100%", height:"100%", zIndex: 100}} />
       )}
 
       <div style={{ position: "absolute", top: 44, left: 12 }}>

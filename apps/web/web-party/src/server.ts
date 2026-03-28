@@ -22,11 +22,13 @@ stats: {
 type ServerMessage =
   | { type: "snapshot"; pets: Record<string, PetPresence> }
   | { type: "pet_update"; pet: PetPresence }
-  | { type: "pet_left"; username: string };
+  | { type: "pet_left"; username: string }
+  | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string };
 
 type ClientMessage =
   | { type: "join"; pet: PetPresence }
-  | { type: "move"; x: number; y: number };
+  | { type: "move"; x: number; y: number }
+  | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string };
 
 export default class WorldServer implements Party.Server {
   pets: Record<string, PetPresence> = {};
@@ -58,6 +60,10 @@ export default class WorldServer implements Party.Server {
         const msg: ServerMessage = { type: "pet_update", pet: this.pets[username] };
         this.room.broadcast(JSON.stringify(msg));
       }
+    }
+
+    if (data.type === "interaction") {
+      this.room.broadcast(JSON.stringify(data));
     }
   }
 

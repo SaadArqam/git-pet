@@ -5,6 +5,10 @@ import { getSpeciesRects } from "./speciesRects";
 
 const PIXEL_SIZE = 6;
 
+export interface DrawOptions {
+  transparent?: boolean;
+}
+
 export function drawPet(
   ctx: CanvasRenderingContext2D,
   state: PetState,
@@ -12,26 +16,29 @@ export function drawPet(
   canvasWidth: number,
   canvasHeight: number,
   view: SpriteView = "front",
-  species?: string
+  species?: string,
+  options?: DrawOptions
 ): void {
-  // Background
-  ctx.fillStyle = "#020617";
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  if (!options?.transparent) {
+    // Background
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Checkerboard grid (retro LCD feel)
-  for (let x = 0; x < canvasWidth; x += PIXEL_SIZE) {
-    for (let y = 0; y < canvasHeight; y += PIXEL_SIZE) {
-      if ((x / PIXEL_SIZE + y / PIXEL_SIZE) % 2 === 0) {
-        ctx.fillStyle = "rgba(255,255,255,0.015)";
-        ctx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+    // Checkerboard grid (retro LCD feel)
+    for (let x = 0; x < canvasWidth; x += PIXEL_SIZE) {
+      for (let y = 0; y < canvasHeight; y += PIXEL_SIZE) {
+        if ((x / PIXEL_SIZE + y / PIXEL_SIZE) % 2 === 0) {
+          ctx.fillStyle = "rgba(255,255,255,0.015)";
+          ctx.fillRect(x, y, PIXEL_SIZE, PIXEL_SIZE);
+        }
       }
     }
-  }
 
-  // Scanlines
-  for (let y = 0; y < canvasHeight; y += 2) {
-    ctx.fillStyle = "rgba(0,0,0,0.08)";
-    ctx.fillRect(0, y, canvasWidth, 1);
+    // Scanlines
+    for (let y = 0; y < canvasHeight; y += 2) {
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
+      ctx.fillRect(0, y, canvasWidth, 1);
+    }
   }
 
   const rects = (species && species !== "default") 
@@ -49,10 +56,12 @@ export function drawPet(
     oy = Math.floor(canvasHeight / 2 - 22 * scale);
 
     // Drop shadow
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.beginPath();
-    ctx.ellipse(canvasWidth / 2, oy + 32 * scale, 14 * scale, 3 * scale, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (!options?.transparent) {
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.beginPath();
+      ctx.ellipse(canvasWidth / 2, oy + 32 * scale, 14 * scale, 3 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Rects
     rects.forEach(([rx, ry, rw, rh, color]) => {
@@ -68,10 +77,12 @@ export function drawPet(
     oy = Math.floor((canvasHeight - spriteH) / 2);
 
     // Drop shadow
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.beginPath();
-    ctx.ellipse(canvasWidth / 2, oy + spriteH + 8, 28, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (!options?.transparent) {
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.beginPath();
+      ctx.ellipse(canvasWidth / 2, oy + spriteH + 8, 28, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Pixels
     pixels.forEach(([x, y, color]) => {
