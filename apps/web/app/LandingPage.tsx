@@ -3,86 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-function drawWolf(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.08) * 2;
-  const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(8, 16, 24, 18, color); p(10, 4, 20, 16, color); p(10, 0, 6, 8, color); p(24, 0, 6, 8, color);
-  p(12, 1, 3, 5, "#f9a8d4"); p(25, 1, 3, 5, "#f9a8d4"); p(14, 14, 12, 8, "#cbd5e1");
-  p(13, 8, 4, 4, "#1e293b"); p(23, 8, 4, 4, "#1e293b"); p(14, 9, 2, 2, "#fff"); p(24, 9, 2, 2, "#fff");
-  p(18, 17, 4, 3, "#1e293b"); p(9, 30, 6, 10, color); p(17, 30, 6, 10, color); p(25, 30, 6, 10, color);
-  const tailWag = Math.sin(frame * 0.15) * 4; p(30, 18 + tailWag, 8, 5, color); p(34, 14 + tailWag, 6, 5, color);
-}
-
-function drawSabertooth(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.07) * 2;
-  const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(6, 18, 28, 20, color); p(8, 4, 24, 18, color); p(8, 0, 5, 7, color); p(27, 0, 5, 7, color);
-  p(9, 1, 3, 4, "#fde68a"); p(14, 20, 4, 8, "#fff"); p(22, 20, 4, 8, "#fff"); p(11, 9, 5, 5, "#0ea5e9");
-  p(24, 9, 5, 5, "#0ea5e9"); p(12, 10, 2, 2, "#fff"); p(25, 10, 2, 2, "#fff"); p(17, 16, 6, 4, "#1e293b");
-  p(10, 22, 4, 4, "#e2e8f0"); p(22, 26, 4, 4, "#e2e8f0"); p(7, 34, 7, 8, color); p(16, 34, 7, 8, color);
-  p(26, 34, 7, 8, color);
-}
-
-function drawCapybara(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.06) * 1.5;
-  const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(4, 20, 32, 18, color); p(2, 24, 36, 10, color); p(6, 6, 24, 18, color); p(6, 4, 7, 6, color);
-  p(27, 4, 7, 6, color); p(11, 12, 4, 4, "#1e293b"); p(25, 12, 4, 4, "#1e293b"); p(12, 13, 2, 2, "#fff");
-  p(26, 13, 2, 2, "#fff"); p(13, 19, 14, 5, "#92400e"); p(14, 20, 5, 3, "#1e293b"); p(21, 20, 5, 3, "#1e293b");
-  p(16, 2, 4, 4, "#fbbf24"); p(18, 0, 4, 4, "#fbbf24"); p(17, 1, 6, 6, "#fde68a"); p(6, 34, 8, 8, color);
-  p(16, 34, 8, 8, color); p(26, 34, 8, 8, color);
-}
-
-function drawDragon(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.1) * 2;
-  const wingFlap = Math.sin(frame * 0.12) * 6;
-  const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(-8, 8 + wingFlap, 12, 18, "#6d28d9"); p(36, 8 + wingFlap, 12, 18, "#6d28d9");
-  p(-12, 6 + wingFlap, 8, 10, "#7c3aed"); p(44, 6 + wingFlap, 8, 10, "#7c3aed");
-  p(8, 18, 24, 20, color); p(10, 4, 20, 18, color); p(10, 0, 4, 8, "#a78bfa"); p(26, 0, 4, 8, "#a78bfa");
-  p(12, 9, 5, 5, "#fde68a"); p(23, 9, 5, 5, "#fde68a"); p(13, 10, 2, 2, "#1e293b"); p(24, 10, 2, 2, "#1e293b");
-  p(13, 17, 14, 7, "#6d28d9");
-  const fireGlow = frame % 20 < 10 ? "#f97316" : "#fbbf24";
-  p(14, 19, 3, 3, fireGlow); p(23, 19, 3, 3, fireGlow);
-  p(14, 14, 3, 5, "#a78bfa"); p(20, 12, 3, 5, "#a78bfa"); p(26, 14, 3, 5, "#a78bfa");
-  p(28, 26, 10, 6, color); p(34, 22, 6, 6, color); p(38, 18, 5, 5, "#a78bfa");
-  p(9, 34, 7, 8, color); p(17, 34, 7, 8, color); p(26, 34, 7, 8, color);
-}
-
-function drawAxolotl(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.09) * 2;
-  const gillWave = Math.sin(frame * 0.13) * 3;
-  const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(2, 4 + gillWave, 5, 14, "#f9a8d4"); p(0, 2 + gillWave, 4, 8, "#fda4af");
-  p(33, 4 + gillWave, 5, 14, "#f9a8d4"); p(36, 2 + gillWave, 4, 8, "#fda4af");
-  p(5, 1 + gillWave, 4, 10, "#f9a8d4"); p(31, 1 + gillWave, 4, 10, "#f9a8d4");
-  p(4, 22, 32, 14, color); p(2, 26, 36, 8, color); p(6, 8, 28, 18, color);
-  p(8, 12, 7, 7, "#1e293b"); p(25, 12, 7, 7, "#1e293b");
-  p(9, 13, 4, 4, "#fff"); p(26, 13, 4, 4, "#fff");
-  p(10, 14, 2, 2, "#1e293b"); p(27, 14, 2, 2, "#1e293b");
-  p(14, 22, 3, 2, "#1e293b"); p(17, 23, 6, 2, "#1e293b"); p(23, 22, 3, 2, "#1e293b");
-  p(10, 26, 4, 4, "#f472b6"); p(20, 28, 4, 4, "#f472b6"); p(30, 25, 4, 4, "#f472b6");
-  p(6, 32, 8, 10, color); p(26, 32, 8, 10, color); p(32, 28, 10, 6, color); p(36, 24, 8, 6, "#f9a8d4");
-}
-
-function adjustColorHex(hex: string, percent: number): string {
-  const num = parseInt(hex.replace("#", ""), 16);
-  const amt = Math.round(2.55 * percent);
-  const R = Math.min(255, Math.max(0, (num >> 16) + amt));
-  const G = Math.min(255, Math.max(0, ((num >> 8) & 0x00ff) + amt));
-  const B = Math.min(255, Math.max(0, (num & 0x0000ff) + amt));
-  return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
-}
-
-const LOGO_LETTERS: Record<string, string[]> = {
-  G: ["01110", "10000", "10111", "10001", "01110"],
-  I: ["11111", "00100", "00100", "00100", "11111"],
-  T: ["11111", "00100", "00100", "00100", "00100"],
-  "-": ["00000", "00000", "11111", "00000", "00000"],
-  P: ["11110", "10001", "11110", "10000", "10000"],
-  E: ["11111", "10000", "11110", "10000", "11111"],
-};
-
 const SPLASHES = [
   "Your commits, your creature!",
   "Now with 100% more pixels!",
@@ -99,554 +19,567 @@ const SPLASHES = [
   "Your pet judges your PRs!",
 ];
 
-// Minecraft button base styles
-const MC_BTN: React.CSSProperties = {
-  width: "clamp(280px, 40vw, 400px)",
-  height: "44px",
-  background: "#8b8b8b",
-  borderTop: "3px solid #c6c6c6",
-  borderLeft: "3px solid #c6c6c6",
-  borderBottom: "3px solid #373737",
-  borderRight: "3px solid #373737",
-  fontFamily: "'Courier New', Courier, monospace",
-  fontSize: "14px",
-  fontWeight: "bold",
-  color: "#e0e0e0",
-  letterSpacing: "2px",
-  textShadow: "2px 2px #373737",
-  textTransform: "uppercase",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-  userSelect: "none",
-  transition: "none",
-};
-
 export default function LandingPage() {
-  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
-  const logoCanvasRef = useRef<HTMLCanvasElement>(null);
-  const trackingCanvasRef = useRef<HTMLCanvasElement>(null);
-  const logoContainerRef = useRef<HTMLDivElement>(null);
-  const splashTextRef = useRef<HTMLDivElement>(null);
-  const mouseRef = useRef({ x: 0, y: 0 });
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioStartedRef = useRef(false);
-
-  const [splashText] = useState(
-    () => SPLASHES[Math.floor(Math.random() * SPLASHES.length)]
-  );
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [splashText, setSplashText] = useState("Your commits, your creature!");
 
   useEffect(() => {
-    const bgCanvas = bgCanvasRef.current;
-    const logoCanvas = logoCanvasRef.current;
-    const trackingCanvas = trackingCanvasRef.current;
-    if (!bgCanvas || !logoCanvas || !trackingCanvas) return;
+    setSplashText(SPLASHES[Math.floor(Math.random() * SPLASHES.length)]);
+  }, []);
 
-    const bgCtx = bgCanvas.getContext("2d");
-    const logoCtx = logoCanvas.getContext("2d");
-    const trackCtx = trackingCanvas.getContext("2d");
-    if (!bgCtx || !logoCtx || !trackCtx) return;
+  useEffect(() => {
+    let unmounted = false;
+    let renderer: any, scene: any, camera: any;
+    let rafId: number;
 
-    // ---------- DIMENSIONS (no compounding scale) ----------
-    let cw = window.innerWidth;
-    let ch = window.innerHeight;
-    const PR = Math.min(window.devicePixelRatio || 1, 2);
-
-    const applySize = () => {
-      cw = window.innerWidth;
-      ch = window.innerHeight;
-
-      // Reset transform before resizing to avoid compounding
-      bgCtx.setTransform(1, 0, 0, 1, 0, 0);
-      bgCanvas.width = cw * PR;
-      bgCanvas.height = ch * PR;
-      bgCanvas.style.width = cw + "px";
-      bgCanvas.style.height = ch + "px";
-      bgCtx.scale(PR, PR);
-
-      const lw = cw < 640 ? 240 : 520;
-      logoCtx.setTransform(1, 0, 0, 1, 0, 0);
-      logoCanvas.width = lw * PR;
-      logoCanvas.height = 90 * PR;
-      logoCanvas.style.width = lw + "px";
-      logoCanvas.style.height = "90px";
-      logoCtx.scale(PR, PR);
-      drawLogo(logoCtx, lw);
-
-      trackCtx.setTransform(1, 0, 0, 1, 0, 0);
-      trackingCanvas.width = 120 * PR;
-      trackingCanvas.height = 160 * PR;
-      trackingCanvas.style.width = "120px";
-      trackingCanvas.style.height = "160px";
-      trackCtx.scale(PR, PR);
+    let mouseNormX = 0, mouseNormY = 0;
+    const onMouseMove = (e: MouseEvent) => {
+      mouseNormX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseNormY = -(e.clientY / window.innerHeight) * 2 + 1;
     };
+    window.addEventListener("mousemove", onMouseMove);
 
-    // ---------- LOGO ----------
-    const drawLogo = (ctx: CanvasRenderingContext2D, canvasW: number) => {
-      ctx.clearRect(0, 0, canvasW, 90);
-      const word = "GIT-PET";
-      const bs = canvasW < 300 ? 5 : 8; // block size
-      const gap = 4;
-      let totalW = word.length * 5 * bs + (word.length - 1) * gap;
-      let cx = (canvasW - totalW) / 2;
+    const initThree = async () => {
+      try {
+        await new Promise<void>((resolve) => {
+          let s1 = document.querySelector('script[src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"]') as HTMLScriptElement;
+          if (!s1) {
+            s1 = document.createElement("script");
+            s1.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+            document.head.appendChild(s1);
+          }
+          const check1 = () => {
+            if ((window as any).THREE) {
+              let s2 = document.querySelector('script[src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"]') as HTMLScriptElement;
+              if (!s2) {
+                s2 = document.createElement("script");
+                s2.src = "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js";
+                document.head.appendChild(s2);
+              }
+              const check2 = () => {
+                if ((window as any).THREE.BufferGeometryUtils) resolve();
+                else setTimeout(check2, 50);
+              };
+              check2();
+            } else {
+              setTimeout(check1, 50);
+            }
+          };
+          check1();
+        });
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+      if (unmounted || !containerRef.current) return;
 
-      for (const ch of word) {
-        const grid = LOGO_LETTERS[ch] ?? LOGO_LETTERS["T"]!;
-        const isGIT = "GIT".includes(ch);
-        const topColor = isGIT ? "#22c55e" : ch === "-" ? "#475569" : "#a78bfa";
-        const shadowColor = isGIT ? "#14532d" : ch === "-" ? "#1e293b" : "#4c1d95";
+      const THREE = (window as any).THREE;
 
-        for (let r = 0; r < 5; r++) {
-          for (let c = 0; c < 5; c++) {
-            if (grid[r]?.[c] === "1") {
-              const bx = cx + c * bs;
-              const by = r * bs + 14;
-              ctx.fillStyle = topColor;
-              ctx.fillRect(bx, by, bs, bs);
-              // top highlight
-              ctx.fillStyle = adjustColorHex(topColor, 25);
-              ctx.fillRect(bx, by, bs, 1);
-              ctx.fillRect(bx, by, 1, bs);
-              // bottom-right shadow
-              ctx.fillStyle = shadowColor;
-              ctx.fillRect(bx + bs - 2, by, 2, bs);
-              ctx.fillRect(bx, by + bs - 2, bs, 2);
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0xb8d4e8, 0.022);
+
+      const skyGeo = new THREE.SphereGeometry(90, 16, 8);
+      const skyMat = new THREE.MeshBasicMaterial({ color: 0x7db8d4, side: THREE.BackSide, vertexColors: true });
+      const skyColors = [];
+      const skyPos = skyGeo.attributes.position;
+      for (let i = 0; i < skyPos.count; i++) {
+        const y = skyPos.getY(i);
+        const t = (y + 90) / 180;
+        skyColors.push(0.22 + t * 0.07, 0.42 + t * 0.14, 0.64 + t * 0.19);
+      }
+      skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+      scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 80);
+      camera.position.set(0, 6, 22);
+      camera.lookAt(0, 2, -5);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x87b8d4);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      containerRef.current.appendChild(renderer.domElement);
+
+      const onResize = () => {
+        if (camera && renderer) {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+      };
+      window.addEventListener("resize", onResize);
+
+      const sun = new THREE.DirectionalLight(0xffd4a0, 2.2);
+      sun.position.set(25, 35, -10);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 2048;
+      sun.shadow.mapSize.height = 2048;
+      sun.shadow.camera.near = 0.5;
+      sun.shadow.camera.far = 120;
+      sun.shadow.camera.left = -40;
+      sun.shadow.camera.right = 40;
+      sun.shadow.camera.top = 40;
+      sun.shadow.camera.bottom = -40;
+      sun.shadow.bias = -0.001;
+      scene.add(sun);
+
+      const fill = new THREE.DirectionalLight(0x9bb8d4, 0.6);
+      fill.position.set(-15, 10, 20);
+      scene.add(fill);
+
+      const ambient = new THREE.AmbientLight(0xffe8c0, 0.5);
+      scene.add(ambient);
+
+      const hemi = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.4);
+      scene.add(hemi);
+
+      const voxel = (x: number, y: number, z: number, colorHex: number) => {
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const mat = new THREE.MeshLambertMaterial({ color: colorHex });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+      };
+
+      const GROUND_SIZE = 60, GROUND_SEGS = 30;
+      const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE, GROUND_SEGS, GROUND_SEGS);
+      groundGeo.rotateX(-Math.PI / 2);
+      const colors = [];
+      const pos = groundGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        const noise = Math.sin(x * 2.1) * Math.cos(z * 1.8) * 0.5 + 0.5;
+        if (noise > 0.5) colors.push(0.28, 0.52, 0.22);
+        else colors.push(0.32, 0.60, 0.25);
+      }
+      groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      for (let x = -28; x < 28; x += 1) {
+        const dirt = voxel(x + 0.5, -0.25, -25, 0x8B6914);
+        dirt.scale.set(1, 0.5, 1);
+        scene.add(dirt);
+      }
+
+      const pathPoints = [
+        { x: 0, z: 18 }, { x: -1, z: 14 }, { x: 0, z: 10 }, { x: 1, z: 6 },
+        { x: 0, z: 2 }, { x: -1, z: -2 }, { x: 0, z: -6 },
+      ];
+      const stoneColors = [0x9a9a9a, 0x8a8a8a, 0xaaaaaa, 0x888888];
+      pathPoints.forEach(pt => {
+        for (let w = -1; w <= 1; w++) {
+          const col = stoneColors[Math.floor(Math.random() * stoneColors.length)];
+          const stone = voxel(pt.x + w, 0.05, pt.z, col);
+          stone.scale.set(1, 0.12, 1);
+          stone.receiveShadow = true;
+          scene.add(stone);
+        }
+      });
+
+      function createCherryTree(x: number, z: number, height = 5) {
+        const group = new THREE.Group();
+        for (let y = 0; y < height; y++) {
+          const w = y < 2 ? 0.9 : 0.7;
+          const trunk = voxel(0, y + 0.5, 0, y === 0 ? 0x5c3317 : 0x6b3f1e);
+          trunk.scale.set(w, 1, w);
+          group.add(trunk);
+        }
+        const blossomColors = [0xffb7c5, 0xff9eb5, 0xffc8d5, 0xff85a1, 0xffd4e0];
+        for (let bx = -3; bx <= 3; bx++) {
+          for (let by = -1; by <= 2; by++) {
+            for (let bz = -3; bz <= 3; bz++) {
+              const dist = Math.sqrt(bx*bx + by*by*2 + bz*bz);
+              if (dist < 3 && Math.random() > dist * 0.18) {
+                const col = blossomColors[Math.floor(Math.random() * blossomColors.length)];
+                const b = voxel(bx * 0.9, height + by * 0.9, bz * 0.9, col);
+                b.scale.setScalar(0.85);
+                b.castShadow = true;
+                group.add(b);
+              }
             }
           }
         }
-        cx += 5 * bs + gap;
+        group.position.set(x, 0, z);
+        scene.add(group);
+        return group;
       }
+      createCherryTree(-10, -5, 6);
+      createCherryTree(-14, -12, 5);
+      createCherryTree(12, -8, 4);
+
+      const petalGeo = new THREE.BoxGeometry(0.18, 0.04, 0.18);
+      const petalMat = new THREE.MeshLambertMaterial({ color: 0xffb7c5 });
+      const petals: any[] = [];
+      for (let i = 0; i < 120; i++) {
+        const petal = new THREE.Mesh(petalGeo, petalMat);
+        petal.castShadow = false;
+        petal.position.set((Math.random() - 0.5) * 35, Math.random() * 14 + 2, (Math.random() - 0.5) * 35);
+        petal.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        petal.userData = {
+          vy: -(0.008 + Math.random() * 0.012),
+          vx: (Math.random() - 0.5) * 0.004,
+          vz: (Math.random() - 0.5) * 0.004,
+          spin: (Math.random() - 0.5) * 0.02,
+        };
+        scene.add(petal);
+        petals.push(petal);
+      }
+
+      const pondX = 8, pondZ = -4, pondW = 8, pondD = 6;
+      for (let x = -pondW/2; x <= pondW/2; x++) {
+        for (let z = -pondD/2; z <= pondD/2; z++) {
+          const edge = Math.abs(x) > pondW/2 - 1 || Math.abs(z) > pondD/2 - 1;
+          if (edge) {
+            const stone = voxel(pondX + x, 0.1, pondZ + z, 0x7a7a7a);
+            stone.scale.set(1, 0.25, 1);
+            scene.add(stone);
+          }
+        }
+      }
+      const waterGeo = new THREE.PlaneGeometry(pondW - 1, pondD - 1, 4, 4);
+      waterGeo.rotateX(-Math.PI / 2);
+      const waterMat = new THREE.MeshLambertMaterial({ color: 0x3d8fa8, transparent: true, opacity: 0.82 });
+      const water = new THREE.Mesh(waterGeo, waterMat);
+      water.position.set(pondX, 0.08, pondZ);
+      water.receiveShadow = true;
+      scene.add(water);
+
+      const lilyPositions = [[pondX-2, pondZ+1], [pondX+1, pondZ-1], [pondX+2, pondZ+2], [pondX-1, pondZ-2], [pondX+3, pondZ+0]];
+      lilyPositions.forEach(([lx, lz]) => {
+        const lily = voxel(lx, 0.12, lz, 0x3a8a3a);
+        lily.scale.set(0.7, 0.06, 0.7);
+        scene.add(lily);
+      });
+
+      const koiColors = [0xff6633, 0xff4400, 0xffaa44, 0xffffff];
+      const koi: any[] = [];
+      for (let i = 0; i < 5; i++) {
+        const k = voxel(0, 0, 0, koiColors[i % koiColors.length]);
+        k.scale.set(0.5, 0.15, 0.9);
+        k.userData.angle = (i / 5) * Math.PI * 2;
+        k.userData.radius = 1.5 + Math.random() * 1.5;
+        k.userData.speed = 0.003 + Math.random() * 0.002;
+        scene.add(k);
+        koi.push(k);
+      }
+
+      function buildTorii(x: number, z: number) {
+        const red = 0xcc3300, darkRed = 0x992200;
+        for (let y = 0; y < 5; y++) {
+          scene.add(voxel(x - 1.5, y + 0.5, z, red));
+          scene.add(voxel(x + 1.5, y + 0.5, z, red));
+        }
+        for (let bx = -2.5; bx <= 2.5; bx += 1) {
+          const beam = voxel(x + bx, 5.3, z, darkRed);
+          beam.scale.set(1, 0.4, 0.5);
+          scene.add(beam);
+        }
+        for (let bx = -2; bx <= 2; bx += 1) {
+          const beam2 = voxel(x + bx, 4.6, z, red);
+          beam2.scale.set(1, 0.35, 0.5);
+          scene.add(beam2);
+        }
+      }
+      buildTorii(0, -8);
+      buildTorii(0, -18);
+
+      function buildLantern(x: number, z: number) {
+        const stone = 0x888880, glow = 0xffcc66;
+        const base = voxel(x, 0.2, z, stone); base.scale.set(0.8, 0.4, 0.8); scene.add(base);
+        for (let y = 0; y < 2; y++) {
+          const p = voxel(x, 0.6 + y * 0.5, z, stone); p.scale.set(0.5, 0.5, 0.5); scene.add(p);
+        }
+        const light = voxel(x, 1.7, z, glow);
+        light.scale.set(0.7, 0.6, 0.7);
+        const lightMat = new THREE.MeshLambertMaterial({ color: glow, emissive: new THREE.Color(0xffaa22), emissiveIntensity: 1.2 });
+        light.material = lightMat;
+        scene.add(light);
+        const cap = voxel(x, 2.1, z, stone); cap.scale.set(0.9, 0.2, 0.9); scene.add(cap);
+        const pl = new THREE.PointLight(0xffaa22, 1.2, 6);
+        pl.position.set(x, 1.8, z);
+        scene.add(pl);
+        return lightMat;
+      }
+      const lanternMats = [buildLantern(-2, 4), buildLantern(2, 0), buildLantern(-2, -4), buildLantern(2, -8)];
+
+      function buildShrine(x: number, z: number) {
+        const wood = 0x6b4423, stone = 0x9a8a7a, roof = 0x2a1f14;
+        for (let s = 0; s < 3; s++) {
+          for (let sx = -(3-s); sx <= (3-s); sx++) {
+            for (let sz = -(2-s); sz <= (2-s); sz++) {
+              const step = voxel(x+sx, s*0.4, z+sz+3, stone);
+              step.scale.set(1, 0.4, 1);
+              scene.add(step);
+            }
+          }
+        }
+        for (let wx = -3; wx <= 3; wx++) {
+          for (let wy = 0; wy < 4; wy++) {
+            for (let wz = -2; wz <= 2; wz++) {
+              const isWall = Math.abs(wx) === 3 || Math.abs(wz) === 2 || wy === 0;
+              const isWindow = wy === 1 && Math.abs(wx) === 2 && wz === -2;
+              if (!isWall) continue;
+              const col = isWindow ? 0xffcc66 : (wx === 0 && wz === -2 ? 0x4a2e18 : wood);
+              const wall = voxel(x+wx, 1.2+wy, z+wz, col);
+              if (isWindow) {
+                wall.material = new THREE.MeshLambertMaterial({
+                  color: 0xffcc66, emissive: new THREE.Color(0xffaa22), emissiveIntensity: 1.5
+                });
+              }
+              wall.castShadow = true;
+              scene.add(wall);
+            }
+          }
+        }
+        for (let ry = 0; ry < 3; ry++) {
+          const ext = ry;
+          for (let rx = -(3+ext); rx <= (3+ext); rx++) {
+            for (let rz = -(2+ext); rz <= (2+ext); rz++) {
+              const isEdge = Math.abs(rx) === 3+ext || Math.abs(rz) === 2+ext;
+              if (!isEdge && ry > 0) continue;
+              const roofVox = voxel(x+rx, 5.2+ry*0.5, z+rz, ry === 0 ? 0x3a2f1e : roof);
+              roofVox.scale.set(1, 0.4, 1);
+              roofVox.castShadow = true;
+              scene.add(roofVox);
+            }
+          }
+        }
+      }
+      buildShrine(0, -22);
+
+      function buildMountain(x: number, z: number, height: number, width: number) {
+        const colors = [0x4a5a3a, 0x3a4a2a, 0x5a6a4a];
+        for (let my = 0; my < height; my++) {
+          const radius = Math.floor((height - my) * (width / height));
+          for (let mx = -radius; mx <= radius; mx++) {
+            for (let mz = -Math.floor(radius * 0.6); mz <= Math.floor(radius * 0.6); mz++) {
+              if (Math.abs(mx) === radius || Math.abs(mz) === Math.floor(radius * 0.6)) {
+                const col = colors[Math.floor(Math.random() * colors.length)];
+                scene.add(voxel(x + mx, my + 0.5, z + mz, col));
+              }
+            }
+          }
+        }
+      }
+      buildMountain(-35, -45, 14, 10);
+      buildMountain(30, -50, 18, 12);
+      buildMountain(-20, -55, 10, 7);
+
+      function addSnow(x: number, z: number, height: number) {
+        for (let s = 0; s < 3; s++) {
+          const snow = voxel(x, height - s, z, s === 0 ? 0xffffff : 0xeeeeee);
+          snow.scale.set(3-s, 1, 3-s);
+          scene.add(snow);
+        }
+      }
+      addSnow(-35, -45, 14);
+      addSnow(30, -50, 18);
+
+      const animate = () => {
+        rafId = requestAnimationFrame(animate);
+        const elapsed = performance.now(); // user wants MS
+
+        const autoOrbitSpeed = 0.00008;
+        const radius = 22;
+        camera.position.x = Math.sin(elapsed * autoOrbitSpeed) * radius * 0.15;
+        camera.position.z = 22 + Math.sin(elapsed * autoOrbitSpeed * 0.5) * 1.5;
+        
+        // Offset on top of auto-orbit
+        camera.position.x += mouseNormX * 2.5;
+        camera.position.y = 6 + mouseNormY * -1.2;
+        camera.lookAt(0, 2, -5);
+
+        petals.forEach(p => {
+          p.position.y += p.userData.vy;
+          p.position.x += p.userData.vx + Math.sin(elapsed * 0.0003 + p.position.z) * 0.002;
+          p.position.z += p.userData.vz;
+          p.rotation.z += p.userData.spin;
+          if (p.position.y < -0.5) {
+            p.position.y = 14 + Math.random() * 4;
+            p.position.x = (Math.random() - 0.5) * 35;
+            p.position.z = (Math.random() - 0.5) * 35;
+          }
+        });
+
+        waterMat.color.setHSL(0.55, 0.5, 0.35 + Math.sin(elapsed * 0.0008) * 0.03);
+
+        koi.forEach(k => {
+          k.userData.angle += k.userData.speed;
+          k.position.set(
+            pondX + Math.cos(k.userData.angle) * k.userData.radius,
+            0.1,
+            pondZ + Math.sin(k.userData.angle) * k.userData.radius * 0.6
+          );
+          k.rotation.y = -k.userData.angle + Math.PI / 2;
+        });
+
+        lanternMats.forEach((mat, i) => {
+          mat.emissiveIntensity = 0.8 + Math.sin(elapsed * 0.0015 + i * 1.2) * 0.4;
+        });
+
+        renderer.render(scene, camera);
+      };
+      
+      rafId = requestAnimationFrame(animate);
     };
 
-    // ---------- STATIC DATA ----------
-    const PANORAMA_W = 3000;
-    const mountains: { x: number; h: number }[] = [];
-    for (let i = 0; i < 150; i++) {
-      mountains.push({
-        x: i * 20,
-        h: Math.abs(Math.sin(i * 0.3) * 80 + Math.sin(i * 0.7) * 40 + Math.sin(i * 0.13) * 20),
-      });
-    }
-
-    const stars: { x: number; y: number; phase: number; speed: number }[] = [];
-    for (let i = 0; i < 70; i++) {
-      stars.push({
-        x: Math.random() * PANORAMA_W,
-        y: Math.random() * 0.5, // fraction of ch
-        phase: Math.random() * Math.PI * 2,
-        speed: 0.02 + Math.random() * 0.03,
-      });
-    }
-
-    type PetDef = {
-      draw: (ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) => void;
-      color: string;
-      x: number;
-      dir: number;
-    };
-    const pets: PetDef[] = [
-      { draw: drawWolf,       color: "#94a3b8", x: 300,  dir: 1  },
-      { draw: drawSabertooth, color: "#f8fafc", x: 800,  dir: -1 },
-      { draw: drawCapybara,   color: "#a16207", x: 1300, dir: 1  },
-      { draw: drawDragon,     color: "#7c3aed", x: 1800, dir: -1 },
-      { draw: drawAxolotl,    color: "#db2777", x: 2300, dir: 1  },
-    ];
-
-    // ---------- RAF ----------
-    let rafId = 0;
-    let frame = 0;
-    let panOffset = 0;
-
-    const loop = () => {
-      frame++;
-      panOffset += 0.3;
-      if (panOffset >= PANORAMA_W) panOffset -= PANORAMA_W;
-
-      // helpers
-      const wrap = (x: number) => ((x - panOffset) % PANORAMA_W + PANORAMA_W) % PANORAMA_W;
-
-      // ── SKY ──
-      const skyGrad = bgCtx.createLinearGradient(0, 0, 0, ch * 0.65);
-      skyGrad.addColorStop(0, "#1a0533");
-      skyGrad.addColorStop(0.5, "#0f172a");
-      skyGrad.addColorStop(1, "#1e3a5f");
-      bgCtx.fillStyle = skyGrad;
-      bgCtx.fillRect(0, 0, cw, ch);
-
-      // ── AURORAS ──
-      const auroraColors = ["#a78bfa", "#818cf8", "#34d399"];
-      auroraColors.forEach((color, i) => {
-        const baseY = ch * (0.15 + i * 0.07);
-        bgCtx.beginPath();
-        for (let px = 0; px <= cw; px += 8) {
-          const y = baseY + 22 * Math.sin(px * 0.004 + frame * 0.005 + i * 2.1);
-          if (px === 0) bgCtx.moveTo(px, y);
-          else bgCtx.lineTo(px, y);
-        }
-        bgCtx.lineTo(cw, ch * 0.6);
-        bgCtx.lineTo(0, ch * 0.6);
-        bgCtx.closePath();
-        bgCtx.fillStyle = color;
-        bgCtx.globalAlpha = 0.07;
-        bgCtx.fill();
-        bgCtx.globalAlpha = 1;
-      });
-
-      // ── STARS ──
-      stars.forEach((s) => {
-        const sx = wrap(s.x);
-        const sy = s.y * ch;
-        if (sx < cw) {
-          bgCtx.globalAlpha = 0.3 + 0.7 * Math.abs(Math.sin(frame * s.speed + s.phase));
-          bgCtx.fillStyle = "#ffffff";
-          bgCtx.fillRect(Math.round(sx), Math.round(sy), 2, 2);
-        }
-      });
-      bgCtx.globalAlpha = 1;
-
-      // ── MOUNTAINS ──
-      bgCtx.fillStyle = "#0d1117";
-      bgCtx.beginPath();
-      bgCtx.moveTo(0, ch * 0.70);
-      // Build sorted visible points
-      const visible = mountains
-        .map((m) => ({ screenX: wrap(m.x), screenY: ch * 0.70 - m.h }))
-        .filter((p) => p.screenX >= -40 && p.screenX <= cw + 40)
-        .sort((a, b) => a.screenX - b.screenX);
-
-      if (visible.length > 0) {
-        bgCtx.moveTo(visible[0].screenX, ch * 0.70);
-        visible.forEach((p) => bgCtx.lineTo(p.screenX, p.screenY));
-        bgCtx.lineTo(visible[visible.length - 1].screenX, ch * 0.70);
-      }
-      bgCtx.closePath();
-      bgCtx.fill();
-
-      // ── TREES ──
-      const treeBaseY = ch * 0.70 - 20;
-      for (let tx = 0; tx < PANORAMA_W; tx += 30) {
-        const rx = wrap(tx);
-        if (rx > -30 && rx < cw + 20) {
-          bgCtx.fillStyle = "#78350f";
-          bgCtx.fillRect(rx + 6, treeBaseY + 8, 4, 14);
-          bgCtx.fillStyle = "#166534";
-          bgCtx.fillRect(rx, treeBaseY - 14, 18, 22);
-          bgCtx.fillStyle = "#15803d";
-          bgCtx.fillRect(rx, treeBaseY - 14, 18, 2);
-          bgCtx.fillStyle = "#14532d";
-          bgCtx.fillRect(rx + 16, treeBaseY - 14, 2, 22);
-        }
-      }
-
-      // ── GRASS BLOCKS ──
-      const groundY = ch * 0.70;
-      for (let gx = 0; gx < PANORAMA_W; gx += 18) {
-        const rx = wrap(gx);
-        if (rx > -20 && rx < cw + 20) {
-          bgCtx.fillStyle = "#166534";
-          bgCtx.fillRect(rx, groundY, 18, 18);
-          bgCtx.fillRect(rx, groundY + 18, 18, 18);
-          bgCtx.fillStyle = "#22c55e";
-          bgCtx.fillRect(rx, groundY, 18, 4);
-          bgCtx.fillRect(rx, groundY + 18, 18, 4);
-          bgCtx.fillStyle = "#14532d";
-          bgCtx.fillRect(rx + 17, groundY, 1, 36);
-          bgCtx.fillRect(rx, groundY + 17, 18, 1);
-          bgCtx.fillRect(rx, groundY + 35, 18, 1);
-        }
-      }
-
-      // ── DIRT ──
-      const dirtY = groundY + 36;
-      bgCtx.fillStyle = "#92400e";
-      bgCtx.fillRect(0, dirtY, cw, ch - dirtY);
-      bgCtx.fillStyle = "rgba(0,0,0,0.12)";
-      for (let y = dirtY; y < ch; y += 18) bgCtx.fillRect(0, y, cw, 1);
-      for (let x = 0; x < PANORAMA_W; x += 18) {
-        const rx = wrap(x);
-        if (rx > -2 && rx < cw) bgCtx.fillRect(rx, dirtY, 1, ch - dirtY);
-      }
-
-      // ── DEPTH FOG ──
-      const fog = bgCtx.createLinearGradient(0, ch * 0.55, 0, groundY);
-      fog.addColorStop(0, "rgba(2,6,23,0)");
-      fog.addColorStop(1, "rgba(2,6,23,0.35)");
-      bgCtx.fillStyle = fog;
-      bgCtx.fillRect(0, ch * 0.55, cw, groundY - ch * 0.55);
-
-      // ── PETS ──
-      pets.forEach((pet) => {
-        pet.x += 0.4 * pet.dir;
-        if (pet.x < 0) { pet.x = 0; pet.dir = 1; }
-        if (pet.x > PANORAMA_W) { pet.x = PANORAMA_W; pet.dir = -1; }
-        const rx = wrap(pet.x);
-        if (rx > -100 && rx < cw + 100) {
-          bgCtx.save();
-          bgCtx.translate(rx, groundY - 48);
-          bgCtx.scale(1.4 * pet.dir, 1.4);
-          if (pet.dir < 0) bgCtx.translate(-40, 0);
-          pet.draw(bgCtx, 0, 0, frame, pet.color);
-          bgCtx.restore();
-        }
-      });
-
-      // ── TRACKING PET (dragon, right side) ──
-      if (cw >= 640) {
-        trackCtx.clearRect(0, 0, 120, 160);
-        trackCtx.save();
-        trackCtx.scale(2.5, 2.5);
-        drawDragon(trackCtx, 2, 10, frame, "#7c3aed");
-        trackCtx.restore();
-
-        if (trackingCanvasRef.current) {
-          const rect = trackingCanvasRef.current.getBoundingClientRect();
-          const cx2 = rect.left + rect.width / 2;
-          const cy2 = rect.top + rect.height / 2;
-          const angle = Math.atan2(mouseRef.current.y - cy2, mouseRef.current.x - cx2) * (180 / Math.PI);
-          trackingCanvasRef.current.style.transform = `rotate(${Math.max(-10, Math.min(10, angle * 0.12))}deg)`;
-        }
-      }
-
-      // ── LOGO BOB ──
-      if (logoContainerRef.current) {
-        const bobY = 4 * Math.sin(frame * 0.022);
-        logoContainerRef.current.style.transform = `translate(-50%, ${bobY}px)`;
-      }
-
-      // ── SPLASH PULSE ──
-      if (splashTextRef.current) {
-        const s = 1 + Math.sin(frame * 0.045) * 0.05;
-        splashTextRef.current.style.transform = `rotate(-18deg) scale(${s})`;
-      }
-
-      rafId = requestAnimationFrame(loop);
-    };
-
-    applySize();
-    rafId = requestAnimationFrame(loop);
-
-    const onMouseMove = (e: MouseEvent) => { mouseRef.current = { x: e.clientX, y: e.clientY }; };
-    window.addEventListener("mousemove", onMouseMove);
-
-    let resizeTimer: ReturnType<typeof setTimeout>;
-    const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(applySize, 150); };
-    window.addEventListener("resize", onResize);
+    initThree();
 
     return () => {
-      cancelAnimationFrame(rafId);
+      unmounted = true;
       window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("resize", onResize);
-      clearTimeout(resizeTimer);
+      if (rafId) cancelAnimationFrame(rafId);
+      if (renderer) renderer.dispose();
+      if (containerRef.current) containerRef.current.innerHTML = "";
     };
   }, []);
-
-  // ---------- AUDIO ----------
-  const initAudio = () => {
-    if (audioStartedRef.current) return;
-    audioStartedRef.current = true;
-    try {
-      const Ctx = window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      audioCtxRef.current = ctx;
-      const o1 = ctx.createOscillator();
-      const o2 = ctx.createOscillator();
-      const g = ctx.createGain();
-      o1.frequency.value = 55; o2.frequency.value = 110;
-      g.gain.value = 0.01;
-      o1.connect(g); o2.connect(g); g.connect(ctx.destination);
-      o1.start(); o2.start();
-    } catch { /* silently fail */ }
-  };
-
-  const playClick = (freq: number, dur: number) => {
-    initAudio();
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    try {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "square";
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(); osc.stop(ctx.currentTime + dur + 0.02);
-    } catch { /* silently fail */ }
-  };
-
-  useEffect(() => {
-    const handler = () => initAudio();
-    window.addEventListener("click", handler, { once: true });
-    return () => {
-      window.removeEventListener("click", handler);
-      audioCtxRef.current?.close().catch(() => {});
-    };
-  }, []);
-
-  // ---------- BUTTON HANDLERS ----------
-  const onEnter = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    playClick(440, 0.04);
-    const el = e.currentTarget;
-    el.style.background = "#a0a0ff";
-    el.style.borderTop = "3px solid #c8c8ff";
-    el.style.borderLeft = "3px solid #c8c8ff";
-    el.style.borderBottom = "3px solid #3737b8";
-    el.style.borderRight = "3px solid #3737b8";
-    el.style.color = "#ffffa0";
-    el.style.textShadow = "2px 2px #1a1a5e";
-  };
-
-  const onLeave = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const el = e.currentTarget;
-    el.style.background = "#8b8b8b";
-    el.style.borderTop = "3px solid #c6c6c6";
-    el.style.borderLeft = "3px solid #c6c6c6";
-    el.style.borderBottom = "3px solid #373737";
-    el.style.borderRight = "3px solid #373737";
-    el.style.color = "#e0e0e0";
-    el.style.textShadow = "2px 2px #373737";
-    el.style.transform = "none";
-  };
-
-  const onDown = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    playClick(330, 0.06);
-    const el = e.currentTarget;
-    el.style.transform = "translateY(2px)";
-    el.style.borderTop = "3px solid #373737";
-    el.style.borderLeft = "3px solid #373737";
-    el.style.borderBottom = "3px solid #c6c6c6";
-    el.style.borderRight = "3px solid #c6c6c6";
-  };
-
-  const onUp = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const el = e.currentTarget;
-    el.style.transform = "none";
-    el.style.borderTop = "3px solid #c8c8ff";
-    el.style.borderLeft = "3px solid #c8c8ff";
-    el.style.borderBottom = "3px solid #3737b8";
-    el.style.borderRight = "3px solid #3737b8";
-  };
 
   return (
-    <main
-      style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden", background: "#1a0533" }}
-      onClick={initAudio}
-    >
-      {/* PANORAMA */}
-      <canvas
-        ref={bgCanvasRef}
-        style={{ position: "fixed", top: 0, left: 0, zIndex: 0, pointerEvents: "none", imageRendering: "pixelated" }}
-      />
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300&family=Press+Start+2P&family=Syne:wght@700&display=swap');
 
-      {/* LOGO + SPLASH */}
-      <div
-        ref={logoContainerRef}
-        style={{
-          position: "absolute",
-          top: "13%",
-          left: "50%",
-          transform: "translate(-50%, 0)",
-          zIndex: 2,
-          willChange: "transform",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-        <canvas ref={logoCanvasRef} style={{ imageRendering: "pixelated", display: "block" }} />
-        <div
-          ref={splashTextRef}
-          style={{
-            marginTop: "6px",
-            fontFamily: "monospace",
-            fontStyle: "italic",
-            fontWeight: "bold",
-            fontSize: "clamp(11px, 1.6vw, 16px)",
-            color: "#eab308",
-            textShadow: "2px 2px #78350f",
-            whiteSpace: "nowrap",
-            transformOrigin: "center center",
-            willChange: "transform",
-          }}
-        >
-          {splashText}
+        #three-canvas {
+          filter: saturate(1.15) contrast(1.05);
+        }
+
+        .vignette {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(ellipse 70% 70% at 50% 50%, transparent 40%, rgba(10, 8, 5, 0.55) 100%);
+          pointer-events: none;
+          z-index: 2;
+        }
+
+        .grain {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 3;
+          opacity: 0.03;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+          animation: grain-shift 0.4s steps(1) infinite;
+        }
+
+        @keyframes grain-shift {
+          0%, 100% { transform: translate(0, 0); }
+          25% { transform: translate(-2px, 1px); }
+          50% { transform: translate(2px, -1px); }
+          75% { transform: translate(-1px, 2px); }
+        }
+
+        .ui-overlay {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 10;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0;
+          width: 360px;
+        }
+
+        .site-logo {
+          font-family: 'Press Start 2P', monospace;
+          font-size: 28px;
+          color: #f0ebe0;
+          text-shadow: 0 0 40px rgba(255, 180, 80, 0.8), 0 0 80px rgba(255, 140, 40, 0.4), 2px 2px 0px rgba(0,0,0,0.8);
+          margin-bottom: 8px;
+          letter-spacing: 4px;
+        }
+
+        .site-tagline {
+          font-family: 'DM Mono', monospace;
+          font-size: 11px;
+          font-weight: 300;
+          color: rgba(240, 235, 224, 0.6);
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          margin-bottom: 40px;
+        }
+
+        .menu-btn {
+          width: 100%;
+          padding: 16px 32px;
+          font-family: 'Syne', sans-serif;
+          font-weight: 700;
+          font-size: 13px;
+          letter-spacing: 3px;
+          text-transform: uppercase;
+          color: #f0ebe0;
+          background: rgba(26, 20, 14, 0.55);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(240, 200, 140, 0.2);
+          border-bottom: none;
+          cursor: pointer;
+          transition: background 0.2s, border-color 0.2s, color 0.2s;
+          text-align: center;
+        }
+
+        .menu-btn:last-child {
+          border-bottom: 1px solid rgba(240, 200, 140, 0.2);
+        }
+
+        .menu-btn:hover {
+          background: rgba(181, 71, 10, 0.5);
+          border-color: rgba(240, 180, 80, 0.5);
+          color: #ffffff;
+        }
+
+        .menu-btn.primary {
+          background: rgba(181, 71, 10, 0.35);
+          border-color: rgba(255, 180, 80, 0.4);
+          color: #ffd4a0;
+        }
+
+        .menu-btn.primary:hover {
+          background: rgba(181, 71, 10, 0.7);
+          border-color: rgba(255, 200, 100, 0.7);
+          color: #ffffff;
+        }
+      `}} />
+      <main style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden", background: "#7db8d4" }}>
+        <div id="three-canvas" ref={containerRef} style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }} />
+        <div className="vignette" />
+        <div className="grain" />
+        <div className="ui-overlay">
+          <div className="site-logo">GIT-PET</div>
+          <div className="site-tagline">{splashText}</div>
+          <Link href="/about" className="menu-btn">ABOUT GIT-PET</Link>
+          <Link href="/world" className="menu-btn">EXPLORE WORLD</Link>
+          <Link href="/api/auth/signin" className="menu-btn primary">SIGN IN WITH GITHUB</Link>
         </div>
-      </div>
-
-      {/* BUTTONS */}
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "8px",
-          zIndex: 2,
-        }}
-      >
-        <Link href="/about" style={MC_BTN} onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp}>
-          About Git-Pet
-        </Link>
-        <Link href="/world" style={MC_BTN} onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp}>
-          Explore World
-        </Link>
-        <Link href="/api/auth/signin" style={MC_BTN} onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp}>
-          Sign In With GitHub
-        </Link>
-      </div>
-
-      {/* CURSOR-TRACKING DRAGON (desktop only) */}
-      {typeof window !== "undefined" && (
         <div
           style={{
-            position: "fixed",
-            right: "7vw",
-            top: "52%",
-            transform: "translateY(-50%)",
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: "10px 16px",
             display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            zIndex: 2,
+            justifyContent: "space-between",
+            pointerEvents: "none",
+            zIndex: 10,
           }}
-          className="hidden sm:flex"
         >
-          <canvas
-            ref={trackingCanvasRef}
-            style={{ imageRendering: "pixelated", pointerEvents: "none", willChange: "transform" }}
-          />
-          <span style={{ color: "#7c3aed", fontFamily: "monospace", fontSize: "9px", letterSpacing: "3px", marginTop: "6px", textShadow: "1px 1px #000" }}>
-            DRAGON
+          <span style={{ fontSize: "9px", color: "rgba(240,235,224,0.4)", fontFamily: "'DM Mono', monospace", textShadow: "1px 1px rgba(0,0,0,0.8)" }}>
+            © 2025 Git-Pet — made with too many commits
+          </span>
+          <span style={{ fontSize: "9px", color: "rgba(240,235,224,0.4)", fontFamily: "'DM Mono', monospace", textShadow: "1px 1px rgba(0,0,0,0.8)" }}>
+            v0.1.0-beta
           </span>
         </div>
-      )}
-
-      {/* BOTTOM BAR */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: "10px 16px",
-          display: "flex",
-          justifyContent: "space-between",
-          pointerEvents: "none",
-          zIndex: 2,
-        }}
-      >
-        <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)", fontFamily: "monospace", textShadow: "1px 1px #000" }}>
-          © 2025 Git-Pet — made with too many commits
-        </span>
-        <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)", fontFamily: "monospace", textShadow: "1px 1px #000" }}>
-          v0.1.0-beta
-        </span>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }
