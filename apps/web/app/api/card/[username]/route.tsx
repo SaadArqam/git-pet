@@ -160,7 +160,11 @@ async function getSpeciesEdge(username: string): Promise<string | null> {
     });
     if (!res.ok) return null;
     const data = await res.json() as { result: string | null };
-    return data.result ?? null;
+    let val = data.result;
+    if (typeof val === "string") {
+      val = val.replace(/['"]/g, "").toLowerCase();
+    }
+    return val || null;
   } catch {
     return null;
   }
