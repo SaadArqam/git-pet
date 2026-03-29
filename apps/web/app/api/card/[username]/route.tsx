@@ -6,16 +6,13 @@ import { getSpriteView } from "@git-pet/renderer";
 
 export const runtime = "edge";
 
-const MOOD_COLOR: Record<string, string> = {
-  happy:   "#22c55e",
-  neutral: "#94a3b8",
-  tired:   "#f59e0b",
-  sad:     "#ef4444",
-  coma:    "#6366f1",
-};
-
 const STAGE_LABEL: Record<string, string> = {
   egg: "EGG", hatchling: "HATCHLING", adult: "ADULT", legend: "LEGEND",
+};
+
+const MOOD_COLOR: Record<string, string> = {
+  happy: "#22c55e", content: "#3b82f6", tired: "#f59e0b",
+  coma: "#ef4444", sad: "#64748b",
 };
 
 const SPECIES_PRIMARY: Record<string, string> = {
@@ -75,7 +72,10 @@ export async function GET(
   const pixels = getSpriteView(
     stage as Parameters<typeof getSpriteView>[0],
     mood  as Parameters<typeof getSpriteView>[1],
-    finalColor, 0, "front"
+    finalColor, 
+    0, 
+    "front",
+    species ?? undefined
   );
 
   // Sprite bounding box: pixels are on a 13×11 grid
@@ -83,17 +83,12 @@ export async function GET(
   const SPRITE_W = 13 * PS; // 91px
   const SPRITE_H = 11 * PS; // 77px
 
-  // Screen area: x=18, y=36, w=152, h=118
-  // Center sprite in screen
-  const SCREEN_X = 18;
-  const SCREEN_Y = 36;
-  const SCREEN_W = 152;
-  const SCREEN_H = 118;
-  const spriteOffX = SCREEN_X + Math.floor((SCREEN_W - SPRITE_W) / 2);
-  const spriteOffY = SCREEN_Y + Math.floor((SCREEN_H - SPRITE_H) / 2) - 4;
+  // Center sprite in screen (Screen area: x=18, y=36, w=152, h=118)
+  const spriteOffX = 18 + Math.floor((152 - 13 * PS) / 2);
+  const spriteOffY = 36 + Math.floor((118 - 11 * PS) / 2) - 2;
 
   const pixelRects = pixels
-    .map(([x, y, color]) =>
+    .map(([x, y, color]: [number, number, string]) =>
       `<rect x="${spriteOffX + x * PS}" y="${spriteOffY + y * PS}" width="${PS}" height="${PS}" fill="${color}"/>`
     )
     .join("");
@@ -167,7 +162,7 @@ export async function GET(
       .aura { animation: aura 2.5s ease-in-out infinite; }
     </style>
     <clipPath id="card"><rect width="480" height="200" rx="14"/></clipPath>
-    <clipPath id="screen"><rect x="${SCREEN_X}" y="${SCREEN_Y}" width="${SCREEN_W}" height="${SCREEN_H}" rx="2"/></clipPath>
+    <clipPath id="screen"><rect x="18" y="36" width="152" height="118" rx="2"/></clipPath>
     <pattern id="dots" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
       <rect x="0" y="0" width="4" height="4" fill="white" opacity="0.018"/>
       <rect x="4" y="4" width="4" height="4" fill="white" opacity="0.018"/>
@@ -182,50 +177,50 @@ export async function GET(
     <rect x="8" y="8" width="172" height="184" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>
 
     <!-- Screen bg + texture -->
-    <rect x="${SCREEN_X}" y="${SCREEN_Y}" width="${SCREEN_W}" height="${SCREEN_H}" fill="#020617"/>
-    <rect x="${SCREEN_X}" y="${SCREEN_Y}" width="${SCREEN_W}" height="${SCREEN_H}" fill="url(#dots)" clip-path="url(#screen)"/>
+    <rect x="18" y="36" width="152" height="118" fill="#020617"/>
+    <rect x="18" y="36" width="152" height="118" fill="url(#dots)" clip-path="url(#screen)"/>
 
     <!-- Screen header -->
     <line x1="8" y1="34" x2="180" y2="34" stroke="#1e293b" stroke-width="1"/>
-    <text x="18" y="26" font-family="'Courier New',monospace" font-size="9" fill="#475569">@${gitData.username}</text>
-    <text x="94" y="26" font-family="'Courier New',monospace" font-size="9" fill="${moodColor}" text-anchor="middle">${mood.toUpperCase()}</text>
-    <text x="172" y="26" font-family="'Courier New',monospace" font-size="9" fill="#334155" text-anchor="end">${stageLabel}</text>
+    <text x="18" y="26" font-family="'Courier New',monospace" font-size="9" fill="#475569">@\${gitData.username}</text>
+    <text x="94" y="26" font-family="'Courier New',monospace" font-size="9" fill="\${moodColor}" text-anchor="middle">\${mood.toUpperCase()}</text>
+    <text x="172" y="26" font-family="'Courier New',monospace" font-size="9" fill="#334155" text-anchor="end">\${stageLabel}</text>
 
     <!-- Aura behind pet -->
-    <ellipse cx="${auraCx}" cy="${auraCy}" rx="28" ry="24" fill="${finalColor}" class="aura"/>
+    <ellipse cx="\${auraCx}" cy="\${auraCy}" rx="24" ry="20" fill="\${finalColor}" opacity="0.12" class="aura"/>
 
     <!-- Pet shadow -->
-    <ellipse cx="${shadowCx}" cy="${shadowY}" rx="18" ry="4" fill="black" opacity="0.3"/>
+    <ellipse cx="\${shadowCx}" cy="\${shadowY}" rx="18" ry="4" fill="black" opacity="0.3"/>
 
     <!-- Particles / Z -->
-    ${particleSvg}${zSvg}
+    \${particleSvg}\${zSvg}
 
     <!-- Pet sprite (bobbing via CSS — works in browsers; static in GitHub which is fine) -->
-    <g class="pet">${pixelRects}</g>
+    <g class="pet">\${pixelRects}</g>
 
     <!-- Screen footer -->
     <line x1="8" y1="156" x2="180" y2="156" stroke="#1e293b" stroke-width="1"/>
-    <text x="18" y="175" font-family="'Courier New',monospace" font-size="8" fill="#334155">${gitData.streak}d streak</text>
-    <text x="172" y="175" font-family="'Courier New',monospace" font-size="8" fill="${finalColor}" text-anchor="end">${(gitData.languages[0] ?? "").toUpperCase()}</text>
+    <text x="18" y="175" font-family="'Courier New',monospace" font-size="8" fill="#334155">\${gitData.streak}d streak</text>
+    <text x="172" y="175" font-family="'Courier New',monospace" font-size="8" fill="\${finalColor}" text-anchor="end">\${(gitData.languages[0] ?? "").toUpperCase()}</text>
 
     <!-- Divider -->
     <line x1="192" y1="8" x2="192" y2="192" stroke="#1e293b" stroke-width="1"/>
 
     <!-- Title -->
     <text x="204" y="36" font-family="'Courier New',monospace" font-size="20" font-weight="bold" fill="#e2e8f0" letter-spacing="4">GIT PET</text>
-    <text x="204" y="52" font-family="'Courier New',monospace" font-size="10" fill="#475569">@${gitData.username}</text>
+    <text x="204" y="52" font-family="'Courier New',monospace" font-size="10" fill="#475569">@\${gitData.username}</text>
 
     <!-- Stage badge -->
-    <rect x="396" y="16" width="${stageLabel.length * 8 + 16}" height="18" rx="4" fill="none" stroke="${moodColor}" stroke-width="1" opacity="0.6"/>
-    <text x="${404 + (stageLabel.length * 4)}" y="29" font-family="'Courier New',monospace" font-size="9" fill="${moodColor}" text-anchor="middle">${stageLabel}</text>
+    <rect x="396" y="16" width="\${stageLabel.length * 8 + 16}" height="18" rx="4" fill="none" stroke="\${moodColor}" stroke-width="1" opacity="0.6"/>
+    <text x="\${404 + (stageLabel.length * 4)}" y="29" font-family="'Courier New',monospace" font-size="9" fill="\${moodColor}" text-anchor="middle">\${stageLabel}</text>
 
     <!-- Stat bars -->
-    ${barSvg}
+    \${barSvg}
 
     <!-- Footer line -->
     <line x1="192" y1="158" x2="472" y2="158" stroke="#1e293b" stroke-width="1"/>
-    <text x="204" y="176" font-family="'Courier New',monospace" font-size="9" fill="#334155">${gitData.totalCommits} commits</text>
-    <text x="310" y="176" font-family="'Courier New',monospace" font-size="9" fill="#334155">${gitData.repoCount} repos</text>
+    <text x="204" y="176" font-family="'Courier New',monospace" font-size="9" fill="#334155">\${gitData.totalCommits} commits</text>
+    <text x="310" y="176" font-family="'Courier New',monospace" font-size="9" fill="#334155">\${gitData.repoCount} repos</text>
     <text x="472" y="176" font-family="'Courier New',monospace" font-size="9" fill="#1e3a5f" text-anchor="end">git-pet-beta.vercel.app</text>
 
     <!-- Card border -->
@@ -236,7 +231,9 @@ export async function GET(
   return new Response(svg, {
     headers: {
       "Content-Type":  "image/svg+xml",
-      "Cache-Control": "public, max-age=1800, s-maxage=1800",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma":        "no-cache",
+      "Expires":       "0"
     },
   });
 }
