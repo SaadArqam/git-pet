@@ -1,647 +1,652 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface StarDot { x: number; y: number; size: 1 | 2; opacity: number; twinkleSpeed: number; twinklePhase: number }
-
-// ─── Draw functions (pixel-art pets) ─────────────────────────────────────────
 
 function drawWolf(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
   const bob = Math.sin(frame * 0.08) * 2;
   const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(8, 16, 24, 18, color); p(10, 4, 20, 16, color);
-  p(10, 0, 6, 8, color); p(24, 0, 6, 8, color); p(12, 1, 3, 5, "#f9a8d4"); p(25, 1, 3, 5, "#f9a8d4");
-  p(14, 14, 12, 8, "#cbd5e1"); p(13, 8, 4, 4, "#1e293b"); p(23, 8, 4, 4, "#1e293b");
-  p(14, 9, 2, 2, "#fff"); p(24, 9, 2, 2, "#fff"); p(18, 17, 4, 3, "#1e293b");
-  p(9, 30, 6, 10, color); p(17, 30, 6, 10, color); p(25, 30, 6, 10, color);
-  const tw = Math.sin(frame * 0.15) * 4; p(30, 18 + tw, 8, 5, color); p(34, 14 + tw, 6, 5, color);
+  p(8, 16, 24, 18, color); p(10, 4, 20, 16, color); p(10, 0, 6, 8, color); p(24, 0, 6, 8, color);
+  p(12, 1, 3, 5, "#f9a8d4"); p(25, 1, 3, 5, "#f9a8d4"); p(14, 14, 12, 8, "#cbd5e1");
+  p(13, 8, 4, 4, "#1e293b"); p(23, 8, 4, 4, "#1e293b"); p(14, 9, 2, 2, "#fff"); p(24, 9, 2, 2, "#fff");
+  p(18, 17, 4, 3, "#1e293b"); p(9, 30, 6, 10, color); p(17, 30, 6, 10, color); p(25, 30, 6, 10, color);
+  const tailWag = Math.sin(frame * 0.15) * 4; p(30, 18 + tailWag, 8, 5, color); p(34, 14 + tailWag, 6, 5, color);
 }
 
 function drawSabertooth(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
   const bob = Math.sin(frame * 0.07) * 2;
   const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(6, 18, 28, 20, color); p(8, 4, 24, 18, color);
-  p(8, 0, 5, 7, color); p(27, 0, 5, 7, color); p(9, 1, 3, 4, "#fde68a");
-  p(14, 20, 4, 8, "#fff"); p(22, 20, 4, 8, "#fff");
-  p(11, 9, 5, 5, "#0ea5e9"); p(24, 9, 5, 5, "#0ea5e9"); p(12, 10, 2, 2, "#fff"); p(25, 10, 2, 2, "#fff");
-  p(17, 16, 6, 4, "#1e293b"); p(10, 22, 4, 4, "#e2e8f0"); p(22, 26, 4, 4, "#e2e8f0");
-  p(7, 34, 7, 8, color); p(16, 34, 7, 8, color); p(26, 34, 7, 8, color);
+  p(6, 18, 28, 20, color); p(8, 4, 24, 18, color); p(8, 0, 5, 7, color); p(27, 0, 5, 7, color);
+  p(9, 1, 3, 4, "#fde68a"); p(14, 20, 4, 8, "#fff"); p(22, 20, 4, 8, "#fff"); p(11, 9, 5, 5, "#0ea5e9");
+  p(24, 9, 5, 5, "#0ea5e9"); p(12, 10, 2, 2, "#fff"); p(25, 10, 2, 2, "#fff"); p(17, 16, 6, 4, "#1e293b");
+  p(10, 22, 4, 4, "#e2e8f0"); p(22, 26, 4, 4, "#e2e8f0"); p(7, 34, 7, 8, color); p(16, 34, 7, 8, color);
+  p(26, 34, 7, 8, color);
 }
 
 function drawCapybara(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
   const bob = Math.sin(frame * 0.06) * 1.5;
   const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(4, 20, 32, 18, color); p(2, 24, 36, 10, color); p(6, 6, 24, 18, color);
-  p(6, 4, 7, 6, color); p(27, 4, 7, 6, color);
-  p(11, 12, 4, 4, "#1e293b"); p(25, 12, 4, 4, "#1e293b"); p(12, 13, 2, 2, "#fff"); p(26, 13, 2, 2, "#fff");
-  p(13, 19, 14, 5, "#92400e"); p(14, 20, 5, 3, "#1e293b"); p(21, 20, 5, 3, "#1e293b");
-  p(16, 2, 4, 4, "#fbbf24"); p(18, 0, 4, 4, "#fbbf24"); p(17, 1, 6, 6, "#fde68a");
-  p(6, 34, 8, 8, color); p(16, 34, 8, 8, color); p(26, 34, 8, 8, color);
+  p(4, 20, 32, 18, color); p(2, 24, 36, 10, color); p(6, 6, 24, 18, color); p(6, 4, 7, 6, color);
+  p(27, 4, 7, 6, color); p(11, 12, 4, 4, "#1e293b"); p(25, 12, 4, 4, "#1e293b"); p(12, 13, 2, 2, "#fff");
+  p(26, 13, 2, 2, "#fff"); p(13, 19, 14, 5, "#92400e"); p(14, 20, 5, 3, "#1e293b"); p(21, 20, 5, 3, "#1e293b");
+  p(16, 2, 4, 4, "#fbbf24"); p(18, 0, 4, 4, "#fbbf24"); p(17, 1, 6, 6, "#fde68a"); p(6, 34, 8, 8, color);
+  p(16, 34, 8, 8, color); p(26, 34, 8, 8, color);
 }
 
 function drawDragon(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.1) * 2; const wf = Math.sin(frame * 0.12) * 6;
+  const bob = Math.sin(frame * 0.1) * 2;
+  const wingFlap = Math.sin(frame * 0.12) * 6;
   const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(-8, 8 + wf, 12, 18, "#6d28d9"); p(36, 8 + wf, 12, 18, "#6d28d9");
-  p(-12, 6 + wf, 8, 10, "#7c3aed"); p(44, 6 + wf, 8, 10, "#7c3aed");
-  p(8, 18, 24, 20, color); p(10, 4, 20, 18, color);
-  p(10, 0, 4, 8, "#a78bfa"); p(26, 0, 4, 8, "#a78bfa");
+  p(-8, 8 + wingFlap, 12, 18, "#6d28d9"); p(36, 8 + wingFlap, 12, 18, "#6d28d9");
+  p(-12, 6 + wingFlap, 8, 10, "#7c3aed"); p(44, 6 + wingFlap, 8, 10, "#7c3aed");
+  p(8, 18, 24, 20, color); p(10, 4, 20, 18, color); p(10, 0, 4, 8, "#a78bfa"); p(26, 0, 4, 8, "#a78bfa");
   p(12, 9, 5, 5, "#fde68a"); p(23, 9, 5, 5, "#fde68a"); p(13, 10, 2, 2, "#1e293b"); p(24, 10, 2, 2, "#1e293b");
-  p(13, 17, 14, 7, "#6d28d9"); const fg = frame % 20 < 10 ? "#f97316" : "#fbbf24"; p(14, 19, 3, 3, fg); p(23, 19, 3, 3, fg);
+  p(13, 17, 14, 7, "#6d28d9");
+  const fireGlow = frame % 20 < 10 ? "#f97316" : "#fbbf24";
+  p(14, 19, 3, 3, fireGlow); p(23, 19, 3, 3, fireGlow);
   p(14, 14, 3, 5, "#a78bfa"); p(20, 12, 3, 5, "#a78bfa"); p(26, 14, 3, 5, "#a78bfa");
   p(28, 26, 10, 6, color); p(34, 22, 6, 6, color); p(38, 18, 5, 5, "#a78bfa");
   p(9, 34, 7, 8, color); p(17, 34, 7, 8, color); p(26, 34, 7, 8, color);
 }
 
 function drawAxolotl(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
-  const bob = Math.sin(frame * 0.09) * 2; const gw = Math.sin(frame * 0.13) * 3;
+  const bob = Math.sin(frame * 0.09) * 2;
+  const gillWave = Math.sin(frame * 0.13) * 3;
   const p = (dx: number, dy: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x + dx, y + dy + bob, w, h); };
-  p(2, 4 + gw, 5, 14, "#f9a8d4"); p(0, 2 + gw, 4, 8, "#fda4af"); p(33, 4 + gw, 5, 14, "#f9a8d4"); p(36, 2 + gw, 4, 8, "#fda4af");
-  p(5, 1 + gw, 4, 10, "#f9a8d4"); p(31, 1 + gw, 4, 10, "#f9a8d4");
+  p(2, 4 + gillWave, 5, 14, "#f9a8d4"); p(0, 2 + gillWave, 4, 8, "#fda4af");
+  p(33, 4 + gillWave, 5, 14, "#f9a8d4"); p(36, 2 + gillWave, 4, 8, "#fda4af");
+  p(5, 1 + gillWave, 4, 10, "#f9a8d4"); p(31, 1 + gillWave, 4, 10, "#f9a8d4");
   p(4, 22, 32, 14, color); p(2, 26, 36, 8, color); p(6, 8, 28, 18, color);
-  p(8, 12, 7, 7, "#1e293b"); p(25, 12, 7, 7, "#1e293b"); p(9, 13, 4, 4, "#fff"); p(26, 13, 4, 4, "#fff");
+  p(8, 12, 7, 7, "#1e293b"); p(25, 12, 7, 7, "#1e293b");
+  p(9, 13, 4, 4, "#fff"); p(26, 13, 4, 4, "#fff");
   p(10, 14, 2, 2, "#1e293b"); p(27, 14, 2, 2, "#1e293b");
   p(14, 22, 3, 2, "#1e293b"); p(17, 23, 6, 2, "#1e293b"); p(23, 22, 3, 2, "#1e293b");
   p(10, 26, 4, 4, "#f472b6"); p(20, 28, 4, 4, "#f472b6"); p(30, 25, 4, 4, "#f472b6");
   p(6, 32, 8, 10, color); p(26, 32, 8, 10, color); p(32, 28, 10, 6, color); p(36, 24, 8, 6, "#f9a8d4");
 }
 
-// ─── Species data ─────────────────────────────────────────────────────────────
-
-type DrawFn = (ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) => void;
-
-interface Species {
-  key: string;
-  color: string;
-  label: string;
-  flavor: string;
-  speech: string;
-  freq: number;
-  waveType: OscillatorType;
-  dur: number;
-  gain: number;
-  draw: DrawFn;
+function adjustColorHex(hex: string, percent: number): string {
+  const num = parseInt(hex.replace("#", ""), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+  const G = Math.min(255, Math.max(0, ((num >> 8) & 0x00ff) + amt));
+  const B = Math.min(255, Math.max(0, (num & 0x0000ff) + amt));
+  return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
 }
 
-const SPECIES: Species[] = [
-  { key: "dragon",     color: "#7c3aed", label: "DRAGON",     flavor: "Versatile, modern, full-stack fire",   speech: "🔥",   freq: 392, waveType: "sawtooth", dur: 0.06, gain: 0.06, draw: drawDragon },
-  { key: "axolotl",   color: "#db2777", label: "AXOLOTL",    flavor: "Rare, curious, polyglot explorer",     speech: "uwu",  freq: 329, waveType: "sine",     dur: 0.10, gain: 0.05, draw: drawAxolotl },
-  { key: "wolf",      color: "#94a3b8", label: "WOLF",        flavor: "Fast, fierce, low-level",              speech: "WRUF", freq: 220, waveType: "triangle", dur: 0.08, gain: 0.06, draw: drawWolf },
-  { key: "capybara",  color: "#a16207", label: "CAPYBARA",   flavor: "Chill, friendly, gets along with all", speech: "...", freq: 261, waveType: "sine",     dur: 0.10, gain: 0.05, draw: drawCapybara },
-  { key: "sabertooth",color: "#f8fafc", label: "SABERTOOTH", flavor: "Powerful, ancient, systems thinker",   speech: "RAWRR",freq: 196, waveType: "triangle", dur: 0.08, gain: 0.06, draw: drawSabertooth },
+const LOGO_LETTERS: Record<string, string[]> = {
+  G: ["01110", "10000", "10111", "10001", "01110"],
+  I: ["11111", "00100", "00100", "00100", "11111"],
+  T: ["11111", "00100", "00100", "00100", "00100"],
+  "-": ["00000", "00000", "11111", "00000", "00000"],
+  P: ["11110", "10001", "11110", "10000", "10000"],
+  E: ["11111", "10000", "11110", "10000", "11111"],
+};
+
+const SPLASHES = [
+  "Your commits, your creature!",
+  "Now with 100% more pixels!",
+  "git commit -m 'fed my pet'",
+  "Streak or it didn't happen!",
+  "Tamagotchi for developers!",
+  "Your pet misses you already!",
+  "console.log('woof')",
+  "100% open source!",
+  "Powered by GitHub guilt!",
+  "Miss a day, pet gets sad!",
+  "It's not a bug, it's a feature!",
+  "Now with multiplayer pets!",
+  "Your pet judges your PRs!",
 ];
 
-// ─── Audio helper ─────────────────────────────────────────────────────────────
+// Minecraft button base styles
+const MC_BTN: React.CSSProperties = {
+  width: "clamp(280px, 40vw, 400px)",
+  height: "44px",
+  background: "#8b8b8b",
+  borderTop: "3px solid #c6c6c6",
+  borderLeft: "3px solid #c6c6c6",
+  borderBottom: "3px solid #373737",
+  borderRight: "3px solid #373737",
+  fontFamily: "'Courier New', Courier, monospace",
+  fontSize: "14px",
+  fontWeight: "bold",
+  color: "#e0e0e0",
+  letterSpacing: "2px",
+  textShadow: "2px 2px #373737",
+  textTransform: "uppercase",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  userSelect: "none",
+  transition: "none",
+};
 
-function playTone(actx: AudioContext, freq: number, type: OscillatorType, dur: number, gain: number) {
-  try {
-    const osc = actx.createOscillator();
-    const g = actx.createGain();
-    osc.type = type; osc.frequency.value = freq;
-    g.gain.setValueAtTime(gain, actx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
-    osc.connect(g); g.connect(actx.destination);
-    osc.start(); osc.stop(actx.currentTime + dur);
-  } catch { /* ignore */ }
-}
+export default function LandingPage() {
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+  const logoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const trackingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const logoContainerRef = useRef<HTMLDivElement>(null);
+  const splashTextRef = useRef<HTMLDivElement>(null);
+  const mouseRef = useRef({ x: 0, y: 0 });
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioStartedRef = useRef(false);
 
-// ─── hex → rgb helper ─────────────────────────────────────────────────────────
+  const [splashText] = useState(
+    () => SPLASHES[Math.floor(Math.random() * SPLASHES.length)]
+  );
 
-function hexToRgb(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return [r, g, b];
-}
+  useEffect(() => {
+    const bgCanvas = bgCanvasRef.current;
+    const logoCanvas = logoCanvasRef.current;
+    const trackingCanvas = trackingCanvasRef.current;
+    if (!bgCanvas || !logoCanvas || !trackingCanvas) return;
 
-function lerpColor(a: string, b: string, t: number): string {
-  const [ar, ag, ab] = hexToRgb(a);
-  const [br, bg, bb] = hexToRgb(b);
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return `rgb(${r},${g},${bl})`;
-}
+    const bgCtx = bgCanvas.getContext("2d");
+    const logoCtx = logoCanvas.getContext("2d");
+    const trackCtx = trackingCanvas.getContext("2d");
+    if (!bgCtx || !logoCtx || !trackCtx) return;
 
-// ─── Main LandingPage ─────────────────────────────────────────────────────────
+    // ---------- DIMENSIONS (no compounding scale) ----------
+    let cw = window.innerWidth;
+    let ch = window.innerHeight;
+    const PR = Math.min(window.devicePixelRatio || 1, 2);
 
-export function LandingPage() {
-  const bgCanvasRef  = useRef<HTMLCanvasElement>(null);
-  const petCanvasRef = useRef<HTMLCanvasElement>(null);
-  const petCanvasEl  = useRef<HTMLCanvasElement | null>(null);
-  const rafRef       = useRef<number>(0);
-  const actxRef      = useRef<AudioContext | null>(null);
-  const mouseRef     = useRef({ x: 0, y: 0 });
-  const mouseMoved   = useRef(false);
-  const mouseMovedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const applySize = () => {
+      cw = window.innerWidth;
+      ch = window.innerHeight;
 
-  // Species cycling
-  const speciesIdxRef  = useRef(0);
-  const nextIdxRef     = useRef(1);
-  const fadeRef        = useRef(0);      // 0→1 during cross-fade
-  const fadingRef      = useRef(false);
-  const speciesTimerRef = useRef(0);     // frames since last switch
-  const soundCooldown  = useRef(0);
+      // Reset transform before resizing to avoid compounding
+      bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+      bgCanvas.width = cw * PR;
+      bgCanvas.height = ch * PR;
+      bgCanvas.style.width = cw + "px";
+      bgCanvas.style.height = ch + "px";
+      bgCtx.scale(PR, PR);
 
-  // React state — only for DOM UI elements
-  const [speciesIdx, setSpeciesIdx] = useState(0);
-  const [fadingSpecies, setFadingSpecies] = useState(false);
-  const [showBubble, setShowBubble] = useState(false);
-  const [bubbleReady, setBubbleReady] = useState(false);
-  const [hintVisible, setHintVisible] = useState(true);
-  const isMobile = useRef(false);
+      const lw = cw < 640 ? 240 : 520;
+      logoCtx.setTransform(1, 0, 0, 1, 0, 0);
+      logoCanvas.width = lw * PR;
+      logoCanvas.height = 90 * PR;
+      logoCanvas.style.width = lw + "px";
+      logoCanvas.style.height = "90px";
+      logoCtx.scale(PR, PR);
+      drawLogo(logoCtx, lw);
 
-  // ── Audio context (lazy) ────────────────────────────────────────────────────
+      trackCtx.setTransform(1, 0, 0, 1, 0, 0);
+      trackingCanvas.width = 120 * PR;
+      trackingCanvas.height = 160 * PR;
+      trackingCanvas.style.width = "120px";
+      trackingCanvas.style.height = "160px";
+      trackCtx.scale(PR, PR);
+    };
 
-  const ensureCtx = useCallback(() => {
-    if (!actxRef.current) {
-      actxRef.current = new (
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      )();
+    // ---------- LOGO ----------
+    const drawLogo = (ctx: CanvasRenderingContext2D, canvasW: number) => {
+      ctx.clearRect(0, 0, canvasW, 90);
+      const word = "GIT-PET";
+      const bs = canvasW < 300 ? 5 : 8; // block size
+      const gap = 4;
+      let totalW = word.length * 5 * bs + (word.length - 1) * gap;
+      let cx = (canvasW - totalW) / 2;
+
+      for (const ch of word) {
+        const grid = LOGO_LETTERS[ch] ?? LOGO_LETTERS["T"]!;
+        const isGIT = "GIT".includes(ch);
+        const topColor = isGIT ? "#22c55e" : ch === "-" ? "#475569" : "#a78bfa";
+        const shadowColor = isGIT ? "#14532d" : ch === "-" ? "#1e293b" : "#4c1d95";
+
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            if (grid[r]?.[c] === "1") {
+              const bx = cx + c * bs;
+              const by = r * bs + 14;
+              ctx.fillStyle = topColor;
+              ctx.fillRect(bx, by, bs, bs);
+              // top highlight
+              ctx.fillStyle = adjustColorHex(topColor, 25);
+              ctx.fillRect(bx, by, bs, 1);
+              ctx.fillRect(bx, by, 1, bs);
+              // bottom-right shadow
+              ctx.fillStyle = shadowColor;
+              ctx.fillRect(bx + bs - 2, by, 2, bs);
+              ctx.fillRect(bx, by + bs - 2, bs, 2);
+            }
+          }
+        }
+        cx += 5 * bs + gap;
+      }
+    };
+
+    // ---------- STATIC DATA ----------
+    const PANORAMA_W = 3000;
+    const mountains: { x: number; h: number }[] = [];
+    for (let i = 0; i < 150; i++) {
+      mountains.push({
+        x: i * 20,
+        h: Math.abs(Math.sin(i * 0.3) * 80 + Math.sin(i * 0.7) * 40 + Math.sin(i * 0.13) * 20),
+      });
     }
-    if (actxRef.current.state === "suspended") actxRef.current.resume();
-    return actxRef.current;
-  }, []);
 
-  // ── Mouse tracking ──────────────────────────────────────────────────────────
+    const stars: { x: number; y: number; phase: number; speed: number }[] = [];
+    for (let i = 0; i < 70; i++) {
+      stars.push({
+        x: Math.random() * PANORAMA_W,
+        y: Math.random() * 0.5, // fraction of ch
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.02 + Math.random() * 0.03,
+      });
+    }
 
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      mouseRef.current = { x: e.clientX, y: e.clientY };
-      if (!mouseMoved.current) {
-        mouseMoved.current = true;
-        ensureCtx();
-      }
-      // After 4 seconds of mouse movement, hide the hint permanently
-      if (mouseMovedTimer.current === null) {
-        mouseMovedTimer.current = setTimeout(() => setHintVisible(false), 4000);
-      }
+    type PetDef = {
+      draw: (ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) => void;
+      color: string;
+      x: number;
+      dir: number;
     };
-    window.addEventListener("mousemove", onMove);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      if (mouseMovedTimer.current !== null) clearTimeout(mouseMovedTimer.current);
-    };
-  }, [ensureCtx]);
+    const pets: PetDef[] = [
+      { draw: drawWolf,       color: "#94a3b8", x: 300,  dir: 1  },
+      { draw: drawSabertooth, color: "#f8fafc", x: 800,  dir: -1 },
+      { draw: drawCapybara,   color: "#a16207", x: 1300, dir: 1  },
+      { draw: drawDragon,     color: "#7c3aed", x: 1800, dir: -1 },
+      { draw: drawAxolotl,    color: "#db2777", x: 2300, dir: 1  },
+    ];
 
-  // Touch: treat as mouse
-  useEffect(() => {
-    const onTouch = (e: TouchEvent) => {
-      const t = e.touches[0];
-      if (t) mouseRef.current = { x: t.clientX, y: t.clientY };
-    };
-    window.addEventListener("touchmove", onTouch, { passive: true });
-    return () => window.removeEventListener("touchmove", onTouch);
-  }, []);
-
-  // ── Main RAF loop ────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const bgCanvas  = bgCanvasRef.current;
-    const petCanvas = petCanvasRef.current;
-    if (!bgCanvas || !petCanvas) return;
-    petCanvasEl.current = petCanvas;
-
-    const bgCtx  = bgCanvas.getContext("2d");
-    const petCtx = petCanvas.getContext("2d");
-    if (!bgCtx || !petCtx) return;
-    bgCtx.imageSmoothingEnabled  = false;
-    petCtx.imageSmoothingEnabled = false;
-
-    let W = window.innerWidth, H = window.innerHeight;
-    isMobile.current = W < 640;
-
-    // Cached pet canvas center (updated on resize, not every frame)
-    const petCenter = { x: 0, y: 0 };
-
-    const setPetCanvasSize = () => {
-      const sz = isMobile.current ? 260 : 400;
-      petCanvas.width  = sz;
-      petCanvas.height = sz;
-      petCtx.imageSmoothingEnabled = false;
-    };
-
-    const updatePetCenter = () => {
-      const r = petCanvas.getBoundingClientRect();
-      petCenter.x = r.left + r.width / 2;
-      petCenter.y = r.top  + r.height / 2;
-    };
-
-    const resize = () => {
-      W = window.innerWidth; H = window.innerHeight;
-      isMobile.current = W < 640;
-      const dpr = window.devicePixelRatio || 1;
-      bgCanvas.width  = W * dpr; bgCanvas.height = H * dpr;
-      bgCanvas.style.width  = W + "px"; bgCanvas.style.height = H + "px";
-      bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      bgCtx.imageSmoothingEnabled = false;
-      setPetCanvasSize();
-      buildStars();
-      // Defer center calc until after browser lays out the new size
-      requestAnimationFrame(updatePetCenter);
-    };
-
-    // Build star field
-    let stars: StarDot[] = [];
-    const buildStars = () => {
-      stars = Array(120).fill(0).map(() => ({
-        x: Math.random() * W,
-        y: Math.random() * H * 0.7,
-        size: Math.random() < 0.8 ? 1 : 2,
-        opacity: 0,
-        twinkleSpeed: 0.005 + Math.random() * 0.015,
-        twinklePhase: Math.random() * Math.PI * 2,
-      } as StarDot));
-    };
-
-    resize();
-    // Initial center after first layout
-    requestAnimationFrame(updatePetCenter);
-
-    let resizeTimer: ReturnType<typeof setTimeout>;
-    const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(resize, 100); };
-    window.addEventListener("resize", onResize);
-
+    // ---------- RAF ----------
+    let rafId = 0;
     let frame = 0;
-    let FADE_DUR = 48; // frames for cross-fade (~0.8s at 60fps)
-    let HOLD_DUR = 240; // frames per species (~4s)
-
-    // Species sound cooldown per species
-    const speciesSoundCooldowns: number[] = SPECIES.map(() => 0);
+    let panOffset = 0;
 
     const loop = () => {
       frame++;
+      panOffset += 0.3;
+      if (panOffset >= PANORAMA_W) panOffset -= PANORAMA_W;
 
-      const mobile = isMobile.current;
-      const mx = mouseRef.current.x;
-      const my = mouseRef.current.y;
+      // helpers
+      const wrap = (x: number) => ((x - panOffset) % PANORAMA_W + PANORAMA_W) % PANORAMA_W;
 
-      // ── Background canvas ──────────────────────────────────────────────────
+      // ── SKY ──
+      const skyGrad = bgCtx.createLinearGradient(0, 0, 0, ch * 0.65);
+      skyGrad.addColorStop(0, "#1a0533");
+      skyGrad.addColorStop(0.5, "#0f172a");
+      skyGrad.addColorStop(1, "#1e3a5f");
+      bgCtx.fillStyle = skyGrad;
+      bgCtx.fillRect(0, 0, cw, ch);
 
-      bgCtx.clearRect(0, 0, W, H);
+      // ── AURORAS ──
+      const auroraColors = ["#a78bfa", "#818cf8", "#34d399"];
+      auroraColors.forEach((color, i) => {
+        const baseY = ch * (0.15 + i * 0.07);
+        bgCtx.beginPath();
+        for (let px = 0; px <= cw; px += 8) {
+          const y = baseY + 22 * Math.sin(px * 0.004 + frame * 0.005 + i * 2.1);
+          if (px === 0) bgCtx.moveTo(px, y);
+          else bgCtx.lineTo(px, y);
+        }
+        bgCtx.lineTo(cw, ch * 0.6);
+        bgCtx.lineTo(0, ch * 0.6);
+        bgCtx.closePath();
+        bgCtx.fillStyle = color;
+        bgCtx.globalAlpha = 0.07;
+        bgCtx.fill();
+        bgCtx.globalAlpha = 1;
+      });
 
-      // Pulsing radial gradient — deep space
-      const diagLen = Math.sqrt(W * W + H * H);
-      const pulseT = (Math.sin(frame * (2 * Math.PI / (12 * 60))) + 1) / 2; // 0→1 over 12s
-      const centerR = diagLen * (0.30 + pulseT * 0.20);
-      const spaceBg = bgCtx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, centerR);
-      spaceBg.addColorStop(0, "#0a0f1e");
-      spaceBg.addColorStop(1, "#020617");
-      bgCtx.fillStyle = spaceBg;
-      bgCtx.fillRect(0, 0, W, H);
-
-      // Stars
-      stars.forEach(s => {
-        s.opacity = 0.2 + 0.8 * Math.abs(Math.sin(frame * s.twinkleSpeed + s.twinklePhase));
-        bgCtx.fillStyle = "#fff";
-        bgCtx.globalAlpha = s.opacity;
-        bgCtx.fillRect(s.x, s.y, s.size, s.size);
+      // ── STARS ──
+      stars.forEach((s) => {
+        const sx = wrap(s.x);
+        const sy = s.y * ch;
+        if (sx < cw) {
+          bgCtx.globalAlpha = 0.3 + 0.7 * Math.abs(Math.sin(frame * s.speed + s.phase));
+          bgCtx.fillStyle = "#ffffff";
+          bgCtx.fillRect(Math.round(sx), Math.round(sy), 2, 2);
+        }
       });
       bgCtx.globalAlpha = 1;
 
-      // Depth fog — bottom 40%
-      const fog = bgCtx.createLinearGradient(0, H * 0.6, 0, H);
+      // ── MOUNTAINS ──
+      bgCtx.fillStyle = "#0d1117";
+      bgCtx.beginPath();
+      bgCtx.moveTo(0, ch * 0.70);
+      // Build sorted visible points
+      const visible = mountains
+        .map((m) => ({ screenX: wrap(m.x), screenY: ch * 0.70 - m.h }))
+        .filter((p) => p.screenX >= -40 && p.screenX <= cw + 40)
+        .sort((a, b) => a.screenX - b.screenX);
+
+      if (visible.length > 0) {
+        bgCtx.moveTo(visible[0].screenX, ch * 0.70);
+        visible.forEach((p) => bgCtx.lineTo(p.screenX, p.screenY));
+        bgCtx.lineTo(visible[visible.length - 1].screenX, ch * 0.70);
+      }
+      bgCtx.closePath();
+      bgCtx.fill();
+
+      // ── TREES ──
+      const treeBaseY = ch * 0.70 - 20;
+      for (let tx = 0; tx < PANORAMA_W; tx += 30) {
+        const rx = wrap(tx);
+        if (rx > -30 && rx < cw + 20) {
+          bgCtx.fillStyle = "#78350f";
+          bgCtx.fillRect(rx + 6, treeBaseY + 8, 4, 14);
+          bgCtx.fillStyle = "#166534";
+          bgCtx.fillRect(rx, treeBaseY - 14, 18, 22);
+          bgCtx.fillStyle = "#15803d";
+          bgCtx.fillRect(rx, treeBaseY - 14, 18, 2);
+          bgCtx.fillStyle = "#14532d";
+          bgCtx.fillRect(rx + 16, treeBaseY - 14, 2, 22);
+        }
+      }
+
+      // ── GRASS BLOCKS ──
+      const groundY = ch * 0.70;
+      for (let gx = 0; gx < PANORAMA_W; gx += 18) {
+        const rx = wrap(gx);
+        if (rx > -20 && rx < cw + 20) {
+          bgCtx.fillStyle = "#166534";
+          bgCtx.fillRect(rx, groundY, 18, 18);
+          bgCtx.fillRect(rx, groundY + 18, 18, 18);
+          bgCtx.fillStyle = "#22c55e";
+          bgCtx.fillRect(rx, groundY, 18, 4);
+          bgCtx.fillRect(rx, groundY + 18, 18, 4);
+          bgCtx.fillStyle = "#14532d";
+          bgCtx.fillRect(rx + 17, groundY, 1, 36);
+          bgCtx.fillRect(rx, groundY + 17, 18, 1);
+          bgCtx.fillRect(rx, groundY + 35, 18, 1);
+        }
+      }
+
+      // ── DIRT ──
+      const dirtY = groundY + 36;
+      bgCtx.fillStyle = "#92400e";
+      bgCtx.fillRect(0, dirtY, cw, ch - dirtY);
+      bgCtx.fillStyle = "rgba(0,0,0,0.12)";
+      for (let y = dirtY; y < ch; y += 18) bgCtx.fillRect(0, y, cw, 1);
+      for (let x = 0; x < PANORAMA_W; x += 18) {
+        const rx = wrap(x);
+        if (rx > -2 && rx < cw) bgCtx.fillRect(rx, dirtY, 1, ch - dirtY);
+      }
+
+      // ── DEPTH FOG ──
+      const fog = bgCtx.createLinearGradient(0, ch * 0.55, 0, groundY);
       fog.addColorStop(0, "rgba(2,6,23,0)");
-      fog.addColorStop(1, "rgba(2,6,23,0.95)");
+      fog.addColorStop(1, "rgba(2,6,23,0.35)");
       bgCtx.fillStyle = fog;
-      bgCtx.fillRect(0, H * 0.6, W, H * 0.4);
+      bgCtx.fillRect(0, ch * 0.55, cw, groundY - ch * 0.55);
 
-      // Custom crosshair cursor (only on desktop)
-      if (!mobile) {
-        bgCtx.fillStyle = "#22c55e";
-        bgCtx.fillRect(mx - 4, my, 8, 1);       // horizontal
-        bgCtx.fillRect(mx, my - 4, 1, 8);       // vertical
-        bgCtx.fillRect(mx - 1, my - 1, 2, 2);  // center 2x2
-      }
+      // ── PETS ──
+      pets.forEach((pet) => {
+        pet.x += 0.4 * pet.dir;
+        if (pet.x < 0) { pet.x = 0; pet.dir = 1; }
+        if (pet.x > PANORAMA_W) { pet.x = PANORAMA_W; pet.dir = -1; }
+        const rx = wrap(pet.x);
+        if (rx > -100 && rx < cw + 100) {
+          bgCtx.save();
+          bgCtx.translate(rx, groundY - 48);
+          bgCtx.scale(1.4 * pet.dir, 1.4);
+          if (pet.dir < 0) bgCtx.translate(-40, 0);
+          pet.draw(bgCtx, 0, 0, frame, pet.color);
+          bgCtx.restore();
+        }
+      });
 
-      // ── Species cycling ────────────────────────────────────────────────────
+      // ── TRACKING PET (dragon, right side) ──
+      if (cw >= 640) {
+        trackCtx.clearRect(0, 0, 120, 160);
+        trackCtx.save();
+        trackCtx.scale(2.5, 2.5);
+        drawDragon(trackCtx, 2, 10, frame, "#7c3aed");
+        trackCtx.restore();
 
-      speciesTimerRef.current++;
-
-      if (!fadingRef.current && speciesTimerRef.current >= HOLD_DUR) {
-        fadingRef.current = true;
-        fadeRef.current = 0;
-        nextIdxRef.current = (speciesIdxRef.current + 1) % SPECIES.length;
-        setFadingSpecies(true);
-      }
-
-      if (fadingRef.current) {
-        fadeRef.current += 1 / FADE_DUR;
-        if (fadeRef.current >= 1) {
-          fadeRef.current = 1;
-          fadingRef.current = false;
-          speciesIdxRef.current = nextIdxRef.current;
-          speciesTimerRef.current = 0;
-          setSpeciesIdx(speciesIdxRef.current);
-          setFadingSpecies(false);
+        if (trackingCanvasRef.current) {
+          const rect = trackingCanvasRef.current.getBoundingClientRect();
+          const cx2 = rect.left + rect.width / 2;
+          const cy2 = rect.top + rect.height / 2;
+          const angle = Math.atan2(mouseRef.current.y - cy2, mouseRef.current.x - cx2) * (180 / Math.PI);
+          trackingCanvasRef.current.style.transform = `rotate(${Math.max(-10, Math.min(10, angle * 0.12))}deg)`;
         }
       }
 
-      const curSp  = SPECIES[speciesIdxRef.current];
-      const nextSp = SPECIES[nextIdxRef.current];
-      const fp     = fadeRef.current;
-
-      // ── Pet canvas ─────────────────────────────────────────────────────────
-
-      const pSz = petCanvas.width;
-      petCtx.clearRect(0, 0, pSz, pSz);
-
-      // Glow — cross-fades between species colors
-      const glowColor = fadingRef.current ? lerpColor(curSp.color, nextSp.color, fp) : curSp.color;
-      const [gr, gg, gb] = hexToRgb(glowColor);
-
-      // Distance from pet center to mouse — use cached position, no layout thrash
-      const dist = Math.sqrt((mx - petCenter.x) ** 2 + (my - petCenter.y) ** 2);
-      const proximity = Math.max(0, (200 - dist) / 200);
-
-      // Stronger glow so pets pop against dark bg
-      const glowBaseOpacity = 0.35 + proximity * 0.25;
-      const glowRadius = pSz * 0.48;
-      const glowGrad = petCtx.createRadialGradient(pSz / 2, pSz / 2, 0, pSz / 2, pSz / 2, glowRadius);
-      glowGrad.addColorStop(0, `rgba(${gr},${gg},${gb},${glowBaseOpacity})`);
-      glowGrad.addColorStop(0.5, `rgba(${gr},${gg},${gb},${glowBaseOpacity * 0.4})`);
-      glowGrad.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
-      petCtx.fillStyle = glowGrad;
-      petCtx.fillRect(0, 0, pSz, pSz);
-
-      // Scale: fit the ~50-art-unit pet into canvas, with room for wings
-      // Draw at offset (5, 2) in art units so dragon wings (-12 left) don't clip
-      const scale = (pSz - 4) / 55; // slightly conservative to keep dragon in-bounds
-      const drawX = 8;  // art-unit offset — centers body and gives wings room
-      const drawY = 2;
-
-      // Animated frame — speed boost when cursor is near
-      const animFrame = dist < 200 ? frame * 1.5 : frame;
-
-      // Draw current species (use setTransform for clean per-frame matrix)
-      if (!fadingRef.current || fp < 1) {
-        petCtx.save();
-        petCtx.globalAlpha = fadingRef.current ? 1 - fp : 1;
-        petCtx.setTransform(scale, 0, 0, scale, 0, 0);
-        curSp.draw(petCtx, drawX, drawY, animFrame, curSp.color);
-        petCtx.restore();
+      // ── LOGO BOB ──
+      if (logoContainerRef.current) {
+        const bobY = 4 * Math.sin(frame * 0.022);
+        logoContainerRef.current.style.transform = `translate(-50%, ${bobY}px)`;
       }
 
-      // Draw next species during cross-fade
-      if (fadingRef.current && fp > 0) {
-        petCtx.save();
-        petCtx.globalAlpha = fp;
-        petCtx.setTransform(scale, 0, 0, scale, 0, 0);
-        nextSp.draw(petCtx, drawX, drawY, animFrame, nextSp.color);
-        petCtx.restore();
-      }
-      petCtx.globalAlpha = 1;
-
-      // ── CSS parallax on pet canvas element ────────────────────────────────
-
-      if (!mobile && petCanvasEl.current) {
-        const tx = (mx - W / 2) * 0.02;
-        const ty = (my - H / 2) * 0.015;
-        petCanvasEl.current.style.transform = `translate(calc(-50% + ${tx}px), calc(-60% + ${ty}px))`;
+      // ── SPLASH PULSE ──
+      if (splashTextRef.current) {
+        const s = 1 + Math.sin(frame * 0.045) * 0.05;
+        splashTextRef.current.style.transform = `rotate(-18deg) scale(${s})`;
       }
 
-      // ── Mouse proximity — speech bubble + sound ────────────────────────────
-
-      const showBub = dist < 80;
-      setShowBubble(showBub);
-      if (showBub) {
-        setTimeout(() => setBubbleReady(true), 10);
-      } else {
-        setBubbleReady(false);
-      }
-
-      if (dist < 80 && actxRef.current) {
-        const si = speciesIdxRef.current;
-        if (speciesSoundCooldowns[si] <= 0) {
-          const sp = SPECIES[si];
-          playTone(actxRef.current, sp.freq, sp.waveType, sp.dur, sp.gain);
-          speciesSoundCooldowns[si] = 120; // 2s at 60fps
-        }
-      }
-      for (let i = 0; i < speciesSoundCooldowns.length; i++) {
-        if (speciesSoundCooldowns[i] > 0) speciesSoundCooldowns[i]--;
-      }
-
-      if (soundCooldown.current > 0) soundCooldown.current--;
-
-      rafRef.current = requestAnimationFrame(loop);
+      rafId = requestAnimationFrame(loop);
     };
 
-    rafRef.current = requestAnimationFrame(loop);
+    applySize();
+    rafId = requestAnimationFrame(loop);
+
+    const onMouseMove = (e: MouseEvent) => { mouseRef.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("mousemove", onMouseMove);
+
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(applySize, 150); };
+    window.addEventListener("resize", onResize);
+
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("resize", onResize);
       clearTimeout(resizeTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cleanup audio
-  useEffect(() => () => {
-    actxRef.current?.close().catch(() => {});
-  }, []);
+  // ---------- AUDIO ----------
+  const initAudio = () => {
+    if (audioStartedRef.current) return;
+    audioStartedRef.current = true;
+    try {
+      const Ctx = window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      audioCtxRef.current = ctx;
+      const o1 = ctx.createOscillator();
+      const o2 = ctx.createOscillator();
+      const g = ctx.createGain();
+      o1.frequency.value = 55; o2.frequency.value = 110;
+      g.gain.value = 0.01;
+      o1.connect(g); o2.connect(g); g.connect(ctx.destination);
+      o1.start(); o2.start();
+    } catch { /* silently fail */ }
+  };
 
-  const currentSp = SPECIES[speciesIdx];
-  const displaySp = SPECIES[speciesIdx];
+  const playClick = (freq: number, dur: number) => {
+    initAudio();
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + dur + 0.02);
+    } catch { /* silently fail */ }
+  };
 
-  // Blink hint
-  const [hintOpacity, setHintOpacity] = useState(0.3);
   useEffect(() => {
-    const iv = setInterval(() => {
-      setHintOpacity(o => {
-        const next = o + 0.02;
-        return next > 1 ? 0.3 : next;
-      });
-    }, 50);
-    return () => clearInterval(iv);
+    const handler = () => initAudio();
+    window.addEventListener("click", handler, { once: true });
+    return () => {
+      window.removeEventListener("click", handler);
+      audioCtxRef.current?.close().catch(() => {});
+    };
   }, []);
 
-  const bubbleText = currentSp.speech;
+  // ---------- BUTTON HANDLERS ----------
+  const onEnter = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    playClick(440, 0.04);
+    const el = e.currentTarget;
+    el.style.background = "#a0a0ff";
+    el.style.borderTop = "3px solid #c8c8ff";
+    el.style.borderLeft = "3px solid #c8c8ff";
+    el.style.borderBottom = "3px solid #3737b8";
+    el.style.borderRight = "3px solid #3737b8";
+    el.style.color = "#ffffa0";
+    el.style.textShadow = "2px 2px #1a1a5e";
+  };
+
+  const onLeave = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const el = e.currentTarget;
+    el.style.background = "#8b8b8b";
+    el.style.borderTop = "3px solid #c6c6c6";
+    el.style.borderLeft = "3px solid #c6c6c6";
+    el.style.borderBottom = "3px solid #373737";
+    el.style.borderRight = "3px solid #373737";
+    el.style.color = "#e0e0e0";
+    el.style.textShadow = "2px 2px #373737";
+    el.style.transform = "none";
+  };
+
+  const onDown = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    playClick(330, 0.06);
+    const el = e.currentTarget;
+    el.style.transform = "translateY(2px)";
+    el.style.borderTop = "3px solid #373737";
+    el.style.borderLeft = "3px solid #373737";
+    el.style.borderBottom = "3px solid #c6c6c6";
+    el.style.borderRight = "3px solid #c6c6c6";
+  };
+
+  const onUp = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const el = e.currentTarget;
+    el.style.transform = "none";
+    el.style.borderTop = "3px solid #c8c8ff";
+    el.style.borderLeft = "3px solid #c8c8ff";
+    el.style.borderBottom = "3px solid #3737b8";
+    el.style.borderRight = "3px solid #3737b8";
+  };
 
   return (
-    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#020617", position: "relative", cursor: "none" }}>
-
-      {/* Layer 0 — Background canvas */}
+    <main
+      style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden", background: "#1a0533" }}
+      onClick={initAudio}
+    >
+      {/* PANORAMA */}
       <canvas
         ref={bgCanvasRef}
-        style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 0 }}
+        style={{ position: "fixed", top: 0, left: 0, zIndex: 0, pointerEvents: "none", imageRendering: "pixelated" }}
       />
 
-      {/* Layer 1 — Pet hero canvas */}
-      <canvas
-        ref={petCanvasRef}
+      {/* LOGO + SPLASH */}
+      <div
+        ref={logoContainerRef}
+        style={{
+          position: "absolute",
+          top: "13%",
+          left: "50%",
+          transform: "translate(-50%, 0)",
+          zIndex: 2,
+          willChange: "transform",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <canvas ref={logoCanvasRef} style={{ imageRendering: "pixelated", display: "block" }} />
+        <div
+          ref={splashTextRef}
+          style={{
+            marginTop: "6px",
+            fontFamily: "monospace",
+            fontStyle: "italic",
+            fontWeight: "bold",
+            fontSize: "clamp(11px, 1.6vw, 16px)",
+            color: "#eab308",
+            textShadow: "2px 2px #78350f",
+            whiteSpace: "nowrap",
+            transformOrigin: "center center",
+            willChange: "transform",
+          }}
+        >
+          {splashText}
+        </div>
+      </div>
+
+      {/* BUTTONS */}
+      <div
         style={{
           position: "absolute",
           top: "50%",
           left: "50%",
-          transform: "translate(-50%, -60%)",
-          zIndex: 1,
-          imageRendering: "pixelated",
+          transform: "translate(-50%, -50%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "8px",
+          zIndex: 2,
         }}
-      />
+      >
+        <Link href="/about" style={MC_BTN} onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp}>
+          About Git-Pet
+        </Link>
+        <Link href="/world" style={MC_BTN} onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp}>
+          Explore World
+        </Link>
+        <Link href="/api/auth/signin" style={MC_BTN} onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp}>
+          Sign In With GitHub
+        </Link>
+      </div>
 
-      {/* Speech bubble — appears when cursor very close */}
-      {showBubble && (
+      {/* CURSOR-TRACKING DRAGON (desktop only) */}
+      {typeof window !== "undefined" && (
         <div
           style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: `translate(-50%, calc(-60% - ${(typeof window !== "undefined" && window.innerWidth < 640) ? 150 : 230}px)) scale(${bubbleReady ? 1 : 0})`,
-            transition: "transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            background: "rgba(2,6,23,0.9)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            padding: "8px 16px",
-            fontFamily: "'Courier New', Courier, monospace",
-            fontSize: 10,
-            letterSpacing: 2,
-            color: "#e2e8f0",
-            zIndex: 3,
-            pointerEvents: "none",
-            whiteSpace: "nowrap",
+            position: "fixed",
+            right: "7vw",
+            top: "52%",
+            transform: "translateY(-50%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            zIndex: 2,
           }}
+          className="hidden sm:flex"
         >
-          {bubbleText}
+          <canvas
+            ref={trackingCanvasRef}
+            style={{ imageRendering: "pixelated", pointerEvents: "none", willChange: "transform" }}
+          />
+          <span style={{ color: "#7c3aed", fontFamily: "monospace", fontSize: "9px", letterSpacing: "3px", marginTop: "6px", textShadow: "1px 1px #000" }}>
+            DRAGON
+          </span>
         </div>
       )}
 
-      {/* Layer 2 — UI Overlay */}
-      <div style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none" }}>
-
-        {/* Top left — identity */}
-        <div style={{
-          position: "absolute", top: 32, left: 32,
-          fontFamily: "'Courier New', Courier, monospace",
-          fontSize: 11, fontWeight: "bold", letterSpacing: 6, color: "#334155",
-        }}>
-          GIT PET
-        </div>
-
-        {/* Top right — status */}
-        <div style={{
-          position: "absolute", top: 32, right: 32,
-          fontFamily: "'Courier New', Courier, monospace",
-          fontSize: 9, letterSpacing: 3, color: "#1e293b",
-        }}>
-          BETA · git-pet-beta.vercel.app
-        </div>
-
-        {/* Center bottom — CTA */}
-        <div style={{
+      {/* BOTTOM BAR */}
+      <div
+        style={{
           position: "absolute",
-          bottom: 80,
-          left: "50%",
-          transform: "translateX(-50%)",
-          textAlign: "center",
-          fontFamily: "'Courier New', Courier, monospace",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: "10px 16px",
+          display: "flex",
+          justifyContent: "space-between",
           pointerEvents: "none",
-        }}>
-          {/* Species name — fades with pet */}
-          <div style={{
-            fontSize: 10, letterSpacing: 4,
-            color: displaySp.color,
-            opacity: fadingSpecies ? 0.3 : 0.7,
-            transition: "opacity 0.4s, color 0.4s",
-            marginBottom: 12,
-          }}>
-            {displaySp.label}
-          </div>
-
-          {/* Main headline */}
-          <div style={{
-            fontSize: "clamp(28px, 4vw, 42px)",
-            fontWeight: 900,
-            letterSpacing: "-0.02em",
-            color: "#e2e8f0",
-            lineHeight: 1.1,
-            marginBottom: 32,
-          }}>
-            your commits.<br />your creature.
-          </div>
-
-          {/* CTA button */}
-          <div style={{ pointerEvents: "auto" }}>
-            <Link
-              href="/api/auth/signin"
-              style={{
-                display: "inline-block",
-                padding: "14px 36px",
-                fontSize: 11,
-                letterSpacing: 4,
-                fontFamily: "'Courier New', Courier, monospace",
-                fontWeight: "bold",
-                color: "#020617",
-                background: "#22c55e",
-                border: "none",
-                cursor: "pointer",
-                textDecoration: "none",
-                borderRadius: 0,
-                transition: "background 0.15s, transform 0.1s",
-              }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLAnchorElement).style.background = "#16a34a";
-                (e.currentTarget as HTMLAnchorElement).style.transform = "scale(1.02)";
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLAnchorElement).style.background = "#22c55e";
-                (e.currentTarget as HTMLAnchorElement).style.transform = "scale(1)";
-              }}
-              onMouseDown={e => { (e.currentTarget as HTMLAnchorElement).style.transform = "scale(0.98)"; }}
-              onMouseUp={e => { (e.currentTarget as HTMLAnchorElement).style.transform = "scale(1.02)"; }}
-            >
-              CONNECT GITHUB
-            </Link>
-          </div>
-
-          {/* Secondary link */}
-          <div style={{ marginTop: 16, pointerEvents: "auto" }}>
-            <Link
-              href="/world"
-              style={{
-                fontSize: 9,
-                letterSpacing: 3,
-                color: "#334155",
-                textDecoration: "none",
-                fontFamily: "'Courier New', Courier, monospace",
-                transition: "color 0.15s",
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = "#475569"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = "#334155"; }}
-            >
-              or &nbsp; ◈ explore the world →
-            </Link>
-          </div>
-        </div>
-
-        {/* Bottom left — species flavor */}
-        <div style={{
-          position: "absolute", bottom: 24, left: 32,
-          fontFamily: "'Courier New', Courier, monospace",
-          fontSize: 9, letterSpacing: 2, color: "#1e293b",
-          opacity: fadingSpecies ? 0 : 1,
-          transition: "opacity 0.4s",
-        }}>
-          {displaySp.flavor}
-        </div>
-
-        {/* Bottom right — interaction hint */}
-        {hintVisible && (
-          <div style={{
-            position: "absolute", bottom: 24, right: 32,
-            fontFamily: "'Courier New', Courier, monospace",
-            fontSize: 9, letterSpacing: 2, color: "#1e293b",
-            opacity: hintOpacity,
-          }}>
-            · move mouse to interact ·
-          </div>
-        )}
+          zIndex: 2,
+        }}
+      >
+        <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)", fontFamily: "monospace", textShadow: "1px 1px #000" }}>
+          © 2025 Git-Pet — made with too many commits
+        </span>
+        <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)", fontFamily: "monospace", textShadow: "1px 1px #000" }}>
+          v0.1.0-beta
+        </span>
       </div>
-
-      <style dangerouslySetInnerHTML={{ __html: `* { box-sizing: border-box; }` }} />
-    </div>
+    </main>
   );
 }

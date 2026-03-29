@@ -7,7 +7,7 @@ import { SpeciesSelect } from "@/components/SpeciesSelect";
 import { getUserSpecies, autoAssignSpecies } from "@/lib/redis";
 import Link from "next/link";
 import type { PetState } from "@git-pet/core";
-import { LandingPage } from "./LandingPage";
+import LandingPage from "./LandingPage";
 
 // The canonical primary color for each species
 const SPECIES_PRIMARY_COLOR: Record<string, string> = {
