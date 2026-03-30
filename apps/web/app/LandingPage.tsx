@@ -706,11 +706,11 @@ export default function LandingPage() {
   }, [openOverlay])
 
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', fontFamily: "'Syne', sans-serif", background: '#0d0f18' }}>
+    <div style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', overflow: 'hidden', fontFamily: "'Syne', sans-serif", background: '#0d0f18' }}>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Syne:wght@400;700;800&family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
 
-      <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0 }} />
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
 
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2, background: 'radial-gradient(ellipse 75% 75% at 50% 50%, transparent 35%, rgba(8,6,4,0.6) 100%)' }} />
       <div style={{
@@ -728,7 +728,7 @@ export default function LandingPage() {
         </div>
       )}
 
-      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 20, padding: '18px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,6,4,0.5)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,140,0.1)' }}>
+      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 20, padding: '18px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,6,4,0.5)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,140,0.1)', width: '100%', overflow: 'hidden' }}>
         <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: '#f0ebe0', letterSpacing: 2, textShadow: '0 0 30px rgba(255,180,80,0.5)' }}>GIT-PET</div>
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
           {isLoggedIn ? (
