@@ -162,7 +162,7 @@ const SPECIES_DRAWERS: Record<string, Function> = {
   axolotl: drawAxolotl,
 };
 
-function SpeciesCanvas({ species, isSelected, isHovered }: {
+export function SpeciesCanvas({ species, isSelected, isHovered }: {
   species: Exclude<Species, "default">;
   isSelected: boolean;
   isHovered: boolean;

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { signIn, useSession } from 'next-auth/react'
+import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 
 const overlayBtnStyle: React.CSSProperties = {
   padding: '14px 28px',
@@ -803,12 +804,12 @@ export default function LandingPage() {
               <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 40, color: '#f0ebe0', marginBottom: 8 }}>Choose your creature</div>
               <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 11, color: 'rgba(240,235,224,0.4)', marginBottom: 28, letterSpacing: 1 }}>Sign in first — your species is selected in settings after.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
-                {[{ name: 'Wolf', col: '#7a8070', role: 'Aggro' }, { name: 'Saber', col: '#c5c0b8', role: 'Tank' }, { name: 'Capy', col: '#8a6a3a', role: 'Support' }, { name: 'Dragon', col: '#3d4a33', role: 'Legend' }, { name: 'Axolotl', col: '#8a5a60', role: 'Regen' }].map(s => (
-                  <div key={s.name} style={{ border: `1px solid ${s.col}44`, padding: '16px 8px', textAlign: 'center', cursor: 'pointer', transition: 'background 0.2s' }}
+                {[{ name: 'Wolf', id: 'wolf', col: '#7a8070', role: 'Aggro' }, { name: 'Saber', id: 'sabertooth', col: '#c5c0b8', role: 'Tank' }, { name: 'Capy', id: 'capybara', col: '#8a6a3a', role: 'Support' }, { name: 'Dragon', id: 'dragon', col: '#3d4a33', role: 'Legend' }, { name: 'Axolotl', id: 'axolotl', col: '#8a5a60', role: 'Regen' }].map(s => (
+                  <div key={s.name} style={{ border: `1px solid ${s.col}44`, padding: '16px 8px', textAlign: 'center', cursor: 'pointer', transition: 'background 0.2s', overflow: 'hidden' }}
                     onMouseEnter={e => (e.currentTarget.style.background = `${s.col}22`)}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => signIn('github', { callbackUrl: '/dashboard' })}>
-                    <div style={{ width: 32, height: 32, background: s.col, margin: '0 auto 8px', borderRadius: 2 }} />
+                    <div style={{ display: 'flex', justifyContent: 'center', transform: 'scale(0.8)', transformOrigin: 'top center', marginBottom: -8, marginTop: -4 }}><SpeciesCanvas species={s.id as any} isSelected={false} isHovered={true} /></div>
                     <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: 15, color: '#f0ebe0', marginBottom: 4 }}>{s.name}</div>
                     <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>{s.role}</div>
                   </div>
