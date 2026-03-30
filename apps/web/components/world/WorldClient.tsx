@@ -970,8 +970,8 @@ export function WorldClient({ petState, species }: Props) {
       )}
 
       <div style={{ position: "absolute", top: 44, left: 12 }}>
-        <Link href="/" style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", textDecoration: "none", letterSpacing: 1 }}>
-          ← HOME
+        <Link href="/dashboard" style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", textDecoration: "none", letterSpacing: 1 }}>
+          ← BACK TO DASHBOARD
         </Link>
       </div>
     </div>

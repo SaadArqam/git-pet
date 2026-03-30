@@ -19,7 +19,7 @@ const SPLASHES = [
   "Your pet judges your PRs!",
 ];
 
-export default function LandingPage() {
+export default function LandingPage({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [splashText, setSplashText] = useState("Your commits, your creature!");
 
@@ -557,7 +557,11 @@ export default function LandingPage() {
           <div className="site-tagline">{splashText}</div>
           <Link href="/about" className="menu-btn">ABOUT GIT-PET</Link>
           <Link href="/world" className="menu-btn">EXPLORE WORLD</Link>
-          <Link href="/api/auth/signin" className="menu-btn primary">SIGN IN WITH GITHUB</Link>
+          {isSignedIn ? (
+            <Link href="/dashboard" className="menu-btn primary">GO TO DASHBOARD</Link>
+          ) : (
+            <Link href="/api/auth/signin?callbackUrl=/dashboard" className="menu-btn primary">SIGN IN WITH GITHUB</Link>
+          )}
         </div>
         <div
           style={{

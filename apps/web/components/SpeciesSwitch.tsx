@@ -217,7 +217,7 @@ export function SpeciesSwitch({ currentSpecies }: Props) {
 
   const handleConfirm = async () => {
     if (!selected || selected === currentSpecies) {
-      router.push("/");
+      router.push("/dashboard");
       return;
     }
     setSaving(true);
@@ -227,7 +227,7 @@ export function SpeciesSwitch({ currentSpecies }: Props) {
       body: JSON.stringify({ species: selected }),
     });
     // Hard navigate so Next.js server component re-runs fresh from Redis
-    window.location.href = "/";
+    window.location.href = "/dashboard";
   };
 
   return (
@@ -339,7 +339,7 @@ export function SpeciesSwitch({ currentSpecies }: Props) {
 
       <div style={{ display: "flex", gap: 12 }}>
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/dashboard")}
           style={{
             padding: "12px 24px",
             fontSize: 12,
