@@ -756,10 +756,13 @@ export function WorldClient({ petState, species }: Props) {
       const allParticles: { mesh: any; data: any[]; type: string }[] = [];
       const auroraMeshes: { mesh: any; mat: any; phase: number }[] = [];
       let lightBeam: any = null;
-      const interactables: { x: number; z: number; type: string; id: string; meta?: any }[] = [];
+      const interactables: { x: number; z: number; type: string; id: string; meta?: any; group?: any }[] = [];
       let koiPondGeo: any = null;
       let koiPondWaterMesh: any = null;
       let audioCtx: AudioContext | null = null;
+      const shrineData: { group: any; light: any; originY: number; pos: any }[] = [];
+      const treeGroups: { group: any; originRotZ: number; originRotX: number }[] = [];
+      let cameraShakeTimer = 0;
       
       const initAudio = () => {
         if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -794,7 +797,7 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 0, 1.05, 0, 1.25, 0.2, 0.85, 0x4B3914, true);
         grp.position.set(x, y, z);
         scene.add(grp);
-        interactables.push({ x, z, type: 'chest', id, meta: loot });
+        interactables.push({ x, z, type: 'chest', id, meta: loot, group: grp });
       }
 
       function buildTablet(x: number, y: number, z: number, id: string, text: string) {
@@ -802,7 +805,7 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 0, 1, 0, 0.8, 2, 0.2, 0x5a5a5a, true);
         grp.position.set(x, y, z);
         scene.add(grp);
-        interactables.push({ x, z, type: 'tablet', id, meta: text });
+        interactables.push({ x, z, type: 'tablet', id, meta: text, group: grp });
       }
 
       function buildCampfire(x: number, y: number, z: number) {
@@ -814,7 +817,7 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 0, 0.3, 0, 0.6, 0.6, 0.6, 0xff5500); 
         grp.position.set(x, y, z);
         scene.add(grp);
-        interactables.push({ x, z, type: 'campfire', id: `camp_${x}_${z}` });
+        interactables.push({ x, z, type: 'campfire', id: `camp_${x}_${z}`, group: grp });
       }
 
       // suppress unused-until-later warnings (used in Parts 3-6)
@@ -1029,7 +1032,9 @@ export function WorldClient({ petState, species }: Props) {
         }
         const k = addBoxToGroup(grp, 0, 5.3, 0, 7, 0.45, 0.5, dark, true);
         const s = addBoxToGroup(grp, 0, 4.6, 0, 6, 0.35, 0.45, aged, true);
-        toriiBars.push(k, s);
+        (k.material as any).emissive = new THREE.Color(0xff1100);
+        (k.material as any).emissiveIntensity = 0;
+        toriiBars.push({ mesh: k, originZ: z, originX: x });
         addBoxToGroup(grp, -2, 4.6, 0, 0.25, 0.8, 0.35, aged);
         addBoxToGroup(grp, 2, 4.6, 0, 0.25, 0.8, 0.35, aged);
         grp.position.set(x, 0, z);
@@ -1077,11 +1082,12 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       function buildShrine(x: number, z: number) {
+        const grp = new THREE.Group();
         const wood = 0x6b4423, stone = 0x9a8a7a, roof = 0x2a1f14;
         for (let s = 0; s < 3; s++) {
           for (let sx = -(3 - s); sx <= (3 - s); sx++) {
             for (let sz = -(2 - s); sz <= (2 - s); sz++) {
-              vox(x + sx, s * 0.45, z + sz + 3, stone, 1, 0.45, 1, false, true);
+              addBoxToGroup(grp, sx, s * 0.45, sz + 3, 1, 0.45, 1, stone, false);
             }
           }
         }
@@ -1093,10 +1099,10 @@ export function WorldClient({ petState, species }: Props) {
               const isDoor = wx === 0 && wz === -2 && wy < 2;
               if (isDoor) continue;
               const isWin = Math.abs(wx) === 2 && wz === -2 && wy === 1;
-              const m = vox(x + wx, 1.4 + wy, z + wz, isWin ? 0xffcc66 : wood, 1, 1, 1, true);
+              const m = addBoxToGroup(grp, wx, 1.4 + wy, wz, 1, 1, 1, isWin ? 0xffcc66 : wood, true);
               if (isWin) {
-                m.material.emissive = new THREE.Color(0xffaa22);
-                m.material.emissiveIntensity = 1.2;
+                (m.material as any).emissive = new THREE.Color(0xffaa22);
+                (m.material as any).emissiveIntensity = 1.2;
               }
             }
           }
@@ -1107,10 +1113,18 @@ export function WorldClient({ petState, species }: Props) {
             for (let rz = -(2 + ext); rz <= (2 + ext); rz++) {
               const isEdge = Math.abs(rx) === 3 + ext || Math.abs(rz) === 2 + ext;
               if (!isEdge && ry > 0) continue;
-              vox(x + rx, 5.4 + ry * 0.5, z + rz, ry === 0 ? 0x3a2f1e : roof, 1, 0.4, 1, true);
+              addBoxToGroup(grp, rx, 5.4 + ry * 0.5, rz, 1, 0.4, 1, ry === 0 ? 0x3a2f1e : roof, true);
             }
           }
         }
+        grp.position.set(x, 0, z);
+        scene.add(grp);
+
+        const pl = new THREE.PointLight(0xffcc66, 1.2, 20);
+        pl.position.set(0, 3, 0);
+        grp.add(pl);
+        
+        shrineData.push({ group: grp, light: pl, originY: 0, pos: new THREE.Vector3(x, 0, z) });
       }
 
       function buildKoiPond(cx: number, cz: number, w: number, d: number) {
@@ -1138,11 +1152,16 @@ export function WorldClient({ petState, species }: Props) {
         for (let k = 0; k < kCount; k++) {
           const km = vox(cx, 0.12, cz,
             ([0xff6633, 0xff4400, 0xffaa44, 0xffffff, 0xff8800] as number[])[k % 5]!, 0.5, 0.15, 0.9);
+          const r = 1.5 + Math.random() * (Math.min(w, d) / 2 - 2);
           koiData.push({
             mesh: km, cx, cz,
             angle: (k / kCount) * Math.PI * 2,
-            radius: 1.5 + Math.random() * (Math.min(w, d) / 2 - 2),
+            radius: r,
+            baseRadius: r,
             speed: 0.004 + Math.random() * 0.003,
+            vy: 0,
+            yPos: 0.12,
+            jumpTimer: Math.random() * 10,
           });
         }
       }
@@ -1767,6 +1786,9 @@ export function WorldClient({ petState, species }: Props) {
         keys3d[e.code] = true;
         if (e.code === 'KeyE') {
           triggerNearestInteraction();
+          cameraShakeTimer = 0.15;
+          triggerFlash();
+          playChime();
           if (nearestPeer) {
             // Handled by PartyKit overlay
           } else if (nearestNPC) {
@@ -1917,6 +1939,7 @@ export function WorldClient({ petState, species }: Props) {
       const CAM_LOOK_LERP = 0.12;
 
       let headBob = 0;
+      let currentFov = 75;
 
       function updateCamera() {
         const sinRot = Math.sin(player.rot);
@@ -1937,6 +1960,13 @@ export function WorldClient({ petState, species }: Props) {
 
         camera.position.copy(camPos);
         camera.lookAt(camLook);
+        
+        const targetFov = 75 + (player.isMoving ? 3 : 0);
+        if (Math.abs(currentFov - targetFov) > 0.1) {
+          currentFov += (targetFov - currentFov) * 0.05;
+          camera.fov = currentFov;
+          camera.updateProjectionMatrix();
+        }
       }
 
       // ── 3E: Mobile detection ─────────────────────────────────────────
@@ -2304,6 +2334,33 @@ export function WorldClient({ petState, species }: Props) {
       let waterRippleTime = 0;
       let ambientTimer = 20;
 
+      function playChime() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.value = 1200 + Math.random()*200;
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+      }
+
+      function triggerFlash() {
+        if (!scene) return;
+        const flash = new THREE.PointLight(0xffffee, 3.0, 15);
+        flash.position.copy(player.pos).add(new THREE.Vector3(0, 2, 0));
+        scene.add(flash);
+        let life = 0.2;
+        const fn = () => {
+          life -= 0.02;
+          flash.intensity = life * 15;
+          if (life <= 0) scene.remove(flash);
+          else requestAnimationFrame(fn);
+        };
+        requestAnimationFrame(fn);
+      }
+
       function playAmbientSound(biome: string) {
         if (!audioCtx) return;
         const createOscillator = (f: number, type: any, vol: number, dur: number) => {
@@ -2514,26 +2571,98 @@ export function WorldClient({ petState, species }: Props) {
         // 8. Particles
         updateParticles(elapsed);
 
-        // 9. Koi elliptical orbit
+        // 9. Koi elliptical orbit & jumping
         koiData.forEach((k: any) => {
           k.angle += k.speed;
+          k.jumpTimer -= delta;
+          if (k.jumpTimer <= 0 && k.yPos <= 0.12) {
+            k.vy = 0.06 + Math.random() * 0.04;
+            k.jumpTimer = 5 + Math.random() * 10;
+          }
+          k.yPos += k.vy;
+          k.vy -= 0.003; // gravity
+          if (k.yPos < 0.12) {
+            k.yPos = 0.12;
+            k.vy = 0;
+          }
+          let targetRad = k.baseRadius;
+          let targetSpeed = 0.004 + (k.baseRadius % 0.003);
+          if (player.pos.x > 35 && player.pos.x < 48 && player.pos.z < 5 && player.pos.z > -10) {
+            targetSpeed *= 3.0;
+            targetRad *= 0.8;
+          }
+          k.radius += (targetRad - k.radius) * 0.05;
+          k.speed += (targetSpeed - k.speed) * 0.02;
+
           k.mesh.position.set(
             k.cx + Math.cos(k.angle) * k.radius,
-            0.12,
+            k.yPos,
             k.cz + Math.sin(k.angle) * k.radius * 0.6
           );
           k.mesh.rotation.y = -k.angle + Math.PI / 2;
         });
 
+        // Prox reaction
+        interactables.forEach((obj: any) => {
+          if (!obj.group) return;
+          const d = Math.sqrt((player.pos.x - obj.x)**2 + (player.pos.z - obj.z)**2);
+          const targetScale = d < 4.0 ? 1.05 + Math.sin(elapsed * 4) * 0.02 : 1.0;
+          obj.group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+          obj.group.traverse((c: any) => {
+            if (c.material && c.material.emissive) {
+              const targetEmissive = d < 4.0 ? 0.2 + Math.sin(elapsed * 4) * 0.1 : 0.0;
+              c.material.emissiveIntensity += (targetEmissive - c.material.emissiveIntensity) * 0.1;
+              if (c.material.emissive.getHex() === 0x000000 && d < 4.0) {
+                c.material.emissive.setHex(0x555544);
+              }
+            }
+          });
+        });
+
+        treeGroups.forEach(t => {
+          t.group.rotation.z = Math.sin(elapsed + t.originRotX) * 0.02;
+          t.group.rotation.x = Math.cos(elapsed * 0.8 + t.originRotZ) * 0.015;
+        });
+
+        toriiBars.forEach((t: any) => {
+          const d = Math.sqrt((player.pos.x - t.originX)**2 + (player.pos.z - t.originZ)**2);
+          const targetI = d < 12.0 ? 1.5 + Math.sin(elapsed * 5) * 0.5 : 0.1 + Math.sin(elapsed * 1.5) * 0.1;
+          if (t.mesh.material.emissiveIntensity !== undefined) {
+             t.mesh.material.emissiveIntensity += (targetI - t.mesh.material.emissiveIntensity) * 0.05;
+          }
+        });
+
+        shrineData.forEach(s => {
+          s.group.position.y = Math.sin(elapsed) * 0.2;
+          s.light.position.y = 3 + Math.sin(elapsed) * 0.2;
+          const d = player.pos.distanceTo(s.pos);
+          const targetL = d < 10 ? 2.5 + Math.sin(elapsed * 8) * 0.5 : 1.2;
+          s.light.intensity += (targetL - s.light.intensity) * 0.05;
+        });
+
+        if (cameraShakeTimer > 0) {
+          cameraShakeTimer -= delta;
+          camLook.x += (Math.random() - 0.5) * 0.8;
+          camLook.y += (Math.random() - 0.5) * 0.8;
+          camLook.z += (Math.random() - 0.5) * 0.8;
+        }
+
         // 10. Water color HSL pulse
         waterMats.forEach((mat: any, i: number) => {
-          mat.color.setHSL(0.55, 0.5, 0.35 + Math.sin(elapsed * 0.9 + i) * 0.025);
+          const interactScale = (player.pos.x > 35 && player.pos.x < 48 && player.pos.z < 5 && player.pos.z > -10) ? 0.08 : 0.025;
+          mat.color.setHSL(0.55, 0.5, 0.35 + Math.sin(elapsed * 0.9 + i) * interactScale);
         });
 
         // 11. Lantern flicker
         lanternMats.forEach((mat: any, i: number) => {
-          mat.emissiveIntensity = 0.7 + Math.sin(elapsed * 1.8 + i * 1.3) * 0.45;
+          mat.emissiveIntensity = 0.7 + Math.sin(elapsed * 1.8 + i * 1.3) * 0.45 + (Math.random() * 0.15);
         });
+
+        if (!player.isMoving && playerMesh) {
+          playerMesh.group.scale.y = 1 + Math.sin(elapsed * 2) * 0.03;
+        } else if (playerMesh) {
+          playerMesh.group.scale.y = 1;
+        }
 
         // 12. Lava glow pulse
         lavaLights.forEach((light: any, i: number) => {
@@ -2733,13 +2862,15 @@ export function WorldClient({ petState, species }: Props) {
           position: 'fixed', bottom: 110, left: '50%',
           transform: 'translateX(-50%)',
           background: 'rgba(20,14,8,0.88)',
-          border: '1px solid rgba(240,200,140,0.3)',
+          border: '1px solid rgba(240,200,140,0.5)',
           backdropFilter: 'blur(10px)',
           padding: '10px 22px', zIndex: 20,
           fontFamily: "'Press Start 2P', monospace",
           fontSize: 9, color: '#ffd4a0', letterSpacing: 1,
           whiteSpace: 'nowrap',
-          animation: 'floatBob 2s ease-in-out infinite',
+          boxShadow: '0 0 15px rgba(240,200,140,0.3)',
+          transition: 'all 0.2s ease',
+          animation: 'interactBounce 0.5s ease 1, floatBob 2s ease-in-out infinite alternate',
         }}>
           {interactPrompt}
         </div>
@@ -3091,6 +3222,11 @@ export function WorldClient({ petState, species }: Props) {
 
       {/* Keyframe animations */}
       <style>{`
+        @keyframes interactBounce {
+          0% { transform: translate(-50%, 20px) scale(0.8); opacity: 0; }
+          50% { transform: translate(-50%, -10px) scale(1.05); }
+          100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+        }
         @keyframes biomeReveal {
           0%   { opacity:0; transform:translate(-50%,-50%) scale(0.9) }
           15%  { opacity:1; transform:translate(-50%,-50%) scale(1) }
