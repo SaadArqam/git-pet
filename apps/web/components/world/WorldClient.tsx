@@ -192,6 +192,15 @@ export function WorldClient({ petState, species }: Props) {
   const [interactPrompt, setInteractPrompt] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [joystick, setJoystick] = useState({ active: false, dx: 0, dy: 0 });
+  const [cinematicDone, setCinematicDone] = useState(false);
+  const [controlsHint, setControlsHint] = useState(true);
+  const [showPauseMenu, setShowPauseMenu] = useState(false);
+  const [npcDialogue, setNpcDialogue] = useState<{ name:string, lines:string[] }|null>(null);
+  const [dialogueLine, setDialogueLine] = useState(0);
+  const [tabletText, setTabletText] = useState<string|null>(null);
+  const [chestLoot, setChestLoot] = useState<string|null>(null);
+  const [biomeFlash, setBiomeFlash] = useState(false);
+  const [showRest, setShowRest] = useState(false);
 
   // mounted flag cleanup
   useEffect(() => () => { mounted.current = false; }, []);
@@ -508,16 +517,56 @@ export function WorldClient({ petState, species }: Props) {
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.outputEncoding = THREE.sRGBEncoding;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.15;
+      renderer.toneMappingExposure = 0.85; // DARKER — prevents washed out look
       rendererRef.current = renderer;
 
       const scene = new THREE.Scene();
-      const sceneFog = new THREE.FogExp2(0xb8cce0, 0.012);
+      
+      // Fog — much denser than before, creates depth
+      const sceneFog = new THREE.FogExp2(0xc8a882, 0.008);
       scene.fog = sceneFog;
-      scene.background = new THREE.Color(0x87b4d0);
+      
+      // Sky dome — gradient from deep blue zenith to warm amber horizon
+      const skyGeo = new THREE.SphereGeometry(180, 32, 16);
+      const skyMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        uniforms: {
+          topColor: { value: new THREE.Color(0x0a1628) },    // deep midnight blue
+          horizonColor: { value: new THREE.Color(0xd4601a) }, // burnt amber horizon
+          groundColor: { value: new THREE.Color(0x1a2410) },  // dark earth
+          exponent: { value: 0.5 },
+        },
+        vertexShader: `
+          varying vec3 vWorldPosition;
+          void main() {
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPosition.xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 topColor;
+          uniform vec3 horizonColor;
+          uniform vec3 groundColor;
+          uniform float exponent;
+          varying vec3 vWorldPosition;
+          void main() {
+            float h = normalize(vWorldPosition).y;
+            vec3 sky = mix(horizonColor, topColor, max(pow(max(h, 0.0), exponent), 0.0));
+            vec3 final = mix(groundColor, sky, step(0.0, h));
+            gl_FragColor = vec4(final, 1.0);
+          }
+        `,
+      });
+      scene.add(new THREE.Mesh(skyGeo, skyMat));
+      // Store uniform refs for biome animation
+      const skyUniforms = skyMat.uniforms;
+
+      // Remove scene.background color — let sky dome handle it
+      scene.background = null;
 
       const camera = new THREE.PerspectiveCamera(
-        60, window.innerWidth / window.innerHeight, 0.1, 200
+        75, window.innerWidth / window.innerHeight, 0.1, 200
       );
       camera.position.set(60, 7, 0);
       camera.lookAt(60, 2, -20);
@@ -542,26 +591,45 @@ export function WorldClient({ petState, species }: Props) {
         VOLCANIC: { minX:-100, maxX:   0, minZ: -100, maxZ:   0 },
         TUNDRA:   { minX: -50, maxX:  50, minZ: -100, maxZ:-140 },
       };
-      const BIOME_FOG = {
-        CHERRY:   { color: 0xb8cce0, density: 0.012 },
-        BAMBOO:   { color: 0x8ab89a, density: 0.022 },
-        OCEAN:    { color: 0x6090c0, density: 0.018 },
-        VOLCANIC: { color: 0x4a2010, density: 0.015 },
-        TUNDRA:   { color: 0xd0e8f8, density: 0.014 },
+      const BIOME_SKY_CONFIGS = {
+        CHERRY: {
+          top:     new THREE.Color(0x0a1628),
+          horizon: new THREE.Color(0xd4601a),
+          fog:     new THREE.Color(0xc8a882),
+          fogDensity: 0.008,
+        },
+        BAMBOO: {
+          top:     new THREE.Color(0x0a1a0a),
+          horizon: new THREE.Color(0x4a7a3a),
+          fog:     new THREE.Color(0x6a9a5a),
+          fogDensity: 0.020,
+        },
+        OCEAN: {
+          top:     new THREE.Color(0x061428),
+          horizon: new THREE.Color(0x1a4a8a),
+          fog:     new THREE.Color(0x4a6a9a),
+          fogDensity: 0.012,
+        },
+        VOLCANIC: {
+          top:     new THREE.Color(0x0a0402),
+          horizon: new THREE.Color(0x8a1a04),
+          fog:     new THREE.Color(0x4a1a08),
+          fogDensity: 0.018,
+        },
+        TUNDRA: {
+          top:     new THREE.Color(0x080c18),
+          horizon: new THREE.Color(0x6a8aaa),
+          fog:     new THREE.Color(0xb0c8d8),
+          fogDensity: 0.010,
+        },
       };
-      const BIOME_SKY = {
-        CHERRY:   0x87b4d0,
-        BAMBOO:   0x6a9a7a,
-        OCEAN:    0x4a80c0,
-        VOLCANIC: 0x3a1808,
-        TUNDRA:   0xb0d4f0,
-      };
+
       const BIOME_LIGHTS = {
-        CHERRY:   { sunColor: 0xffd4a0, sunInt: 2.4, ambColor: 0xffe8c0, ambInt: 0.55, hemiSky: 0x87ceeb, hemiGnd: 0x4a6741 },
-        BAMBOO:   { sunColor: 0x90d4a0, sunInt: 1.8, ambColor: 0xc8e8c0, ambInt: 0.60, hemiSky: 0x6a9a7a, hemiGnd: 0x3a6a3a },
-        OCEAN:    { sunColor: 0xa0c8ff, sunInt: 2.0, ambColor: 0xb0d0ff, ambInt: 0.50, hemiSky: 0x4a80c0, hemiGnd: 0x204060 },
-        VOLCANIC: { sunColor: 0xff6030, sunInt: 1.6, ambColor: 0xff8040, ambInt: 0.70, hemiSky: 0x3a1808, hemiGnd: 0x200808 },
-        TUNDRA:   { sunColor: 0xd0e8ff, sunInt: 1.4, ambColor: 0xe0f0ff, ambInt: 0.80, hemiSky: 0xb0d4f0, hemiGnd: 0xd0e8f8 },
+        CHERRY:   { sunColor: 0xffb347, sunInt: 3.2, ambColor: 0x1a1408, ambInt: 0.8, hemiSky: 0xd4601a, hemiGnd: 0x1a2410 },
+        BAMBOO:   { sunColor: 0x88cc66, sunInt: 2.0, ambColor: 0x0a1208, ambInt: 1.0, hemiSky: 0x4a7a3a, hemiGnd: 0x1a2a10 },
+        OCEAN:    { sunColor: 0x6699cc, sunInt: 2.4, ambColor: 0x080c14, ambInt: 0.7, hemiSky: 0x1a4a8a, hemiGnd: 0x0a1a28 },
+        VOLCANIC: { sunColor: 0xff3300, sunInt: 1.8, ambColor: 0x140804, ambInt: 1.2, hemiSky: 0x8a1a04, hemiGnd: 0x200808 },
+        TUNDRA:   { sunColor: 0x99bbdd, sunInt: 1.2, ambColor: 0x080c12, ambInt: 1.4, hemiSky: 0x6a8aaa, hemiGnd: 0xc0d8e8 },
       };
       function getBiome(x: number, z: number): keyof typeof BIOMES {
         if (z < -80) return 'TUNDRA';
@@ -572,43 +640,70 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       // 1D ── lighting ───────────────────────────────────────────
-      const sun = new THREE.DirectionalLight(0xffd4a0, 2.4);
-      sun.position.set(40, 60, 20);
+      // SUN — low angle, hard shadows, golden
+      const sun = new THREE.DirectionalLight(0xffb347, 3.2);
+      sun.position.set(80, 60, 30);
       sun.castShadow = true;
-      sun.shadow.mapSize.width = 2048;
-      sun.shadow.mapSize.height = 2048;
+      sun.shadow.mapSize.width = 4096;  // higher res shadows
+      sun.shadow.mapSize.height = 4096;
       sun.shadow.camera.near = 1;
-      sun.shadow.camera.far = 200;
-      sun.shadow.camera.left = -80;
-      sun.shadow.camera.right = 80;
-      sun.shadow.camera.top = 80;
-      sun.shadow.camera.bottom = -80;
-      sun.shadow.bias = -0.001;
+      sun.shadow.camera.far = 250;
+      sun.shadow.camera.left = -100;
+      sun.shadow.camera.right = 100;
+      sun.shadow.camera.top = 100;
+      sun.shadow.camera.bottom = -100;
+      sun.shadow.bias = -0.0005;
+      sun.shadow.radius = 2;    // soft shadow edges
       scene.add(sun);
 
-      const fillLight = new THREE.DirectionalLight(0x9bb8d4, 0.7);
-      fillLight.position.set(-30, 20, -20);
+      // FILL — cool blue sky bounce, opposite side
+      const fillLight = new THREE.DirectionalLight(0x4a6a9a, 0.4);
+      fillLight.position.set(-60, 30, -40);
       scene.add(fillLight);
 
-      const ambientLight = new THREE.AmbientLight(0xffe8c0, 0.55);
+      // AMBIENT — very low, forces shadows to be dark not black
+      const ambientLight = new THREE.AmbientLight(0x1a1408, 0.8);
       scene.add(ambientLight);
 
-      const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.4);
+      // HEMISPHERE — strong contrast between sky and ground
+      const hemiLight = new THREE.HemisphereLight(0xd4601a, 0x1a2410, 0.6);
       scene.add(hemiLight);
 
+      // Fake god rays — large sprite at sun position
+      const rayCanvas = document.createElement('canvas');
+      rayCanvas.width = 256; rayCanvas.height = 256;
+      const rctx = rayCanvas.getContext('2d')!;
+      const gradient = rctx.createRadialGradient(128,128,0, 128,128,128);
+      gradient.addColorStop(0, 'rgba(255,180,80,0.35)');
+      gradient.addColorStop(0.3, 'rgba(255,140,40,0.15)');
+      gradient.addColorStop(1, 'rgba(255,120,20,0)');
+      rctx.fillStyle = gradient;
+      rctx.fillRect(0,0,256,256);
+      const rayTex = new THREE.CanvasTexture(rayCanvas);
+      const rayMat = new THREE.SpriteMaterial({
+        map: rayTex, transparent: true, opacity: 0.6,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const raySun = new THREE.Sprite(rayMat);
+      raySun.scale.set(120, 120, 1);
+      raySun.position.set(160, 100, 50);
+      scene.add(raySun);
+
       function updateBiomeLighting(biome: keyof typeof BIOMES) {
-        const t = BIOME_LIGHTS[biome];
+        const cfg = BIOME_SKY_CONFIGS[biome as keyof typeof BIOME_SKY_CONFIGS];
+        skyUniforms.topColor.value.lerp(cfg.top, 0.015);
+        skyUniforms.horizonColor.value.lerp(cfg.horizon, 0.015);
+        sceneFog.color.lerp(cfg.fog, 0.015);
+        sceneFog.density += (cfg.fogDensity - sceneFog.density) * 0.015;
+
+        // Existing light lerping — keep it, just update colors too
+        const t = BIOME_LIGHTS[biome as keyof typeof BIOME_LIGHTS];
         sun.color.lerp(new THREE.Color(t.sunColor), 0.02);
         sun.intensity += (t.sunInt - sun.intensity) * 0.02;
         ambientLight.color.lerp(new THREE.Color(t.ambColor), 0.02);
         ambientLight.intensity += (t.ambInt - ambientLight.intensity) * 0.02;
         hemiLight.color.lerp(new THREE.Color(t.hemiSky), 0.02);
         hemiLight.groundColor.lerp(new THREE.Color(t.hemiGnd), 0.02);
-        sceneFog.color.lerp(new THREE.Color(BIOME_FOG[biome].color), 0.02);
-        sceneFog.density += (BIOME_FOG[biome].density - sceneFog.density) * 0.02;
-        if (scene.background instanceof THREE.Color) {
-          scene.background.lerp(new THREE.Color(BIOME_SKY[biome]), 0.02);
-        }
       }
 
       // 1E ── core helpers ───────────────────────────────────────
@@ -661,6 +756,66 @@ export function WorldClient({ petState, species }: Props) {
       const allParticles: { mesh: any; data: any[]; type: string }[] = [];
       const auroraMeshes: { mesh: any; mat: any; phase: number }[] = [];
       let lightBeam: any = null;
+      const interactables: { x: number; z: number; type: string; id: string; meta?: any }[] = [];
+      let koiPondGeo: any = null;
+      let koiPondWaterMesh: any = null;
+      let audioCtx: AudioContext | null = null;
+      
+      const initAudio = () => {
+        if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      };
+      window.addEventListener('click', initAudio);
+      window.addEventListener('keydown', initAudio);
+      cleanupFns.current.push(() => {
+        window.removeEventListener('click', initAudio);
+        window.removeEventListener('keydown', initAudio);
+      });
+
+      function addGlowBlock(
+        x: number, y: number, z: number,
+        color: number, emissive: number, intensity: number,
+        lightRange = 8
+      ) {
+        const m = vox(x, y, z, color, 0.8, 0.8, 0.8);
+        m.material.emissive = new THREE.Color(emissive);
+        m.material.emissiveIntensity = intensity;
+        const pl = new THREE.PointLight(emissive, intensity * 0.8, lightRange);
+        pl.position.set(x, y + 0.5, z);
+        scene.add(pl);
+        lanternMats.push(m.material);
+        lavaLights.push(pl);
+        return m;
+      }
+
+      function buildChest(x: number, y: number, z: number, id: string, loot: string) {
+        const grp = new THREE.Group();
+        addBoxToGroup(grp, 0, 0.5, 0, 1.2, 1, 0.8, 0x8B6914, true);
+        addBoxToGroup(grp, 0, 1.05, 0, 1.25, 0.2, 0.85, 0x4B3914, true);
+        grp.position.set(x, y, z);
+        scene.add(grp);
+        interactables.push({ x, z, type: 'chest', id, meta: loot });
+      }
+
+      function buildTablet(x: number, y: number, z: number, id: string, text: string) {
+        const grp = new THREE.Group();
+        addBoxToGroup(grp, 0, 1, 0, 0.8, 2, 0.2, 0x5a5a5a, true);
+        grp.position.set(x, y, z);
+        scene.add(grp);
+        interactables.push({ x, z, type: 'tablet', id, meta: text });
+      }
+
+      function buildCampfire(x: number, y: number, z: number) {
+        const grp = new THREE.Group();
+        for(let i=0; i<6; i++) {
+          const a = (i/6)*Math.PI*2;
+          addBoxToGroup(grp, Math.cos(a)*0.4, 0.1, Math.sin(a)*0.4, 0.4, 0.2, 0.4, 0x3a2f1e, true);
+        }
+        addBoxToGroup(grp, 0, 0.3, 0, 0.6, 0.6, 0.6, 0xff5500); 
+        grp.position.set(x, y, z);
+        scene.add(grp);
+        interactables.push({ x, z, type: 'campfire', id: `camp_${x}_${z}` });
+      }
 
       // suppress unused-until-later warnings (used in Parts 3-6)
       void WORLD_SIZE; void SPAWN; void PROXIMITY_RANGE; void BIOMES;
@@ -670,53 +825,213 @@ export function WorldClient({ petState, species }: Props) {
       void biomeStateRef; void joystickRef; void activeOverlayRef;
       void frameRef; void petFramesRef; void size; void inspecting;
 
-      // ── 2A: World Ground Plane ────────────────────────────────────────
-      const groundGeo = new THREE.PlaneGeometry(240, 240, 80, 80);
+      // ── 2A: Heightmap Ground with Elevation ────────────────────────────
+      // Ground with actual height variation
+      const GSIZE = 200;
+      const GSEGS = 100;
+      const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEGS, GSEGS);
       groundGeo.rotateX(-Math.PI / 2);
-      const gColors: number[] = [];
+
+      // Apply height via vertex displacement
       const gPos = groundGeo.attributes.position;
       for (let i = 0; i < gPos.count; i++) {
-        const gx = gPos.getX(i);
-        const gz = gPos.getZ(i);
-        const biome = getBiome(gx, gz);
-        const noise = Math.sin(gx * 2.1) * Math.cos(gz * 1.8) * 0.5 + 0.5;
-        const GROUND_COLS: Record<string, number[][]> = {
-          CHERRY:   [[0.28,0.54,0.22],[0.32,0.60,0.26],[0.26,0.50,0.20]],
-          BAMBOO:   [[0.22,0.48,0.18],[0.26,0.52,0.22],[0.20,0.44,0.16]],
-          OCEAN:    [[0.28,0.38,0.20],[0.22,0.32,0.18],[0.30,0.40,0.22]],
-          VOLCANIC: [[0.15,0.10,0.08],[0.12,0.08,0.06],[0.18,0.12,0.08]],
-          TUNDRA:   [[0.90,0.92,0.95],[0.85,0.88,0.92],[0.88,0.90,0.94]],
+        const x = gPos.getX(i);
+        const z = gPos.getZ(i);
+
+        // Multi-octave noise for natural terrain
+        const h1 = Math.sin(x * 0.04) * Math.cos(z * 0.04) * 3.0;     // large hills
+        const h2 = Math.sin(x * 0.12 + 1.3) * Math.cos(z * 0.11) * 1.2;  // medium bumps
+        const h3 = Math.sin(x * 0.28) * Math.cos(z * 0.31 + 0.7) * 0.5;  // small detail
+        const h4 = Math.sin(x * 0.6 + z * 0.4) * 0.25;                  // micro variation
+
+        let height = h1 + h2 + h3 + h4;
+
+        // Flatten the Cherry Village spawn area (x:40-80, z:-90 to -10)
+        const inVillage = x > 35 && x < 85 && z > -95 && z < -5;
+        if (inVillage) height *= 0.15;  // mostly flat, slight texture
+
+        // Flatten paths
+        const onMainPath = Math.abs(x - 60) < 2.5 && z > -90 && z < 0;
+        const onCrossPath = Math.abs(z + 40) < 2 && x > 15 && x < 95;
+        if (onMainPath || onCrossPath) height *= 0.05;
+
+        // Boost elevation for cliffs/mountains at edges
+        const distFromCenter = Math.sqrt(x*x + z*z);
+        if (distFromCenter > 70) height += (distFromCenter - 70) * 0.08;
+
+        gPos.setY(i, height);
+      }
+      groundGeo.computeVertexNormals();  // CRITICAL for lighting
+
+      // Biome-based vertex colors
+      const gColors: number[] = [];
+      for (let i = 0; i < gPos.count; i++) {
+        const x = gPos.getX(i);
+        const z = gPos.getZ(i);
+        const y = gPos.getY(i);
+        const biome = getBiome(x, z);
+        const noise = (Math.sin(x*3.1)*Math.cos(z*2.8) + 1) * 0.5;
+
+        // Height-based color variation (darker at valleys, lighter at peaks)
+        const heightFactor = Math.max(0, Math.min(1, (y + 2) / 6));
+
+        const GCOLS: Record<string, number[][]> = {
+          CHERRY:   [[0.20,0.38,0.15],[0.24,0.44,0.18],[0.28,0.50,0.20],[0.16,0.30,0.12]],
+          BAMBOO:   [[0.16,0.34,0.12],[0.20,0.40,0.16],[0.24,0.46,0.18],[0.14,0.28,0.10]],
+          OCEAN:    [[0.20,0.26,0.14],[0.24,0.30,0.16],[0.18,0.24,0.12],[0.30,0.34,0.20]],
+          VOLCANIC: [[0.10,0.06,0.04],[0.08,0.04,0.02],[0.14,0.08,0.04],[0.06,0.04,0.02]],
+          TUNDRA:   [[0.82,0.86,0.90],[0.88,0.90,0.94],[0.78,0.82,0.88],[0.92,0.94,0.96]],
         };
-        const cols = GROUND_COLS[biome]!;
-        const col = cols[noise < 0.33 ? 0 : noise < 0.66 ? 1 : 2]!;
-        gColors.push(...col);
+        const cols = GCOLS[biome]!;
+        const idx = noise < 0.25 ? 0 : noise < 0.5 ? 1 : noise < 0.75 ? 2 : 3;
+        const col = cols[idx]!;
+
+        // Darken valleys
+        const darkFactor = 0.7 + heightFactor * 0.4;
+        gColors.push(col[0]*darkFactor, col[1]*darkFactor, col[2]*darkFactor);
       }
       groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(gColors, 3));
-      const groundMesh = new THREE.Mesh(
-        groundGeo,
-        new THREE.MeshLambertMaterial({ vertexColors: true })
-      );
+
+      const groundMat = new THREE.MeshLambertMaterial({
+        vertexColors: true,
+      });
+      const groundMesh = new THREE.Mesh(groundGeo, groundMat);
       groundMesh.receiveShadow = true;
       scene.add(groundMesh);
 
-      // Sky dome
-      const skyGeo = new THREE.SphereGeometry(180, 16, 8);
-      const skyMat = new THREE.MeshBasicMaterial({ color: 0x7db8d4, side: THREE.BackSide });
-      scene.add(new THREE.Mesh(skyGeo, skyMat));
+      // ── 2B: Terrain border cliffs ──────────────────────────────────────
+      function buildCliffWall(
+        startX: number, startZ: number,
+        endX: number, endZ: number,
+        height: number, color: number
+      ) {
+        const steps = Math.floor(
+          Math.sqrt((endX-startX)**2 + (endZ-startZ)**2)
+        );
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const cx = startX + (endX-startX)*t;
+          const cz = startZ + (endZ-startZ)*t;
+          const h = height + Math.sin(i*0.4)*2 + Math.random()*1.5;
+          for (let ch = 0; ch < h; ch++) {
+            const jitter = (Math.random()-0.5)*0.8;
+            vox(cx+jitter, -(ch*0.5)+0.25, cz, color, 1.2, 0.5, 1.2);
+          }
+        }
+      }
+
+      // Dark stone cliffs framing the world
+      buildCliffWall(-100,  -140, 100, -140, 12, 0x3a3028);  // far north
+      buildCliffWall(-100,   100,-100, -140, 10, 0x3a3028);  // west
+      buildCliffWall( 100,   100, 100, -140, 10, 0x3a3028);  // east
+
+      // ── 2C: Scattered rocks and boulders ───────────────────────────────
+      function buildBoulder(x: number, z: number, size: number, col: number) {
+        // Main boulder body — multiple offset voxels for organic look
+        vox(x, size*0.4, z, col, size, size*0.8, size, true);
+        vox(x+size*0.3, size*0.3, z-size*0.2, col, size*0.7, size*0.6, size*0.7, true);
+        vox(x-size*0.2, size*0.25, z+size*0.3, col, size*0.6, size*0.5, size*0.6, true);
+        // Moss on top
+        vox(x, size*0.8+0.1, z, 0x3a5a2a, size*0.7, 0.15, size*0.7);
+      }
+
+      // Cherry biome boulders
+      [[22,-25],[88,-45],[38,-65],[75,-72],[15,-55],[92,-30]].forEach(([bx,bz]) => {
+        buildBoulder(bx, bz, 1.5+Math.random()*2, 0x6a6058);
+      });
+      // Bamboo biome boulders (more mossy)
+      [[15,25],[80,60],[45,85],[70,35],[30,70]].forEach(([bx,bz]) => {
+        buildBoulder(bx, bz, 1.2+Math.random()*2.5, 0x5a6050);
+      });
+      // Volcanic obsidian boulders (black, sharp)
+      [[-30,-30],[-75,-55],[-45,-75],[-85,-25],[-20,-85]].forEach(([bx,bz]) => {
+        buildBoulder(bx, bz, 2+Math.random()*3, 0x1a0a18);
+      });
+      // Ocean cliff rocks
+      [[-85,15],[-72,45],[-88,70],[-80,90]].forEach(([bx,bz]) => {
+        buildBoulder(bx, bz, 2+Math.random()*4, 0x5a6068);
+      });
+      // Tundra ice boulders
+      [[15,-108],[-25,-118],[35,-125],[-10,-132]].forEach(([bx,bz]) => {
+        const m = vox(bx, 1.2, bz, 0x88aacc, 2.5, 2, 2.5, true);
+        m.material.transparent = true; m.material.opacity = 0.8;
+      });
+
+      // ── 2D: Plateau / cliff formations ─────────────────────────────────
+      function buildPlateau(
+        cx: number, cz: number,
+        w: number, d: number, h: number, col: number
+      ) {
+        // Cliff face
+        for (let ch = 0; ch < h; ch++) {
+          for (let px = -w/2; px <= w/2; px++) {
+            for (let pz = -d/2; pz <= d/2; pz++) {
+              const isEdge = Math.abs(px)>w/2-1 || Math.abs(pz)>d/2-1;
+              if (!isEdge && ch < h-1) continue;
+              const jitter = isEdge ? (Math.random()-0.5)*0.3 : 0;
+              vox(cx+px+jitter, ch*0.8, cz+pz, ch===h-1 ? 0x3a5a2a : col, 1,0.8,1);
+            }
+          }
+        }
+      }
+
+      // Cherry biome: small hill with viewpoint
+      buildPlateau(25, -60, 10, 8, 6, 0x5a5048);
+      // Bamboo biome: ruined plateau the temple sits on
+      buildPlateau(50, 50, 14, 10, 5, 0x6a6458);
+      // Ocean biome: lighthouse cliff
+      buildPlateau(-68, 20, 8, 8, 8, 0x5a6068);
+      // Volcanic: obsidian mesa
+      buildPlateau(-30, -20, 20, 14, 10, 0x1a0a18);
+
+      // ── 2E: Grass tufts and ground detail ──────────────────────────────
+      function spawnGrassTufts(
+        cx: number, cz: number, radius: number,
+        count: number, col: number
+      ) {
+        for (let i = 0; i < count; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * radius;
+          const gx = cx + Math.cos(a) * r;
+          const gz = cz + Math.sin(a) * r;
+          const h = 0.4 + Math.random() * 0.6;
+          vox(gx, h/2, gz, col, 0.12, h, 0.12);
+          vox(gx+0.15, h/2, gz+0.1, col, 0.1, h*0.8, 0.1);
+        }
+      }
+
+      // Cherry village surroundings
+      spawnGrassTufts(45, -50, 15, 80, 0x3a6a28);
+      spawnGrassTufts(75, -40, 12, 60, 0x3a6a28);
+      // Bamboo understory
+      spawnGrassTufts(40, 40, 20, 120, 0x2a5a1a);
+      // Ocean cliffs
+      spawnGrassTufts(-60, 60, 15, 50, 0x3a5a28);
+
+      // Flowers (tiny colored dots)
+      const flowerColors = [0xffaa00, 0xff6688, 0xffffff, 0xaa66ff, 0xff4444];
+      for (let f = 0; f < 200; f++) {
+        const fx = (Math.random()-0.5)*80 + 50;
+        const fz = -90 + Math.random()*80;
+        if (Math.abs(fx-60) < 3) continue; // skip path
+        vox(fx, 0.3, fz, 0x2a4a1a, 0.1, 0.3, 0.1); // stem
+        vox(fx, 0.5, fz, flowerColors[Math.floor(Math.random()*5)]!, 0.25, 0.15, 0.25); // bloom
+      }
+
 
       // ── 2B: Shared building helpers ────────────────────────────────────
       function buildTorii(x: number, z: number, rotY = 0) {
         const grp = new THREE.Group();
-        const red = 0xcc3300, dark = 0x992200;
+        const red = 0x8B1A1A, dark = 0x4a0e0e, aged = 0x6a1414;
         for (let py = 0; py < 5; py++) {
           addBoxToGroup(grp, -2, py + 0.5, 0, 1, 1, 0.35, red, true);
           addBoxToGroup(grp, 2, py + 0.5, 0, 1, 1, 0.35, red, true);
         }
         const k = addBoxToGroup(grp, 0, 5.3, 0, 7, 0.45, 0.5, dark, true);
-        const s = addBoxToGroup(grp, 0, 4.6, 0, 6, 0.35, 0.45, red, true);
+        const s = addBoxToGroup(grp, 0, 4.6, 0, 6, 0.35, 0.45, aged, true);
         toriiBars.push(k, s);
-        addBoxToGroup(grp, -2, 4.6, 0, 0.25, 0.8, 0.35, dark);
-        addBoxToGroup(grp, 2, 4.6, 0, 0.25, 0.8, 0.35, dark);
+        addBoxToGroup(grp, -2, 4.6, 0, 0.25, 0.8, 0.35, aged);
+        addBoxToGroup(grp, 2, 4.6, 0, 0.25, 0.8, 0.35, aged);
         grp.position.set(x, 0, z);
         grp.rotation.y = rotY;
         scene.add(grp);
@@ -806,10 +1121,12 @@ export function WorldClient({ petState, species }: Props) {
             }
           }
         }
-        const wGeo = new THREE.PlaneGeometry(w - 1.5, d - 1.5);
+        const wGeo = new THREE.PlaneGeometry(w - 1.5, d - 1.5, 8, 6);
         wGeo.rotateX(-Math.PI / 2);
+        koiPondGeo = wGeo;
         const wMat = new THREE.MeshLambertMaterial({ color: 0x3d8fa8, transparent: true, opacity: 0.82 });
         const wMesh = new THREE.Mesh(wGeo, wMat);
+        koiPondWaterMesh = wMesh;
         wMesh.position.set(cx, 0.1, cz);
         scene.add(wMesh);
         waterMats.push(wMat);
@@ -854,32 +1171,42 @@ export function WorldClient({ petState, species }: Props) {
 
       // ── 2C: Cherry Blossom Biome ──────────────────────────────────────
       function buildCherryBiome() {
-        buildTorii(60, -80); buildTorii(60, -55);
-        buildTorii(2, -40, Math.PI / 2); buildTorii(60, -2);
-        for (let pz = -80; pz < -12; pz++) {
+        // Glow blocks
+        addGlowBlock(58, 0.05, -20, 0x6a5a2a, 0xffaa22, 1.2, 6);
+        addGlowBlock(62, 0.05, -18, 0x6a5a2a, 0xffaa22, 1.0, 5);
+        for (let pz = -90; pz < -20; pz += 8) {
+          addGlowBlock(60, 0.05, pz, 0x5a4a1a, 0xff8800, 0.8, 4);
+        }
+        
+        buildTablet(50, 0, -35, 'tab1', 'The Cherry Village honors the Pet Spirits.');
+        buildCampfire(60, 0, -100);
+
+        buildTorii(60, -120); buildTorii(60, -75);
+        buildTorii(2, -40, Math.PI / 2); buildTorii(60, -30);
+        for (let pz = -120; pz < -20; pz++) {
           for (let pw = -1; pw <= 1; pw++) {
             vox(60 + pw, 0.06, pz, ([0x9a9a9a, 0x8a8a8a, 0xaaaaaa] as number[])[Math.abs(pw)]!, 1, 0.12, 1);
           }
         }
-        for (let px = 15; px < 95; px++) { vox(px, 0.06, -40, 0x9a9a9a, 1, 0.12, 1); }
-        buildShrine(60, -15);
+        for (let px = 15; px < 95; px++) { vox(px, 0.06, -50, 0x9a9a9a, 1, 0.12, 1); }
+        buildShrine(60, -20);
         buildCherryTree(35, -30, 7); buildCherryTree(42, -22, 5);
         buildCherryTree(78, -35, 6); buildCherryTree(82, -20, 5);
         buildCherryTree(50, -55, 8); buildCherryTree(70, -60, 6);
         buildCherryTree(30, -50, 5);
-        buildKoiPond(80, -25, 12, 8);
+        buildKoiPond(85, -30, 12, 8);
         for (let a = 0; a < 8; a++) {
           const angle = (a / 8) * Math.PI * 2;
           buildLantern(60 + Math.cos(angle) * 14, -25 + Math.sin(angle) * 14);
         }
         for (let i = 0; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2;
-          vox(60 + Math.cos(a) * 0.8, 0.5, -38 + Math.sin(a) * 0.8, 0x888880, 0.55, 1, 0.55);
+          vox(60 + Math.cos(a) * 0.8, 0.5, -50 + Math.sin(a) * 0.8, 0x888880, 0.55, 1, 0.55);
         }
-        vox(60, 1.5, -38, 0x6b4423, 2.2, 0.25, 0.25, true);
-        vox(60, 1.7, -38, 0x6b4423, 0.2, 0.8, 0.2, true);
-        vox(45, 0.8, -38, 0x6b4423, 0.2, 1.6, 0.2, true);
-        vox(45, 1.8, -38, 0x8B6914, 1.4, 1.0, 0.15, true);
+        vox(60, 1.5, -50, 0x6b4423, 2.2, 0.25, 0.25, true);
+        vox(60, 1.7, -50, 0x6b4423, 0.2, 0.8, 0.2, true);
+        vox(45, 0.8, -50, 0x6b4423, 0.2, 1.6, 0.2, true);
+        vox(45, 1.8, -50, 0x8B6914, 1.4, 1.0, 0.15, true);
         const PETAL_COUNT = 150;
         const petDummy = new THREE.Object3D();
         void petDummy;
@@ -906,6 +1233,13 @@ export function WorldClient({ petState, species }: Props) {
 
       // ── 2D: Bamboo Forest Biome ───────────────────────────────────────
       function buildBambooBiome() {
+        [[20,0.05,35],[55,0.05,60],[75,0.05,45],[40,0.05,80]].forEach(([gx,gy,gz]) => {
+          addGlowBlock(gx,gy,gz, 0x1a3a2a, 0x44ffaa, 1.5, 7);
+        });
+
+        buildChest(70, 0, 70, 'chest1', 'Ancient Bamboo Scroll');
+        buildCampfire(50, 0, 95);
+
         for (let i = 0; i < 80; i++) {
           const bx = 10 + Math.random() * 85;
           const bz = 10 + Math.random() * 85;
@@ -1017,6 +1351,12 @@ export function WorldClient({ petState, species }: Props) {
       // ── 2F: Volcanic Biome ────────────────────────────────────────────
       function buildVolcanicBiome() {
         const VX = -50, VZ = -50;
+        for (let i = 0; i < 12; i++) {
+          const vx = -30 + (Math.random()-0.5)*60;
+          const vz = -30 + (Math.random()-0.5)*60;
+          addGlowBlock(vx, 0.02, vz, 0x3a0a00, 0xff2200, 2.0, 6);
+        }
+        buildChest(-85, 0, -85, 'chest_volc', 'Flame Core');
         for (let vh = 0; vh < 20; vh++) {
           const vr = 18 - vh;
           for (let va = 0; va < vr * 2; va++) {
@@ -1081,6 +1421,10 @@ export function WorldClient({ petState, species }: Props) {
 
       // ── 2G: Tundra Biome ──────────────────────────────────────────────
       function buildTundraBiome() {
+        [[-5,-112],[15,-120],[-20,-125],[8,-130]].forEach(([tx,tz]) => {
+          addGlowBlock(tx, 0.05, tz, 0x0a1a3a, 0x44aaff, 1.8, 8);
+        });
+        buildTablet(0, 0, -135, 'tab_tun', 'The Frozen Wastes hold ancient secrets.');
         for (let si = 0; si < 60; si++) {
           const sx = (Math.random() - 0.5) * 90, sz = -110 - Math.random() * 25;
           const ss = 0.5 + Math.random() * 2;
@@ -1269,9 +1613,14 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       // ── 3B: Local player setup ────────────────────────────────────────
-      const playerSpecies = species || 'dragon';
-      const playerColor = petState?.primaryColor || '#3d4a33';
-      const playerDark = darken(playerColor, 0.65);
+      const rawSpecies = (petState as any)?.species;
+      const rawColor = (petState as any)?.primaryColor;
+
+      const VALID_SPECIES = ['wolf','sabertooth','capybara','dragon','axolotl'];
+      const playerSpecies = VALID_SPECIES.includes(rawSpecies) ? rawSpecies : 'dragon';
+
+      const playerColor = (rawColor && rawColor.startsWith('#')) ? rawColor : '#3d4a33';
+      const playerDark = darken(playerColor, 0.60);
 
       const player = {
         pos: new THREE.Vector3(60, 0.5, -75),
@@ -1283,28 +1632,196 @@ export function WorldClient({ petState, species }: Props) {
 
       const playerMesh = buildSpeciesMesh(playerSpecies, playerColor, playerDark);
       playerMesh.group.position.copy(player.pos);
+      console.log('[GitPet World] Player species:', playerSpecies, 'color:', playerColor);
+
+      // ── 3B+. NPC definitions and building ─────────────────────────────
+      const NPC_DEFS = [
+        // Cherry Village NPCs (5)
+        { x:45,  z:-30, species:'wolf',       col:'#7a8070', dark:'#4a5040', name:'Ash'   },
+        { x:72,  z:-45, species:'axolotl',    col:'#8a5a60', dark:'#5a2a30', name:'Coral' },
+        { x:35,  z:-55, species:'capybara',   col:'#8a6a3a', dark:'#5a4420', name:'Pip'   },
+        { x:80,  z:-30, species:'sabertooth', col:'#c5c0b8', dark:'#8a8680', name:'Fang'  },
+        { x:55,  z:-50, species:'dragon',     col:'#5a3a8a', dark:'#3a1a5a', name:'Ember' },
+        // Bamboo Forest NPCs (3)
+        { x:30,  z:30,  species:'axolotl',    col:'#4a8a6a', dark:'#2a5a3a', name:'Sage'  },
+        { x:65,  z:55,  species:'wolf',       col:'#6a7a60', dark:'#3a4a30', name:'Moss'  },
+        { x:45,  z:80,  species:'capybara',   col:'#9a8060', dark:'#6a5030', name:'Gus'   },
+        // Ocean Cliffs NPCs (3)
+        { x:-40, z:25,  species:'dragon',     col:'#4a6a9a', dark:'#2a3a6a', name:'Mist'  },
+        { x:-60, z:60,  species:'wolf',       col:'#8a9aaa', dark:'#5a6a7a', name:'Tide'  },
+        { x:-75, z:80,  species:'sabertooth', col:'#b0b8c0', dark:'#707880', name:'Salt'  },
+        // Volcanic NPCs (2)
+        { x:-30, z:-30, species:'dragon',     col:'#8a2a1a', dark:'#5a0a0a', name:'Char'  },
+        { x:-65, z:-65, species:'axolotl',    col:'#aa3a1a', dark:'#6a1a0a', name:'Cinder'},
+        // Tundra NPCs (2)
+        { x:10,  z:-115,species:'sabertooth', col:'#c8d8e8', dark:'#8898a8', name:'Frost' },
+        { x:-20, z:-125,species:'wolf',       col:'#d0e0f0', dark:'#9090a0', name:'Bliz'  },
+      ];
+
+      type NPCType = {
+        group: any; legs: any;
+        pos: any; vel: any;
+        rot: number; timer: number;
+        homeX: number; homeZ: number;
+        wanderRadius: number; name: string;
+      };
+      const npcData: NPCType[] = [];
+
+      NPC_DEFS.forEach(def => {
+        const { group, legs } = buildSpeciesMesh(def.species, def.col, def.dark);
+        group.position.set(def.x, 0.5, def.z);
+      
+        // NPC name label sprite
+        const nc = document.createElement('canvas');
+        nc.width = 220; nc.height = 48;
+        const nctx = nc.getContext('2d')!;
+        nctx.fillStyle = 'rgba(10,8,4,0.7)';
+        nctx.fillRect(6,6,208,36);
+        nctx.fillStyle = '#ffd4a0';
+        nctx.font = '13px monospace';
+        nctx.textAlign = 'center';
+        nctx.fillText(def.name, 110, 28);
+        const nTex = new THREE.CanvasTexture(nc);
+        const nLabel = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: nTex, transparent: true })
+        );
+        nLabel.scale.set(1.8, 0.42, 1);
+        nLabel.position.set(0, 2.4, 0);
+        group.add(nLabel);
+      
+        npcData.push({
+          group, legs,
+          pos: new THREE.Vector3(def.x, 0.5, def.z),
+          vel: new THREE.Vector3(),
+          rot: Math.random() * Math.PI * 2,
+          timer: Math.random() * 4,
+          homeX: def.x, homeZ: def.z,
+          wanderRadius: 8 + Math.random() * 6,
+          name: def.name,
+        });
+      });
+
+      function updateNPCs(elapsed: number, delta: number) {
+        npcData.forEach((npc, i) => {
+          npc.timer -= delta;
+          if (npc.timer <= 0) {
+            const homeAngle = Math.atan2(npc.homeX - npc.pos.x, npc.homeZ - npc.pos.z);
+            const distFromHome = Math.sqrt((npc.pos.x-npc.homeX)**2 + (npc.pos.z-npc.homeZ)**2);
+            const bias = distFromHome > npc.wanderRadius ? 0.7 : 0.15;
+            npc.rot = homeAngle * bias + (Math.random()*Math.PI*2) * (1-bias);
+            npc.timer = 2 + Math.random() * 4;
+          }
+      
+          const spd = 0.03;
+          npc.vel.x = -Math.sin(npc.rot) * spd;
+          npc.vel.z = -Math.cos(npc.rot) * spd;
+          npc.pos.add(npc.vel);
+          npc.pos.y = 0.5;
+      
+          npc.group.position.copy(npc.pos);
+          npc.group.position.y = 0.5 + Math.sin(elapsed*1.8 + i)*0.025;
+          npc.group.rotation.y = npc.rot;
+      
+          const sw = Math.sin(elapsed*7 + i*1.5) * 0.28;
+          npc.legs.FL.rotation.x = sw;
+          npc.legs.BR.rotation.x = sw;
+          npc.legs.FR.rotation.x = -sw;
+          npc.legs.BL.rotation.x = -sw;
+        });
+      }
+
+      function getNPCDialogue(name: string): string[] {
+        const lines: Record<string, string[]> = {
+          Ash:    ["I've been here since my first commit.", "Miss a day and I get grumpy."],
+          Coral:  ["The koi pond is my favorite spot.", "Have you seen the bamboo forest?"],
+          Pip:    ["I thrive on consistent commits.", "30-day streak and counting!"],
+          Fang:   ["I guard the village entrance.", "The volcanic lands are dangerous."],
+          Ember:  ["I evolved from an egg last week.", "Feed me commits and I'll grow stronger."],
+          Sage:   ["The bamboo whispers secrets.", "The ruined temple holds ancient code."],
+          Moss:   ["I rarely leave the forest.", "Watch out for the hidden chest."],
+          Gus:    ["Slowest pet, most commits.", "Capybaras never rush."],
+          Mist:   ["The ocean calms me.", "I watch the lighthouse every night."],
+          Tide:   ["I swim between the tidal pools.", "The shipwreck has stories."],
+          Salt:   ["Been here longer than the lighthouse.", "The cliffs keep me company."],
+          Char:   ["I was born near the volcano.", "The lava is warm."],
+          Cinder: ["I glow in the dark.", "Volcanic biome suits my species."],
+          Frost:  ["The aurora is beautiful tonight.", "Ice suits a sabertooth."],
+          Bliz:   ["Tundra wolves are rare.", "I haven't committed in 3 days. I'm cold."],
+        };
+        return lines[name] || ["...", "I have nothing to say."];
+      }
+
+      let nearestNPC: NPCType | null = null;
+      let nearestPeer: { id: string; peer: any } | null = null;
+      let nearestInteractable: any = null;
 
       // ── 3C: Input system ─────────────────────────────────────────────
       const keys3d: Record<string, boolean> = {};
 
-      // Stub — actual PartyKit interaction fired by the existing keyboard
-      // useEffect (E key handler at component level); this just guards UI.
       function triggerNearestInteraction() {
         // Proximity interactions are handled by the socket interval in the
-        // existing PartyKit useEffect — nothing extra needed here.
+        // existing PartyKit useEffect...
       }
 
       const onKeyDown3d = (e: KeyboardEvent) => {
         keys3d[e.code] = true;
-        if (e.code === 'KeyE') triggerNearestInteraction();
-        if (e.code === 'Escape') { activeOverlayRef.current = null; }
+        if (e.code === 'KeyE') {
+          triggerNearestInteraction();
+          if (nearestPeer) {
+            // Handled by PartyKit overlay
+          } else if (nearestNPC) {
+            setNpcDialogue({ name: nearestNPC.name, lines: getNPCDialogue(nearestNPC.name) });
+          } else {
+            // Find interactable again since scope might be stale here
+            let objDist = Infinity;
+            interactables.forEach(obj => {
+              const d = Math.sqrt((player.pos.x - obj.x)**2 + (player.pos.z - obj.z)**2);
+              if (d < 4.0 && d < objDist) { objDist = d; nearestInteractable = obj; }
+            });
+            if (nearestInteractable && objDist < 4.0) {
+              if (nearestInteractable.type === 'tablet') setTabletText(nearestInteractable.meta);
+              else if (nearestInteractable.type === 'chest') setChestLoot(nearestInteractable.meta);
+              else if (nearestInteractable.type === 'campfire') {
+                setShowRest(true);
+                setTimeout(() => setShowRest(false), 4000);
+              }
+            }
+          }
+        }
+        if (e.code === 'Escape') { 
+          activeOverlayRef.current = null;
+          if (mounted.current) setShowPauseMenu(prev => !prev);
+        }
       };
+
       const onKeyUp3d = (e: KeyboardEvent) => { keys3d[e.code] = false; };
       window.addEventListener('keydown', onKeyDown3d);
       window.addEventListener('keyup', onKeyUp3d);
       cleanupFns.current.push(() => {
         window.removeEventListener('keydown', onKeyDown3d);
         window.removeEventListener('keyup', onKeyUp3d);
+        
+        npcData.forEach(npc => {
+          npc.group.traverse((c: any) => {
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) {
+              if (Array.isArray(c.material)) c.material.forEach((m: any) => m.dispose());
+              else c.material.dispose();
+            }
+            scene.remove(npc.group);
+          });
+        });
+        
+        allParticles.forEach(({ mesh }) => {
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) mesh.material.dispose();
+          scene.remove(mesh);
+        });
+
+        if (audioCtx) {
+          audioCtx.close();
+          audioCtx = null;
+        }
       });
 
       // ── 3C: Collision system ─────────────────────────────────────────
@@ -1332,31 +1849,48 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       function updatePlayer(_delta: number) {
-        if (activeOverlayRef.current) return;
-        let moved = false;
+        if (activeOverlayRef.current) {
+          player.vel.multiplyScalar(0.85);
+          player.pos.add(player.vel);
+          playerMesh.group.position.copy(player.pos);
+          return;
+        }
+
+        let accelerating = false;
+        const ACCEL = 0.015;
+        const MAX_SPEED = 0.12;
+        const TURN_SPEED = 0.055;
+        const DAMPING = 0.78;
+
         if (keys3d['KeyW'] || keys3d['ArrowUp']) {
-          player.vel.x -= Math.sin(player.rot) * player.speed;
-          player.vel.z -= Math.cos(player.rot) * player.speed;
-          moved = true;
+          player.vel.x -= Math.sin(player.rot) * ACCEL;
+          player.vel.z -= Math.cos(player.rot) * ACCEL;
+          accelerating = true;
         }
         if (keys3d['KeyS'] || keys3d['ArrowDown']) {
-          player.vel.x += Math.sin(player.rot) * player.speed;
-          player.vel.z += Math.cos(player.rot) * player.speed;
-          moved = true;
+          player.vel.x += Math.sin(player.rot) * ACCEL * 0.6;
+          player.vel.z += Math.cos(player.rot) * ACCEL * 0.6;
+          accelerating = true;
         }
-        if (keys3d['KeyA'] || keys3d['ArrowLeft']) player.rot += 0.045;
-        if (keys3d['KeyD'] || keys3d['ArrowRight']) player.rot -= 0.045;
+        if (keys3d['KeyA'] || keys3d['ArrowLeft']) player.rot += TURN_SPEED;
+        if (keys3d['KeyD'] || keys3d['ArrowRight']) player.rot -= TURN_SPEED;
 
         if (joystickRef.current.active) {
           const { dx, dy } = joystickRef.current;
-          player.vel.x -= Math.sin(player.rot) * player.speed * dy;
-          player.vel.z -= Math.cos(player.rot) * player.speed * dy;
-          player.rot -= dx * 0.04;
-          if (Math.abs(dy) > 0.1) moved = true;
+          player.vel.x -= Math.sin(player.rot) * ACCEL * (-dy);
+          player.vel.z -= Math.cos(player.rot) * ACCEL * (-dy);
+          player.rot -= dx * TURN_SPEED;
+          if (Math.abs(dy) > 0.1) accelerating = true;
         }
 
-        player.isMoving = moved;
-        player.vel.multiplyScalar(0.72);
+        const speed = Math.sqrt(player.vel.x**2 + player.vel.z**2);
+        if (speed > MAX_SPEED) {
+          player.vel.x = (player.vel.x / speed) * MAX_SPEED;
+          player.vel.z = (player.vel.z / speed) * MAX_SPEED;
+        }
+
+        player.vel.multiplyScalar(DAMPING);
+        player.isMoving = speed > 0.005;
 
         const next = player.pos.clone().add(player.vel);
         next.x = Math.max(-95, Math.min(95, next.x));
@@ -1374,16 +1908,33 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       // ── 3D: Camera follow ────────────────────────────────────────────
-      const camPos = new THREE.Vector3(60, 7, -60);
-      const camLook = new THREE.Vector3(60, 2, -75);
+      const camPos = new THREE.Vector3(60, 4, -60);
+      const camLook = new THREE.Vector3(60, 1.5, -75);
+
+      const CAM_HEIGHT = 4.5;
+      const CAM_DISTANCE = 10;
+      const CAM_LERP = 0.08;
+      const CAM_LOOK_LERP = 0.12;
+
+      let headBob = 0;
 
       function updateCamera() {
-        const offset = new THREE.Vector3(0, 7, 14);
-        offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rot);
-        camPos.lerp(player.pos.clone().add(offset), 0.06);
-        const fwd = new THREE.Vector3(0, 1, 3);
-        fwd.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rot);
-        camLook.lerp(player.pos.clone().add(fwd), 0.1);
+        const sinRot = Math.sin(player.rot);
+        const cosRot = Math.cos(player.rot);
+
+        const targetX = player.pos.x + sinRot * CAM_DISTANCE;
+        const targetY = player.pos.y + CAM_HEIGHT + headBob;
+        const targetZ = player.pos.z + cosRot * CAM_DISTANCE;
+
+        camPos.lerp(new THREE.Vector3(targetX, targetY, targetZ), CAM_LERP);
+
+        // Look slightly AHEAD of player, not AT player
+        const lookX = player.pos.x - sinRot * 3;
+        const lookY = player.pos.y + 1.2;
+        const lookZ = player.pos.z - cosRot * 3;
+
+        camLook.lerp(new THREE.Vector3(lookX, lookY, lookZ), CAM_LOOK_LERP);
+
         camera.position.copy(camPos);
         camera.lookAt(camLook);
       }
@@ -1568,8 +2119,6 @@ export function WorldClient({ petState, species }: Props) {
       }, 50);
 
       // ── 4E: Proximity detection (used inside RAF in Part 5) ───────────
-      let nearestPeer: { id: string; peer: any } | null = null;
-
       function detectProximity() {
         let nearestDist = Infinity;
         nearestPeer = null;
@@ -1749,6 +2298,64 @@ export function WorldClient({ petState, species }: Props) {
       let mapFrame = 0;
       let biomeFrame = 0;
 
+      let cinematicPhase = 0;
+      let cinematicTimer = 0;
+      let controlEnabled = false;
+      let waterRippleTime = 0;
+      let ambientTimer = 20;
+
+      function playAmbientSound(biome: string) {
+        if (!audioCtx) return;
+        const createOscillator = (f: number, type: any, vol: number, dur: number) => {
+          if (!audioCtx) return;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type; osc.frequency.value = f;
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          gain.gain.setValueAtTime(0, audioCtx.currentTime);
+          gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+          osc.start(); osc.stop(audioCtx.currentTime + dur);
+        };
+        const sounds: Record<string, () => void> = {
+          CHERRY: () => {
+            [880,1100,1320].forEach((f,i) => {
+              setTimeout(() => createOscillator(f, 'sine', 0.06, 0.12), i * 80);
+            });
+          },
+          BAMBOO: () => createOscillator(220 + Math.random()*80, 'sawtooth', 0.02, 0.8),
+          OCEAN: () => {
+            createOscillator(80 + Math.random()*40, 'sine', 0.08, 1.2);
+            setTimeout(() => createOscillator(100, 'sine', 0.05, 0.8), 300);
+          },
+          VOLCANIC: () => createOscillator(40 + Math.random()*20, 'sine', 0.12, 1.5),
+          TUNDRA: () => createOscillator(160 + Math.random()*40, 'sawtooth', 0.025, 2.0),
+        };
+        sounds[biome]?.();
+      }
+
+      function playFootstep(biome: string) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = biome === 'BAMBOO' ? 220 : 120;
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+      }
+      let footstepTimer = 0;
+
+      setTimeout(() => {
+        controlEnabled = true;
+        if (mounted.current) {
+          setCinematicDone(true);
+          setTimeout(() => {
+            if (mounted.current) setControlsHint(false);
+          }, 10000);
+        }
+      }, 6000);
+
       const tick = () => {
         if (!mounted.current || !effectActive) return;
         rafRef.current = requestAnimationFrame(tick);
@@ -1759,10 +2366,36 @@ export function WorldClient({ petState, species }: Props) {
         mapFrame++;
         biomeFrame++;
 
+        if (!controlEnabled) {
+          cinematicTimer += delta;
+          if (cinematicTimer < 2) {
+            camPos.lerp(new THREE.Vector3(60, 20, 30), 0.02);
+            camLook.lerp(new THREE.Vector3(60, 0, -80), 0.03);
+          } else if (cinematicTimer < 4) {
+            camPos.lerp(new THREE.Vector3(60, 10, -50), 0.025);
+            camLook.lerp(new THREE.Vector3(60, 1, -100), 0.03);
+          } else {
+            camPos.lerp(
+              player.pos.clone().add(new THREE.Vector3(0, 4.5, 10)), 0.04
+            );
+            camLook.lerp(player.pos.clone().add(new THREE.Vector3(0, 1, -3)), 0.05);
+          }
+          camera.position.copy(camPos);
+          camera.lookAt(camLook);
+          
+          renderer.render(scene, camera);
+          return;
+        }
+
         // 1. Player movement + collision
         updatePlayer(delta);
 
         // 2. Camera follow
+        if (player.isMoving) {
+          headBob = Math.sin(elapsed * 9) * 0.08;
+        } else {
+          headBob *= 0.85;
+        }
         updateCamera();
 
         // 3. Player mesh
@@ -1778,17 +2411,61 @@ export function WorldClient({ petState, species }: Props) {
         // 4. Biome lighting every frame (lerp is cheap)
         const currentBiome = getBiome(player.pos.x, player.pos.z);
         updateBiomeLighting(currentBiome as any);
+        raySun.material.opacity = 0.4 + Math.sin(elapsed * 0.3) * 0.15;
 
-        // 5. Biome state for React HUD — throttled to ~2fps
-        if (biomeFrame % 30 === 0 && currentBiome !== biomeStateRef.current) {
+        // 5. Biome state for React HUD + Reveal Animation
+        if (currentBiome !== biomeStateRef.current) {
           biomeStateRef.current = currentBiome;
-          if (mounted.current) setCurrentBiomeState(currentBiome);
+          if (mounted.current) {
+            setCurrentBiomeState(currentBiome);
+            setBiomeFlash(true);
+            setTimeout(() => { if (mounted.current) setBiomeFlash(false); }, 3000);
+          }
         }
 
-        // 6. Peer interpolation + leg animation
-        updatePeers(elapsed);
+        // 6. Audio updates
+        if (player.isMoving) {
+          footstepTimer += delta;
+          if (footstepTimer > 0.38) {
+            playFootstep(currentBiome);
+            footstepTimer = 0;
+          }
+        } else {
+          footstepTimer = 0;
+        }
 
-        // 7. Proximity detection + interact prompt
+        ambientTimer -= delta;
+        if (ambientTimer <= 0 && audioCtx) {
+          ambientTimer = 15 + Math.random() * 25;
+          playAmbientSound(currentBiome);
+        }
+
+        if (koiPondGeo) {
+          waterRippleTime += delta;
+          const wPos = koiPondGeo.attributes.position;
+          for (let i = 0; i < wPos.count; i++) {
+            const wx = wPos.getX(i);
+            const wz = wPos.getZ(i);
+            const ripple = Math.sin(wx*1.5 + waterRippleTime*2) *
+                           Math.cos(wz*1.5 + waterRippleTime*1.8) * 0.04;
+            wPos.setY(i, ripple);
+          }
+          wPos.needsUpdate = true;
+          koiPondGeo.computeVertexNormals();
+        }
+
+        waterMats.forEach((mat, i) => {
+          const h = 0.54 + Math.sin(elapsed*0.8+i*0.7)*0.01;
+          const s = 0.55 + Math.sin(elapsed*0.5+i)*0.05;
+          const l = 0.32 + Math.sin(elapsed*0.9+i*1.3)*0.04;
+          mat.color.setHSL(h, s, l);
+        });
+
+        // 7. Entities update
+        updatePeers(elapsed);
+        updateNPCs(elapsed, delta);
+
+        // 8. Proximity detection (Peers, NPCs, Interactables)
         let nDist = Infinity;
         let nPeer: { id: string; peer: any } | null = null;
         peerMeshes.forEach((peer, id) => {
@@ -1797,11 +2474,41 @@ export function WorldClient({ petState, species }: Props) {
           const d = Math.sqrt(dx * dx + dz * dz);
           if (d < PROXIMITY_RANGE && d < nDist) { nDist = d; nPeer = { id, peer }; }
         });
+        nearestPeer = nPeer;
+
+        let nearestNPCDist = Infinity;
+        nearestNPC = null;
+        npcData.forEach(npc => {
+          const d = player.pos.distanceTo(npc.pos);
+          if (d < 4.0 && d < nearestNPCDist) {
+            nearestNPCDist = d;
+            nearestNPC = npc;
+          }
+        });
+
+        let nearestObj: any = null;
+        let nearestObjDist = Infinity;
+        interactables.forEach(obj => {
+          const d = Math.sqrt((player.pos.x - obj.x)**2 + (player.pos.z - obj.z)**2);
+          if (d < 4.0 && d < nearestObjDist) {
+            nearestObjDist = d;
+            nearestObj = obj;
+          }
+        });
+
         if (mounted.current) {
-          setInteractPrompt(nPeer
-            ? `[ E ]  Challenge @${(nPeer as any).peer.username}`
-            : null
-          );
+          if (nPeer) {
+            setInteractPrompt(`[ E ]  Challenge @${(nPeer as any).peer.username}`);
+          } else if (nearestNPC) {
+            setInteractPrompt(`[ E ]  Talk to ${(nearestNPC as NPCType).name}`);
+          } else if (nearestObj) {
+            if (nearestObj.type === 'tablet') setInteractPrompt('[ E ]  Read Tablet');
+            else if (nearestObj.type === 'chest') setInteractPrompt('[ E ]  Open Chest');
+            else if (nearestObj.type === 'campfire') setInteractPrompt('[ E ]  Rest');
+            else setInteractPrompt('[ E ]  Interact');
+          } else {
+            setInteractPrompt(null);
+          }
         }
 
         // 8. Particles
@@ -1918,16 +2625,11 @@ export function WorldClient({ petState, species }: Props) {
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
         padding: '14px 28px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'rgba(8,6,4,0.65)', backdropFilter: 'blur(14px)',
         borderBottom: '1px solid rgba(240,200,140,0.1)',
+        pointerEvents: 'none', // let clicks pass through to exit button
       }}>
-        <Link href="/" style={{
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: 10, color: '#f0ebe0', textDecoration: 'none',
-          letterSpacing: 2,
-          textShadow: '0 0 20px rgba(255,180,80,0.4)',
-        }}>← GIT-PET</Link>
         <div style={{
           fontFamily: "'DM Mono', monospace", fontWeight: 300,
           fontSize: 11, color: 'rgba(240,235,224,0.45)',
@@ -1935,15 +2637,36 @@ export function WorldClient({ petState, species }: Props) {
         }}>
           {BIOME_NAMES[currentBiomeState] ?? currentBiomeState}
         </div>
-        <Link href="/dashboard" style={{
-          fontFamily: "'Syne', sans-serif", fontWeight: 700,
-          fontSize: 12, letterSpacing: 2, textTransform: 'uppercase',
-          color: '#ffd4a0', textDecoration: 'none',
-          background: 'rgba(181,71,10,0.35)',
-          border: '1px solid rgba(255,180,80,0.3)',
-          padding: '8px 18px',
-        }}>My Pet →</Link>
       </nav>
+
+      {/* Exit World button — top left, always visible */}
+      <div style={{
+        position: 'fixed', top: 16, left: 16, zIndex: 50,
+        display: 'flex', gap: 8,
+      }}>
+        <a href="/" style={{
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: 8, color: '#ffd4a0', textDecoration: 'none',
+          background: 'rgba(20,14,8,0.88)',
+          border: '1px solid rgba(240,200,140,0.3)',
+          backdropFilter: 'blur(10px)',
+          padding: '10px 16px',
+          letterSpacing: 1,
+          display: 'flex', alignItems: 'center', gap: 8,
+          transition: 'border-color 0.2s',
+        }}>
+          ← EXIT WORLD
+        </a>
+        <a href="/dashboard" style={{
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: 8, color: '#f0ebe0', textDecoration: 'none',
+          background: 'rgba(181,71,10,0.45)',
+          border: '1px solid rgba(255,180,80,0.4)',
+          backdropFilter: 'blur(10px)',
+          padding: '10px 16px',
+          letterSpacing: 1,
+        }}>MY PET →</a>
+      </div>
 
       {/* Player info panel — top left */}
       <div style={{
@@ -2023,16 +2746,18 @@ export function WorldClient({ petState, species }: Props) {
       )}
 
       {/* Controls hint */}
-      <div style={{
-        position: 'fixed', bottom: 24, left: '50%',
-        transform: 'translateX(-50%)',
-        fontFamily: "'DM Mono', monospace", fontWeight: 300,
-        fontSize: 9, color: 'rgba(240,235,224,0.3)',
-        letterSpacing: 2, textTransform: 'uppercase',
-        pointerEvents: 'none', zIndex: 15, whiteSpace: 'nowrap',
-      }}>
-        WASD · MOVE &nbsp;·&nbsp; A/D · TURN &nbsp;·&nbsp; E · INTERACT
-      </div>
+      {controlsHint && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%',
+          transform: 'translateX(-50%)',
+          fontFamily: "'DM Mono', monospace", fontWeight: 300,
+          fontSize: 9, color: 'rgba(240,235,224,0.3)',
+          letterSpacing: 2, textTransform: 'uppercase',
+          pointerEvents: 'none', zIndex: 15, whiteSpace: 'nowrap',
+        }}>
+          WASD · MOVE &nbsp;·&nbsp; A/D · TURN &nbsp;·&nbsp; E · INTERACT
+        </div>
+      )}
 
       {/* Minimap */}
       <canvas ref={minimapRef} width={140} height={140}
@@ -2075,6 +2800,32 @@ export function WorldClient({ petState, species }: Props) {
             border: '1px solid rgba(240,235,224,0.35)',
             pointerEvents: 'none',
           }} />
+        </div>
+      )}
+
+      {/* Opening cinematic fade */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: '#000',
+        opacity: cinematicDone ? 0 : 1,
+        transition: 'opacity 2s ease',
+        pointerEvents: cinematicDone ? 'none' : 'all',
+      }} />
+      {!cinematicDone && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 81,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 12, pointerEvents: 'none',
+        }}>
+          <div style={{
+            fontFamily: "'Instrument Serif', serif",
+            fontStyle: 'italic',
+            fontSize: 'clamp(18px,3vw,32px)',
+            color: 'rgba(240,235,224,0.8)',
+            animation: 'floatBob 4s ease 1s both',
+          }}>
+            Enter the world.
+          </div>
         </div>
       )}
 
@@ -2164,8 +2915,194 @@ export function WorldClient({ petState, species }: Props) {
           style={{ position: 'absolute', inset: 0, zIndex: 100 }} />
       )}
 
+      {/* NPC Dialogue Overlay */}
+      {npcDialogue && (
+        <div style={{
+          position: 'fixed', bottom: 80, left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 40, width: 480,
+          background: 'rgba(20,14,8,0.94)',
+          border: '1px solid rgba(240,200,140,0.25)',
+          backdropFilter: 'blur(12px)',
+          padding: '20px 28px',
+        }}>
+          <div style={{
+            fontFamily: "'Press Start 2P', monospace",
+            fontSize: 8, color: '#ffd4a0', marginBottom: 12,
+          }}>
+            {npcDialogue.name.toUpperCase()}
+          </div>
+          <div style={{
+            fontFamily: "'DM Mono', monospace", fontWeight: 300,
+            fontSize: 14, color: '#f0ebe0', lineHeight: 1.7,
+            marginBottom: 16,
+          }}>
+            {npcDialogue.lines[dialogueLine]}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            {dialogueLine < npcDialogue.lines.length - 1 ? (
+              <button onClick={() => setDialogueLine(d => d+1)} style={{
+                fontFamily: "'DM Mono', monospace", fontSize: 11,
+                color: '#ffd4a0', background: 'none',
+                border: '1px solid rgba(240,200,140,0.3)',
+                padding: '6px 16px', cursor: 'pointer',
+              }}>Next →</button>
+            ) : (
+              <button onClick={() => {
+                setNpcDialogue(null); setDialogueLine(0)
+              }} style={{
+                fontFamily: "'DM Mono', monospace", fontSize: 11,
+                color: '#ffd4a0', background: 'none',
+                border: '1px solid rgba(240,200,140,0.3)',
+                padding: '6px 16px', cursor: 'pointer',
+              }}>Close ✕</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pause Menu */}
+      {showPauseMenu && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          background: 'rgba(8,6,4,0.85)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'rgba(20,14,8,0.96)',
+            border: '1px solid rgba(240,200,140,0.2)',
+            padding: '52px 64px',
+            textAlign: 'center',
+            display: 'flex', flexDirection: 'column', gap: 16,
+          }}>
+            <div style={{
+              fontFamily: "'Press Start 2P', monospace",
+              fontSize: 14, color: '#ffd4a0', marginBottom: 24,
+              letterSpacing: 2,
+            }}>PAUSED</div>
+            {[
+              { label: 'Resume',      action: () => setShowPauseMenu(false), primary: true },
+              { label: 'My Pet',      action: () => window.location.href = '/dashboard' },
+              { label: 'Exit World',  action: () => window.location.href = '/' },
+            ].map(btn => (
+              <button key={btn.label} onClick={btn.action} style={{
+                fontFamily: "'Syne', sans-serif", fontWeight: 700,
+                fontSize: 13, letterSpacing: 2, textTransform: 'uppercase',
+                background: btn.primary ? 'rgba(181,71,10,0.5)' : 'rgba(240,235,224,0.06)',
+                border: `1px solid ${btn.primary ? 'rgba(255,180,80,0.5)' : 'rgba(240,235,224,0.15)'}`,
+                color: btn.primary ? '#ffd4a0' : 'rgba(240,235,224,0.6)',
+                padding: '14px 48px', cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}>
+                {btn.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {biomeFlash && (
+        <div style={{
+          position: 'fixed', top: '50%', left: '50%',
+          transform: 'translate(-50%,-50%)',
+          zIndex: 25, textAlign: 'center',
+          pointerEvents: 'none',
+          animation: 'biomeReveal 3s ease forwards',
+        }}>
+          <div style={{
+            fontFamily: "'DM Mono', monospace", fontWeight: 300,
+            fontSize: 11, color: 'rgba(240,235,224,0.5)',
+            letterSpacing: 4, textTransform: 'uppercase',
+            marginBottom: 8,
+          }}>Entering</div>
+          <div style={{
+            fontFamily: "'Instrument Serif', serif",
+            fontStyle: 'italic',
+            fontSize: 'clamp(28px,5vw,56px)',
+            color: '#f0ebe0',
+            textShadow: '0 0 40px rgba(240,180,80,0.4)',
+          }}>
+            {({
+              CHERRY: 'Cherry Village',
+              BAMBOO: 'Bamboo Forest',
+              OCEAN: 'Ocean Cliffs',
+              VOLCANIC: 'Volcanic Badlands',
+              TUNDRA: 'Frozen Tundra',
+            } as Record<string,string>)[currentBiomeState]}
+          </div>
+        </div>
+      )}
+
+      {tabletText && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 90,
+          background: 'rgba(5,5,5,0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            maxWidth: 600, padding: 40, border: '1px solid #444',
+            background: 'rgba(20,20,20,0.95)', color: '#eaeaea',
+            fontFamily: "'Syne', sans-serif", fontSize: 24, textAlign: 'center',
+            lineHeight: 1.5,
+          }}>
+            <p>{tabletText}</p>
+            <button onClick={() => setTabletText(null)} style={{
+              marginTop: 30, padding: '10px 20px', background: 'transparent',
+              color: '#888', border: '1px solid #555', cursor: 'pointer',
+              fontFamily: "'DM Mono', monospace",
+            }}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {chestLoot && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 90,
+          background: 'rgba(5,5,5,0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            maxWidth: 400, padding: 40, border: '2px solid #8B6914',
+            background: 'linear-gradient(180deg, #2a2212 0%, #111 100%)', color: '#ffcc00',
+            fontFamily: "'Press Start 2P', monospace", fontSize: 14, textAlign: 'center',
+            lineHeight: 1.8,
+            boxShadow: '0 0 40px rgba(255,180,0,0.2)',
+          }}>
+            <p style={{ color: 'white', marginBottom: 20 }}>Found Loot!</p>
+            <p style={{ fontSize: 18 }}>{chestLoot}</p>
+            <button onClick={() => setChestLoot(null)} style={{
+              marginTop: 30, padding: '10px 20px', background: '#8B6914',
+              color: '#fff', border: 'none', cursor: 'pointer',
+              fontFamily: "'DM Mono', monospace",
+            }}>Take</button>
+          </div>
+        </div>
+      )}
+
+      {showRest && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'black',
+          animation: 'fadeInOutRest 4s ease forwards',
+          pointerEvents: 'none',
+        }} />
+      )}
+
       {/* Keyframe animations */}
       <style>{`
+        @keyframes biomeReveal {
+          0%   { opacity:0; transform:translate(-50%,-50%) scale(0.9) }
+          15%  { opacity:1; transform:translate(-50%,-50%) scale(1) }
+          70%  { opacity:1; transform:translate(-50%,-50%) scale(1) }
+          100% { opacity:0; transform:translate(-50%,-50%) scale(1.05) }
+        }
+        @keyframes fadeInOutRest {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
         @keyframes grain {
           0%,100%{transform:translate(0,0)} 25%{transform:translate(-2px,1px)}
           50%{transform:translate(2px,-1px)} 75%{transform:translate(-1px,2px)}
