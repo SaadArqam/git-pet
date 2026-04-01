@@ -522,51 +522,11 @@ export function WorldClient({ petState, species }: Props) {
 
       const scene = new THREE.Scene();
       
-      // Fog — thick warm haze for distance blending
-      const sceneFog = new THREE.FogExp2(0xd4805c, 0.007);
-      scene.fog = sceneFog;
-      
-      // Sky dome — gradient from deep blue zenith to warm amber horizon
-      const skyGeo = new THREE.SphereGeometry(180, 32, 16);
-      const skyMat = new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        uniforms: {
-          topColor: { value: new THREE.Color(0x1d2c4d) },
-          horizonColor: { value: new THREE.Color(0xda6f2d) },
-          groundColor: { value: new THREE.Color(0x2d3a22) },
-          exponent: { value: 0.6 },
-        },
-        vertexShader: `
-          varying vec3 vWorldPosition;
-          void main() {
-            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-            vWorldPosition = worldPosition.xyz;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform vec3 topColor;
-          uniform vec3 horizonColor;
-          uniform vec3 groundColor;
-          uniform float exponent;
-          varying vec3 vWorldPosition;
-          void main() {
-            float h = normalize(vWorldPosition).y;
-            vec3 sky = mix(horizonColor, topColor, max(pow(max(h, 0.0), exponent), 0.0));
-            vec3 final = mix(groundColor, sky, step(0.0, h));
-            gl_FragColor = vec4(final, 1.0);
-          }
-        `,
-      });
-      scene.add(new THREE.Mesh(skyGeo, skyMat));
-      // Store uniform refs for biome animation
-      const skyUniforms = skyMat.uniforms;
-
-      // Remove scene.background color — let sky dome handle it
-      scene.background = null;
+      scene.fog = new THREE.FogExp2(0xb8cce0, 0.018);
+      scene.background = new THREE.Color(0x87b4d0);
 
       const camera = new THREE.PerspectiveCamera(
-        75, window.innerWidth / window.innerHeight, 0.1, 200
+        60, window.innerWidth / window.innerHeight, 0.1, 120
       );
       camera.position.set(60, 7, 0);
       camera.lookAt(60, 2, -20);
@@ -589,55 +549,30 @@ export function WorldClient({ petState, species }: Props) {
         return 'CHERRY'; // Hardcode biome name to avoid breaking audio handlers
       }
 
-      // 1D ── Core Lighting (Golden Hour Fixed) ──────────────────
-      // SUN — low angle, hard shadows, intense golden bloom
-      const sun = new THREE.DirectionalLight(0xffb855, 3.8);
-      sun.position.set(80, 50, 60);
+      // 1D ── Core Lighting (Match Landing)
+      const sun = new THREE.DirectionalLight(0xffd4a0, 2.4);
+      sun.position.set(20, 40, 10);
       sun.castShadow = true;
-      sun.shadow.mapSize.width = 4096;
-      sun.shadow.mapSize.height = 4096;
+      sun.shadow.mapSize.width = 2048;
+      sun.shadow.mapSize.height = 2048;
       sun.shadow.camera.near = 1;
-      sun.shadow.camera.far = 250;
-      sun.shadow.camera.left = -60;
-      sun.shadow.camera.right = 60;
+      sun.shadow.camera.far = 120;
+      sun.shadow.camera.left = -80;
+      sun.shadow.camera.right = 80;
       sun.shadow.camera.top = 80;
       sun.shadow.camera.bottom = -80;
-      sun.shadow.bias = -0.0005;
-      sun.shadow.radius = 2.5; 
+      sun.shadow.bias = -0.001;
       scene.add(sun);
 
-      // FILL — rich blue/purple sky bounce
-      const fillLight = new THREE.DirectionalLight(0x5a6a9a, 0.5);
-      fillLight.position.set(-60, 30, -40);
+      const fillLight = new THREE.DirectionalLight(0x9bb8d4, 0.7);
+      fillLight.position.set(-20, 15, -10);
       scene.add(fillLight);
 
-      // AMBIENT — deep warm ambient to prevent black shadows
-      const ambientLight = new THREE.AmbientLight(0x2d1a08, 0.9);
+      const ambientLight = new THREE.AmbientLight(0xffe8c0, 0.55);
       scene.add(ambientLight);
 
-      // HEMISPHERE — massive contrast maker for open voxel maps
-      const hemiLight = new THREE.HemisphereLight(0xda6f2d, 0x10180a, 0.7);
+      const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.45);
       scene.add(hemiLight);
-
-      // Fake god rays sprite
-      const rayCanvas = document.createElement('canvas');
-      rayCanvas.width = 256; rayCanvas.height = 256;
-      const rctx = rayCanvas.getContext('2d')!;
-      const gradient = rctx.createRadialGradient(128,128,0, 128,128,128);
-      gradient.addColorStop(0, 'rgba(255,180,80,0.45)');
-      gradient.addColorStop(0.3, 'rgba(255,140,40,0.18)');
-      gradient.addColorStop(1, 'rgba(255,120,20,0)');
-      rctx.fillStyle = gradient;
-      rctx.fillRect(0,0,256,256);
-      const rayTex = new THREE.CanvasTexture(rayCanvas);
-      const rayMat = new THREE.SpriteMaterial({
-        map: rayTex, transparent: true, opacity: 0.8,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-      });
-      const raySun = new THREE.Sprite(rayMat);
-      raySun.scale.set(160, 160, 1);
-      raySun.position.set(120, 80, 80);
-      scene.add(raySun);
 
       // 1E ── core helpers ───────────────────────────────────────
       function darken(hex: string, f: number): string {
@@ -761,67 +696,23 @@ export function WorldClient({ petState, species }: Props) {
       void biomeStateRef; void joystickRef; void activeOverlayRef;
       void frameRef; void petFramesRef; void size; void inspecting;
 
-      // ── 2A: Heightmap Ground with Elevation ────────────────────────────
-      // Ground with soft, focused garden elevation
-      const GSIZE = 160;
-      const GSEGS = 120;
+      // ── 2A: Flat Ground Plane ────────────────────────────
+      // Ground flat plane matching landing aesthetics but scaled up
+      const GSIZE = 400;
+      const GSEGS = 80;
       const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEGS, GSEGS);
       groundGeo.rotateX(-Math.PI / 2);
 
-      const gPos = groundGeo.attributes.position;
-      for (let i = 0; i < gPos.count; i++) {
-        const x = gPos.getX(i);
-        const z = gPos.getZ(i);
-
-        // Soft rolling hills instead of harsh noise
-        const h1 = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 1.5;
-        const h2 = Math.sin(x * 0.15 + 2.0) * Math.cos(z * 0.12) * 0.3;
-        let height = h1 + h2;
-
-        // Flatten the central path precisely
-        const distFromPath = Math.abs(x);
-        if (distFromPath < 10) {
-          height *= (distFromPath / 10); // Smooth blend into path
-        }
-        
-        // Flatten the shrine area
-        if (z < -20 && z > -60 && Math.abs(x) < 20) {
-          height *= 0.1;
-        }
-
-        // Slightly raise the pond area (so we can dip it natively)
-        // Actually pond is made of planar water, so keep it flat there.
-        if (x > 10 && x < 30 && z > -25 && z < 0) {
-          height -= 0.5; // Dig a shallow basin
-        }
-
-        gPos.setY(i, height);
+      const groundColors: number[] = [];
+      const groundPos = groundGeo.attributes.position;
+      for (let i = 0; i < groundPos.count; i++) {
+        const gx = groundPos.getX(i), gz = groundPos.getZ(i);
+        const n = Math.sin(gx * 2.3) * Math.cos(gz * 1.9);
+        if (n > 0.2) groundColors.push(0.28, 0.54, 0.22);
+        else if (n > -0.2) groundColors.push(0.32, 0.60, 0.26);
+        else groundColors.push(0.26, 0.50, 0.20);
       }
-      groundGeo.computeVertexNormals();
-
-      // Unified garden ground colors
-      const gColors: number[] = [];
-      for (let i = 0; i < gPos.count; i++) {
-        const x = gPos.getX(i);
-        const z = gPos.getZ(i);
-        const y = gPos.getY(i);
-        const noise = (Math.sin(x*2.1)*Math.cos(z*2.2) + 1) * 0.5;
-
-        // Rich mossy green palette
-        const cols = [[0.18,0.30,0.12], [0.22,0.35,0.16], [0.26,0.40,0.20], [0.15,0.28,0.10]];
-        const idx = noise < 0.25 ? 0 : noise < 0.5 ? 1 : noise < 0.75 ? 2 : 3;
-        const col = cols[idx]!;
-
-        // Add subtle path coloring immediately under the path (dirt base)
-        if (Math.abs(x) < 4 && z > -40 && z < 40) {
-           col[0] = 0.35; col[1] = 0.28; col[2] = 0.20; // warm dirt
-        }
-
-        const heightFactor = Math.max(0, Math.min(1, (y + 1) / 3));
-        const darkFactor = 0.6 + heightFactor * 0.5;
-        gColors.push(col[0]*darkFactor, col[1]*darkFactor, col[2]*darkFactor);
-      }
-      groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(gColors, 3));
+      groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(groundColors, 3));
 
       const groundMat = new THREE.MeshLambertMaterial({
         vertexColors: true,
@@ -830,124 +721,9 @@ export function WorldClient({ petState, species }: Props) {
       groundMesh.receiveShadow = true;
       scene.add(groundMesh);
 
-      // ── 2B: Terrain border cliffs ──────────────────────────────────────
-      function buildCliffWall(
-        startX: number, startZ: number,
-        endX: number, endZ: number,
-        height: number, color: number
-      ) {
-        const steps = Math.floor(
-          Math.sqrt((endX-startX)**2 + (endZ-startZ)**2)
-        );
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
-          const cx = startX + (endX-startX)*t;
-          const cz = startZ + (endZ-startZ)*t;
-          const h = height + Math.sin(i*0.4)*2 + Math.random()*1.5;
-          for (let ch = 0; ch < h; ch++) {
-            const jitter = (Math.random()-0.5)*0.8;
-            vox(cx+jitter, -(ch*0.5)+0.25, cz, color, 1.2, 0.5, 1.2);
-          }
-        }
-      }
-
-      // Dark stone cliffs framing the world
-      buildCliffWall(-100,  -140, 100, -140, 12, 0x3a3028);  // far north
-      buildCliffWall(-100,   100,-100, -140, 10, 0x3a3028);  // west
-      buildCliffWall( 100,   100, 100, -140, 10, 0x3a3028);  // east
-
-      // ── 2C: Scattered rocks and boulders ───────────────────────────────
-      function buildBoulder(x: number, z: number, size: number, col: number) {
-        // Main boulder body — multiple offset voxels for organic look
-        vox(x, size*0.4, z, col, size, size*0.8, size, true);
-        vox(x+size*0.3, size*0.3, z-size*0.2, col, size*0.7, size*0.6, size*0.7, true);
-        vox(x-size*0.2, size*0.25, z+size*0.3, col, size*0.6, size*0.5, size*0.6, true);
-        // Moss on top
-        vox(x, size*0.8+0.1, z, 0x3a5a2a, size*0.7, 0.15, size*0.7);
-      }
-
-      // Cherry biome boulders
-      [[22,-25],[88,-45],[38,-65],[75,-72],[15,-55],[92,-30]].forEach(([bx,bz]) => {
-        buildBoulder(bx, bz, 1.5+Math.random()*2, 0x6a6058);
-      });
-      // Bamboo biome boulders (more mossy)
-      [[15,25],[80,60],[45,85],[70,35],[30,70]].forEach(([bx,bz]) => {
-        buildBoulder(bx, bz, 1.2+Math.random()*2.5, 0x5a6050);
-      });
-      // Volcanic obsidian boulders (black, sharp)
-      [[-30,-30],[-75,-55],[-45,-75],[-85,-25],[-20,-85]].forEach(([bx,bz]) => {
-        buildBoulder(bx, bz, 2+Math.random()*3, 0x1a0a18);
-      });
-      // Ocean cliff rocks
-      [[-85,15],[-72,45],[-88,70],[-80,90]].forEach(([bx,bz]) => {
-        buildBoulder(bx, bz, 2+Math.random()*4, 0x5a6068);
-      });
-      // Tundra ice boulders
-      [[15,-108],[-25,-118],[35,-125],[-10,-132]].forEach(([bx,bz]) => {
-        const m = vox(bx, 1.2, bz, 0x88aacc, 2.5, 2, 2.5, true);
-        m.material.transparent = true; m.material.opacity = 0.8;
-      });
-
-      // ── 2D: Plateau / cliff formations ─────────────────────────────────
-      function buildPlateau(
-        cx: number, cz: number,
-        w: number, d: number, h: number, col: number
-      ) {
-        // Cliff face
-        for (let ch = 0; ch < h; ch++) {
-          for (let px = -w/2; px <= w/2; px++) {
-            for (let pz = -d/2; pz <= d/2; pz++) {
-              const isEdge = Math.abs(px)>w/2-1 || Math.abs(pz)>d/2-1;
-              if (!isEdge && ch < h-1) continue;
-              const jitter = isEdge ? (Math.random()-0.5)*0.3 : 0;
-              vox(cx+px+jitter, ch*0.8, cz+pz, ch===h-1 ? 0x3a5a2a : col, 1,0.8,1);
-            }
-          }
-        }
-      }
-
-      // Cherry biome: small hill with viewpoint
-      buildPlateau(25, -60, 10, 8, 6, 0x5a5048);
-      // Bamboo biome: ruined plateau the temple sits on
-      buildPlateau(50, 50, 14, 10, 5, 0x6a6458);
-      // Ocean biome: lighthouse cliff
-      buildPlateau(-68, 20, 8, 8, 8, 0x5a6068);
-      // Volcanic: obsidian mesa
-      buildPlateau(-30, -20, 20, 14, 10, 0x1a0a18);
-
-      // ── 2E: Grass tufts and ground detail ──────────────────────────────
-      function spawnGrassTufts(
-        cx: number, cz: number, radius: number,
-        count: number, col: number
-      ) {
-        for (let i = 0; i < count; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const r = Math.random() * radius;
-          const gx = cx + Math.cos(a) * r;
-          const gz = cz + Math.sin(a) * r;
-          const h = 0.4 + Math.random() * 0.6;
-          vox(gx, h/2, gz, col, 0.12, h, 0.12);
-          vox(gx+0.15, h/2, gz+0.1, col, 0.1, h*0.8, 0.1);
-        }
-      }
-
-      // Cherry village surroundings
-      spawnGrassTufts(45, -50, 15, 80, 0x3a6a28);
-      spawnGrassTufts(75, -40, 12, 60, 0x3a6a28);
-      // Bamboo understory
-      spawnGrassTufts(40, 40, 20, 120, 0x2a5a1a);
-      // Ocean cliffs
-      spawnGrassTufts(-60, 60, 15, 50, 0x3a5a28);
-
-      // Flowers (tiny colored dots)
-      const flowerColors = [0xffaa00, 0xff6688, 0xffffff, 0xaa66ff, 0xff4444];
-      for (let f = 0; f < 200; f++) {
-        const fx = (Math.random()-0.5)*80 + 50;
-        const fz = -90 + Math.random()*80;
-        if (Math.abs(fx-60) < 3) continue; // skip path
-        vox(fx, 0.3, fz, 0x2a4a1a, 0.1, 0.3, 0.1); // stem
-        vox(fx, 0.5, fz, flowerColors[Math.floor(Math.random()*5)]!, 0.25, 0.15, 0.25); // bloom
-      }
+      // ── 2B: Visual Noise Removed ──────────────────────────────────────
+      // No extra cliffs, boulders, grass tufts, or scattered flowers.
+      // Keeping it clean and structurally simple to match the landing page.
 
 
       // ── 2B: Shared building helpers ────────────────────────────────────
@@ -1618,13 +1394,13 @@ export function WorldClient({ petState, species }: Props) {
       const camPos = new THREE.Vector3(0, 5.2, 42);
       const camLook = new THREE.Vector3(0, 1.5, 27);
 
-      const CAM_HEIGHT = 5.2;
-      const CAM_DISTANCE = 12;
-      const CAM_LERP = 0.08;
-      const CAM_LOOK_LERP = 0.12;
+      const CAM_HEIGHT = 7.0;
+      const CAM_DISTANCE = 14.0;
+      const CAM_LERP = 0.065;
+      const CAM_LOOK_LERP = 0.1;
 
       let headBob = 0;
-      let currentFov = 75;
+      let currentFov = 60;
 
       function updateCamera() {
         const sinRot = Math.sin(player.rot);
@@ -1646,7 +1422,7 @@ export function WorldClient({ petState, species }: Props) {
         camera.position.copy(camPos);
         camera.lookAt(camLook);
         
-        const targetFov = 75 + (player.isMoving ? 3 : 0);
+        const targetFov = 60 + (player.isMoving ? 3 : 0);
         if (Math.abs(currentFov - targetFov) > 0.1) {
           currentFov += (targetFov - currentFov) * 0.05;
           camera.fov = currentFov;
@@ -2152,7 +1928,6 @@ export function WorldClient({ petState, species }: Props) {
 
         // 4. Update simple world effects
         const currentBiome = getBiome(player.pos.x, player.pos.z);
-        raySun.material.opacity = 0.6 + Math.sin(elapsed * 0.2) * 0.15;
 
         // 5. Biome state for React HUD + Reveal Animation
         if (currentBiome !== biomeStateRef.current) {
