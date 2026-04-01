@@ -522,8 +522,8 @@ export function WorldClient({ petState, species }: Props) {
 
       const scene = new THREE.Scene();
       
-      // Fog — much denser than before, creates depth
-      const sceneFog = new THREE.FogExp2(0xc8a882, 0.008);
+      // Fog — thick warm haze for distance blending
+      const sceneFog = new THREE.FogExp2(0xd4805c, 0.007);
       scene.fog = sceneFog;
       
       // Sky dome — gradient from deep blue zenith to warm amber horizon
@@ -531,10 +531,10 @@ export function WorldClient({ petState, species }: Props) {
       const skyMat = new THREE.ShaderMaterial({
         side: THREE.BackSide,
         uniforms: {
-          topColor: { value: new THREE.Color(0x0a1628) },    // deep midnight blue
-          horizonColor: { value: new THREE.Color(0xd4601a) }, // burnt amber horizon
-          groundColor: { value: new THREE.Color(0x1a2410) },  // dark earth
-          exponent: { value: 0.5 },
+          topColor: { value: new THREE.Color(0x1d2c4d) },
+          horizonColor: { value: new THREE.Color(0xda6f2d) },
+          groundColor: { value: new THREE.Color(0x2d3a22) },
+          exponent: { value: 0.6 },
         },
         vertexShader: `
           varying vec3 vWorldPosition;
@@ -581,130 +581,63 @@ export function WorldClient({ petState, species }: Props) {
 
       // 1C ── world constants ────────────────────────────────────
       const WORLD_SIZE = 200;
-      const SPAWN = new THREE.Vector3(60, 0.5, -20);
+      const SPAWN = new THREE.Vector3(0, 0.5, 30); // Spawn at south end of path
       const PROXIMITY_RANGE = 6.0;
 
-      const BIOMES = {
-        CHERRY:   { minX:   0, maxX: 100, minZ: -100, maxZ:   0 },
-        BAMBOO:   { minX:   0, maxX: 100, minZ:    0, maxZ: 100 },
-        OCEAN:    { minX:-100, maxX:   0, minZ:    0, maxZ: 100 },
-        VOLCANIC: { minX:-100, maxX:   0, minZ: -100, maxZ:   0 },
-        TUNDRA:   { minX: -50, maxX:  50, minZ: -100, maxZ:-140 },
-      };
-      const BIOME_SKY_CONFIGS = {
-        CHERRY: {
-          top:     new THREE.Color(0x0a1628),
-          horizon: new THREE.Color(0xd4601a),
-          fog:     new THREE.Color(0xc8a882),
-          fogDensity: 0.008,
-        },
-        BAMBOO: {
-          top:     new THREE.Color(0x0a1a0a),
-          horizon: new THREE.Color(0x4a7a3a),
-          fog:     new THREE.Color(0x6a9a5a),
-          fogDensity: 0.020,
-        },
-        OCEAN: {
-          top:     new THREE.Color(0x061428),
-          horizon: new THREE.Color(0x1a4a8a),
-          fog:     new THREE.Color(0x4a6a9a),
-          fogDensity: 0.012,
-        },
-        VOLCANIC: {
-          top:     new THREE.Color(0x0a0402),
-          horizon: new THREE.Color(0x8a1a04),
-          fog:     new THREE.Color(0x4a1a08),
-          fogDensity: 0.018,
-        },
-        TUNDRA: {
-          top:     new THREE.Color(0x080c18),
-          horizon: new THREE.Color(0x6a8aaa),
-          fog:     new THREE.Color(0xb0c8d8),
-          fogDensity: 0.010,
-        },
-      };
-
-      const BIOME_LIGHTS = {
-        CHERRY:   { sunColor: 0xffb347, sunInt: 3.2, ambColor: 0x1a1408, ambInt: 0.8, hemiSky: 0xd4601a, hemiGnd: 0x1a2410 },
-        BAMBOO:   { sunColor: 0x88cc66, sunInt: 2.0, ambColor: 0x0a1208, ambInt: 1.0, hemiSky: 0x4a7a3a, hemiGnd: 0x1a2a10 },
-        OCEAN:    { sunColor: 0x6699cc, sunInt: 2.4, ambColor: 0x080c14, ambInt: 0.7, hemiSky: 0x1a4a8a, hemiGnd: 0x0a1a28 },
-        VOLCANIC: { sunColor: 0xff3300, sunInt: 1.8, ambColor: 0x140804, ambInt: 1.2, hemiSky: 0x8a1a04, hemiGnd: 0x200808 },
-        TUNDRA:   { sunColor: 0x99bbdd, sunInt: 1.2, ambColor: 0x080c12, ambInt: 1.4, hemiSky: 0x6a8aaa, hemiGnd: 0xc0d8e8 },
-      };
-      function getBiome(x: number, z: number): keyof typeof BIOMES {
-        if (z < -80) return 'TUNDRA';
-        if (x < 0 && z < 0) return 'VOLCANIC';
-        if (x < 0 && z >= 0) return 'OCEAN';
-        if (x >= 0 && z >= 0) return 'BAMBOO';
-        return 'CHERRY';
+      // 1C ── Single Layout Mode ─────────────────────────────────
+      function getBiome(x: number, z: number) {
+        return 'CHERRY'; // Hardcode biome name to avoid breaking audio handlers
       }
 
-      // 1D ── lighting ───────────────────────────────────────────
-      // SUN — low angle, hard shadows, golden
-      const sun = new THREE.DirectionalLight(0xffb347, 3.2);
-      sun.position.set(80, 60, 30);
+      // 1D ── Core Lighting (Golden Hour Fixed) ──────────────────
+      // SUN — low angle, hard shadows, intense golden bloom
+      const sun = new THREE.DirectionalLight(0xffb855, 3.8);
+      sun.position.set(80, 50, 60);
       sun.castShadow = true;
-      sun.shadow.mapSize.width = 4096;  // higher res shadows
+      sun.shadow.mapSize.width = 4096;
       sun.shadow.mapSize.height = 4096;
       sun.shadow.camera.near = 1;
       sun.shadow.camera.far = 250;
-      sun.shadow.camera.left = -100;
-      sun.shadow.camera.right = 100;
-      sun.shadow.camera.top = 100;
-      sun.shadow.camera.bottom = -100;
+      sun.shadow.camera.left = -60;
+      sun.shadow.camera.right = 60;
+      sun.shadow.camera.top = 80;
+      sun.shadow.camera.bottom = -80;
       sun.shadow.bias = -0.0005;
-      sun.shadow.radius = 2;    // soft shadow edges
+      sun.shadow.radius = 2.5; 
       scene.add(sun);
 
-      // FILL — cool blue sky bounce, opposite side
-      const fillLight = new THREE.DirectionalLight(0x4a6a9a, 0.4);
+      // FILL — rich blue/purple sky bounce
+      const fillLight = new THREE.DirectionalLight(0x5a6a9a, 0.5);
       fillLight.position.set(-60, 30, -40);
       scene.add(fillLight);
 
-      // AMBIENT — very low, forces shadows to be dark not black
-      const ambientLight = new THREE.AmbientLight(0x1a1408, 0.8);
+      // AMBIENT — deep warm ambient to prevent black shadows
+      const ambientLight = new THREE.AmbientLight(0x2d1a08, 0.9);
       scene.add(ambientLight);
 
-      // HEMISPHERE — strong contrast between sky and ground
-      const hemiLight = new THREE.HemisphereLight(0xd4601a, 0x1a2410, 0.6);
+      // HEMISPHERE — massive contrast maker for open voxel maps
+      const hemiLight = new THREE.HemisphereLight(0xda6f2d, 0x10180a, 0.7);
       scene.add(hemiLight);
 
-      // Fake god rays — large sprite at sun position
+      // Fake god rays sprite
       const rayCanvas = document.createElement('canvas');
       rayCanvas.width = 256; rayCanvas.height = 256;
       const rctx = rayCanvas.getContext('2d')!;
       const gradient = rctx.createRadialGradient(128,128,0, 128,128,128);
-      gradient.addColorStop(0, 'rgba(255,180,80,0.35)');
-      gradient.addColorStop(0.3, 'rgba(255,140,40,0.15)');
+      gradient.addColorStop(0, 'rgba(255,180,80,0.45)');
+      gradient.addColorStop(0.3, 'rgba(255,140,40,0.18)');
       gradient.addColorStop(1, 'rgba(255,120,20,0)');
       rctx.fillStyle = gradient;
       rctx.fillRect(0,0,256,256);
       const rayTex = new THREE.CanvasTexture(rayCanvas);
       const rayMat = new THREE.SpriteMaterial({
-        map: rayTex, transparent: true, opacity: 0.6,
+        map: rayTex, transparent: true, opacity: 0.8,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
       const raySun = new THREE.Sprite(rayMat);
-      raySun.scale.set(120, 120, 1);
-      raySun.position.set(160, 100, 50);
+      raySun.scale.set(160, 160, 1);
+      raySun.position.set(120, 80, 80);
       scene.add(raySun);
-
-      function updateBiomeLighting(biome: keyof typeof BIOMES) {
-        const cfg = BIOME_SKY_CONFIGS[biome as keyof typeof BIOME_SKY_CONFIGS];
-        skyUniforms.topColor.value.lerp(cfg.top, 0.015);
-        skyUniforms.horizonColor.value.lerp(cfg.horizon, 0.015);
-        sceneFog.color.lerp(cfg.fog, 0.015);
-        sceneFog.density += (cfg.fogDensity - sceneFog.density) * 0.015;
-
-        // Existing light lerping — keep it, just update colors too
-        const t = BIOME_LIGHTS[biome as keyof typeof BIOME_LIGHTS];
-        sun.color.lerp(new THREE.Color(t.sunColor), 0.02);
-        sun.intensity += (t.sunInt - sun.intensity) * 0.02;
-        ambientLight.color.lerp(new THREE.Color(t.ambColor), 0.02);
-        ambientLight.intensity += (t.ambInt - ambientLight.intensity) * 0.02;
-        hemiLight.color.lerp(new THREE.Color(t.hemiSky), 0.02);
-        hemiLight.groundColor.lerp(new THREE.Color(t.hemiGnd), 0.02);
-      }
 
       // 1E ── core helpers ───────────────────────────────────────
       function darken(hex: string, f: number): string {
@@ -821,76 +754,71 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       // suppress unused-until-later warnings (used in Parts 3-6)
-      void WORLD_SIZE; void SPAWN; void PROXIMITY_RANGE; void BIOMES;
-      void updateBiomeLighting; void darken;
+      void WORLD_SIZE; void SPAWN; void PROXIMITY_RANGE;
+      void darken;
       void setCurrentBiomeState; void setInteractPrompt; void setIsMobile; void setJoystick;
       void currentBiomeState; void interactPrompt; void isMobile; void joystick;
       void biomeStateRef; void joystickRef; void activeOverlayRef;
       void frameRef; void petFramesRef; void size; void inspecting;
 
       // ── 2A: Heightmap Ground with Elevation ────────────────────────────
-      // Ground with actual height variation
-      const GSIZE = 200;
-      const GSEGS = 100;
+      // Ground with soft, focused garden elevation
+      const GSIZE = 160;
+      const GSEGS = 120;
       const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEGS, GSEGS);
       groundGeo.rotateX(-Math.PI / 2);
 
-      // Apply height via vertex displacement
       const gPos = groundGeo.attributes.position;
       for (let i = 0; i < gPos.count; i++) {
         const x = gPos.getX(i);
         const z = gPos.getZ(i);
 
-        // Multi-octave noise for natural terrain
-        const h1 = Math.sin(x * 0.04) * Math.cos(z * 0.04) * 3.0;     // large hills
-        const h2 = Math.sin(x * 0.12 + 1.3) * Math.cos(z * 0.11) * 1.2;  // medium bumps
-        const h3 = Math.sin(x * 0.28) * Math.cos(z * 0.31 + 0.7) * 0.5;  // small detail
-        const h4 = Math.sin(x * 0.6 + z * 0.4) * 0.25;                  // micro variation
+        // Soft rolling hills instead of harsh noise
+        const h1 = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 1.5;
+        const h2 = Math.sin(x * 0.15 + 2.0) * Math.cos(z * 0.12) * 0.3;
+        let height = h1 + h2;
 
-        let height = h1 + h2 + h3 + h4;
+        // Flatten the central path precisely
+        const distFromPath = Math.abs(x);
+        if (distFromPath < 10) {
+          height *= (distFromPath / 10); // Smooth blend into path
+        }
+        
+        // Flatten the shrine area
+        if (z < -20 && z > -60 && Math.abs(x) < 20) {
+          height *= 0.1;
+        }
 
-        // Flatten the Cherry Village spawn area (x:40-80, z:-90 to -10)
-        const inVillage = x > 35 && x < 85 && z > -95 && z < -5;
-        if (inVillage) height *= 0.15;  // mostly flat, slight texture
-
-        // Flatten paths
-        const onMainPath = Math.abs(x - 60) < 2.5 && z > -90 && z < 0;
-        const onCrossPath = Math.abs(z + 40) < 2 && x > 15 && x < 95;
-        if (onMainPath || onCrossPath) height *= 0.05;
-
-        // Boost elevation for cliffs/mountains at edges
-        const distFromCenter = Math.sqrt(x*x + z*z);
-        if (distFromCenter > 70) height += (distFromCenter - 70) * 0.08;
+        // Slightly raise the pond area (so we can dip it natively)
+        // Actually pond is made of planar water, so keep it flat there.
+        if (x > 10 && x < 30 && z > -25 && z < 0) {
+          height -= 0.5; // Dig a shallow basin
+        }
 
         gPos.setY(i, height);
       }
-      groundGeo.computeVertexNormals();  // CRITICAL for lighting
+      groundGeo.computeVertexNormals();
 
-      // Biome-based vertex colors
+      // Unified garden ground colors
       const gColors: number[] = [];
       for (let i = 0; i < gPos.count; i++) {
         const x = gPos.getX(i);
         const z = gPos.getZ(i);
         const y = gPos.getY(i);
-        const biome = getBiome(x, z);
-        const noise = (Math.sin(x*3.1)*Math.cos(z*2.8) + 1) * 0.5;
+        const noise = (Math.sin(x*2.1)*Math.cos(z*2.2) + 1) * 0.5;
 
-        // Height-based color variation (darker at valleys, lighter at peaks)
-        const heightFactor = Math.max(0, Math.min(1, (y + 2) / 6));
-
-        const GCOLS: Record<string, number[][]> = {
-          CHERRY:   [[0.20,0.38,0.15],[0.24,0.44,0.18],[0.28,0.50,0.20],[0.16,0.30,0.12]],
-          BAMBOO:   [[0.16,0.34,0.12],[0.20,0.40,0.16],[0.24,0.46,0.18],[0.14,0.28,0.10]],
-          OCEAN:    [[0.20,0.26,0.14],[0.24,0.30,0.16],[0.18,0.24,0.12],[0.30,0.34,0.20]],
-          VOLCANIC: [[0.10,0.06,0.04],[0.08,0.04,0.02],[0.14,0.08,0.04],[0.06,0.04,0.02]],
-          TUNDRA:   [[0.82,0.86,0.90],[0.88,0.90,0.94],[0.78,0.82,0.88],[0.92,0.94,0.96]],
-        };
-        const cols = GCOLS[biome]!;
+        // Rich mossy green palette
+        const cols = [[0.18,0.30,0.12], [0.22,0.35,0.16], [0.26,0.40,0.20], [0.15,0.28,0.10]];
         const idx = noise < 0.25 ? 0 : noise < 0.5 ? 1 : noise < 0.75 ? 2 : 3;
         const col = cols[idx]!;
 
-        // Darken valleys
-        const darkFactor = 0.7 + heightFactor * 0.4;
+        // Add subtle path coloring immediately under the path (dirt base)
+        if (Math.abs(x) < 4 && z > -40 && z < 40) {
+           col[0] = 0.35; col[1] = 0.28; col[2] = 0.20; // warm dirt
+        }
+
+        const heightFactor = Math.max(0, Math.min(1, (y + 1) / 3));
+        const darkFactor = 0.6 + heightFactor * 0.5;
         gColors.push(col[0]*darkFactor, col[1]*darkFactor, col[2]*darkFactor);
       }
       groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(gColors, 3));
@@ -1039,33 +967,37 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 2, 4.6, 0, 0.25, 0.8, 0.35, aged);
         grp.position.set(x, 0, z);
         grp.rotation.y = rotY;
+        grp.scale.setScalar(1.5);
         scene.add(grp);
       }
 
       function buildLantern(x: number, z: number) {
-        vox(x, 0.2, z, 0x888880, 0.85, 0.45, 0.85);
-        vox(x, 0.65, z, 0x888880, 0.45, 0.6, 0.45);
-        vox(x, 1.1, z, 0x888880, 0.45, 0.55, 0.45);
+        const grp = new THREE.Group();
+        addBoxToGroup(grp, 0, 0.2, 0, 0.85, 0.45, 0.85, 0x888880, true);
+        addBoxToGroup(grp, 0, 0.65, 0, 0.45, 0.6, 0.45, 0x888880, true);
+        addBoxToGroup(grp, 0, 1.1, 0, 0.45, 0.55, 0.45, 0x888880, true);
         const lGeo = new THREE.BoxGeometry(0.7, 0.6, 0.7);
         const lMat = new THREE.MeshLambertMaterial({
-          color: 0xffcc66,
-          emissive: new THREE.Color(0xffaa22),
-          emissiveIntensity: 1.0,
+          color: 0xffcc66, emissive: new THREE.Color(0xffaa22), emissiveIntensity: 1.0,
         });
         const lMesh = new THREE.Mesh(lGeo, lMat);
-        lMesh.position.set(x, 1.75, z);
+        lMesh.position.set(0, 1.75, 0);
         lMesh.castShadow = true;
-        scene.add(lMesh);
+        grp.add(lMesh);
         lanternMats.push(lMat);
-        vox(x, 2.15, z, 0x888880, 0.95, 0.2, 0.95);
-        const pl = new THREE.PointLight(0xffaa22, 1.4, 8);
-        pl.position.set(x, 1.8, z);
-        scene.add(pl);
+        addBoxToGroup(grp, 0, 2.15, 0, 0.95, 0.2, 0.95, 0x888880, true);
+        const pl = new THREE.PointLight(0xffaa22, 1.4, 12);
+        pl.position.set(0, 1.8, 0);
+        grp.add(pl);
+        grp.position.set(x, 0, z);
+        grp.scale.setScalar(1.4);
+        scene.add(grp);
       }
 
       function buildCherryTree(x: number, z: number, h: number) {
+        const grp = new THREE.Group();
         for (let ty = 0; ty < h; ty++) {
-          vox(x, ty + 0.5, z, 0x6b3f1e, 0.7, 1, 0.7, true);
+          addBoxToGroup(grp, 0, ty + 0.5, 0, 0.7, 1, 0.7, 0x6b3f1e, true);
         }
         const blossoms = [0xffb7c5, 0xff9eb5, 0xffc8d5, 0xff85a1];
         for (let bx = -3; bx <= 3; bx++) {
@@ -1073,12 +1005,16 @@ export function WorldClient({ petState, species }: Props) {
             for (let bz = -3; bz <= 3; bz++) {
               const dist = Math.sqrt(bx * bx + by * by * 1.5 + bz * bz);
               if (dist < 3.2 && Math.random() > dist * 0.15) {
-                vox(x + bx * 0.88, h + by * 0.88, z + bz * 0.88,
-                  blossoms[Math.floor(Math.random() * 4)]!, 0.85, 0.85, 0.85, true);
+                addBoxToGroup(grp, bx * 0.88, h + by * 0.88, bz * 0.88,
+                  0.85, 0.85, 0.85, blossoms[Math.floor(Math.random() * 4)]!, true);
               }
             }
           }
         }
+        grp.position.set(x, 0, z);
+        grp.scale.setScalar(1.5);
+        scene.add(grp);
+        treeGroups.push({ group: grp, originRotZ: Math.random() * Math.PI, originRotX: Math.random() * Math.PI });
       }
 
       function buildShrine(x: number, z: number) {
@@ -1118,6 +1054,7 @@ export function WorldClient({ petState, species }: Props) {
           }
         }
         grp.position.set(x, 0, z);
+        grp.scale.setScalar(1.35); // Big imposing shrine
         scene.add(grp);
 
         const pl = new THREE.PointLight(0xffcc66, 1.2, 20);
@@ -1188,320 +1125,68 @@ export function WorldClient({ petState, species }: Props) {
         scene.add(grp);
       }
 
-      // ── 2C: Cherry Blossom Biome ──────────────────────────────────────
-      function buildCherryBiome() {
-        // Glow blocks
-        addGlowBlock(58, 0.05, -20, 0x6a5a2a, 0xffaa22, 1.2, 6);
-        addGlowBlock(62, 0.05, -18, 0x6a5a2a, 0xffaa22, 1.0, 5);
-        for (let pz = -90; pz < -20; pz += 8) {
-          addGlowBlock(60, 0.05, pz, 0x5a4a1a, 0xff8800, 0.8, 4);
-        }
-        
-        buildTablet(50, 0, -35, 'tab1', 'The Cherry Village honors the Pet Spirits.');
-        buildCampfire(60, 0, -100);
 
-        buildTorii(60, -120); buildTorii(60, -75);
-        buildTorii(2, -40, Math.PI / 2); buildTorii(60, -30);
-        for (let pz = -120; pz < -20; pz++) {
-          for (let pw = -1; pw <= 1; pw++) {
-            vox(60 + pw, 0.06, pz, ([0x9a9a9a, 0x8a8a8a, 0xaaaaaa] as number[])[Math.abs(pw)]!, 1, 0.12, 1);
-          }
+      // ── 2C: Central Garden Layout ──────────────────────────────────────
+      function buildGardenLayout() {
+        // Center Shrine at origin
+        buildShrine(0, -40);
+        buildTablet(-5, 0, -32, 'tab1', 'Welcome to the Pet Spirits Shrine.');
+        buildCampfire(12, 0, -28);
+
+        // Gateway Sequence
+        buildTorii(0, -10);
+        buildTorii(0, -25);
+
+        // Flanking Cherry Trees
+        const treeZ = [-5, -15, -20, -25, -35];
+        treeZ.forEach(z => {
+          buildCherryTree(-10 - Math.random() * 4, z, 6 + Math.random() * 2);
+          buildCherryTree(10 + Math.random() * 4, z, 6 + Math.random() * 2);
+        });
+
+        // Deep Forest Background
+        for (let a = 0; a < Math.PI * 2; a += 0.15) {
+          const r = 40 + Math.random() * 5;
+          buildCherryTree(Math.cos(a) * r, Math.sin(a) * r, 8 + Math.random() * 3);
         }
-        for (let px = 15; px < 95; px++) { vox(px, 0.06, -50, 0x9a9a9a, 1, 0.12, 1); }
-        buildShrine(60, -20);
-        buildCherryTree(35, -30, 7); buildCherryTree(42, -22, 5);
-        buildCherryTree(78, -35, 6); buildCherryTree(82, -20, 5);
-        buildCherryTree(50, -55, 8); buildCherryTree(70, -60, 6);
-        buildCherryTree(30, -50, 5);
-        buildKoiPond(85, -30, 12, 8);
-        for (let a = 0; a < 8; a++) {
-          const angle = (a / 8) * Math.PI * 2;
-          buildLantern(60 + Math.cos(angle) * 14, -25 + Math.sin(angle) * 14);
+
+        // Feature: Koi Pond
+        buildKoiPond(15, -15, 12, 16);
+
+        // Flanking Lanterns
+        const lanternZ = [0, -12, -22, -32];
+        lanternZ.forEach(z => {
+          buildLantern(-5.5, z);
+          buildLantern(5.5, z);
+        });
+
+        // Scatter path stepping stones
+        for (let i = 0; i < 40; i++) {
+            const rx = (Math.random() - 0.5) * 6;
+            const rz = 25 - Math.random() * 60;
+            const w = 0.8 + Math.random() * 0.5;
+            const d = 0.6 + Math.random() * 0.4;
+            vox(rx, 0.05, rz, 0x9a9a9a, w, 0.1, d, true, true);
         }
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2;
-          vox(60 + Math.cos(a) * 0.8, 0.5, -50 + Math.sin(a) * 0.8, 0x888880, 0.55, 1, 0.55);
-        }
-        vox(60, 1.5, -50, 0x6b4423, 2.2, 0.25, 0.25, true);
-        vox(60, 1.7, -50, 0x6b4423, 0.2, 0.8, 0.2, true);
-        vox(45, 0.8, -50, 0x6b4423, 0.2, 1.6, 0.2, true);
-        vox(45, 1.8, -50, 0x8B6914, 1.4, 1.0, 0.15, true);
-        const PETAL_COUNT = 150;
-        const petDummy = new THREE.Object3D();
-        void petDummy;
+
+        // Global ambient particles (slow drifting blossoms)
+        const PETAL_COUNT = 300;
         const petGeo = new THREE.BoxGeometry(0.18, 0.04, 0.18);
         const petMat = new THREE.MeshLambertMaterial({ color: 0xffb7c5 });
         const petMesh = new THREE.InstancedMesh(petGeo, petMat, PETAL_COUNT);
         scene.add(petMesh);
         const petData = Array.from({ length: PETAL_COUNT }, () => ({
-          x: 30 + Math.random() * 70, y: Math.random() * 14 + 2,
-          z: -80 + Math.random() * 80,
-          vy: -(0.007 + Math.random() * 0.01),
-          vx: (Math.random() - 0.5) * 0.004,
-          vz: (Math.random() - 0.5) * 0.004,
-          rx: Math.random() * Math.PI, ry: Math.random() * Math.PI,
-          rz: Math.random() * Math.PI,
-          spin: (Math.random() - 0.5) * 0.025,
-          originX: 60, originZ: -40,
-        }));
-        allParticles.push({ mesh: petMesh, data: petData, type: 'blossom' });
-        buildSignpost(60, 0, '→ Bamboo Forest');
-        buildSignpost(2, -40, '→ Volcanic Badlands', Math.PI / 2);
-      }
-      buildCherryBiome();
-
-      // ── 2D: Bamboo Forest Biome ───────────────────────────────────────
-      function buildBambooBiome() {
-        [[20,0.05,35],[55,0.05,60],[75,0.05,45],[40,0.05,80]].forEach(([gx,gy,gz]) => {
-          addGlowBlock(gx,gy,gz, 0x1a3a2a, 0x44ffaa, 1.5, 7);
-        });
-
-        buildChest(70, 0, 70, 'chest1', 'Ancient Bamboo Scroll');
-        buildCampfire(50, 0, 95);
-
-        for (let i = 0; i < 80; i++) {
-          const bx = 10 + Math.random() * 85;
-          const bz = 10 + Math.random() * 85;
-          vox(bx, 6, bz, 0x7aab5a, 0.28, 12, 0.28, true);
-          for (let ny = 0; ny < 6; ny++) { vox(bx, ny * 2 + 1, bz, 0x5a8a40, 0.35, 0.2, 0.35); }
-          for (let l = 0; l < 4; l++) {
-            const la = (l / 4) * Math.PI * 2;
-            vox(bx + Math.cos(la) * 0.8, 11 + l * 0.3, bz + Math.sin(la) * 0.8, 0x6ab04a, 1.2, 0.06, 0.3);
-          }
-        }
-        for (let rx = -4; rx <= 4; rx++) {
-          for (let rz = -4; rz <= 4; rz++) { vox(50 + rx, 0.2, 50 + rz, 0x707060, 1, 0.4, 1, false, true); }
-        }
-        for (let wh = 0; wh < 3; wh++) {
-          for (let wx = -3; wx <= 3; wx++) {
-            if (Math.random() > 0.55) continue;
-            vox(50 + wx, 0.6 + wh, 45, 0x808070, 1, 1, 1, true);
-            vox(50 + wx, 0.6 + wh, 55, 0x808070, 1, 1, 1, true);
-          }
-          for (let wz = -3; wz <= 3; wz++) {
-            if (Math.random() > 0.55) continue;
-            vox(45, 0.6 + wh, 50 + wz, 0x808070, 1, 1, 1, true);
-            vox(55, 0.6 + wh, 50 + wz, 0x808070, 1, 1, 1, true);
-          }
-        }
-        vox(50, 1, 50, 0x606050, 1.2, 2, 1.2, true);
-        vox(50, 2.8, 50, 0x606050, 1.8, 0.4, 1.8);
-        for (let pz = 2; pz < 95; pz += 3) { vox(50, 0.06, pz, 0x8a8a7a, 1.8, 0.1, 2.2); }
-        vox(70, 0.5, 70, 0x8B6914, 1.2, 0.9, 0.8, true);
-        vox(70, 1.05, 70, 0x6b4a10, 1.25, 0.2, 0.85);
-        vox(70, 0.85, 69.6, 0xd4a820, 0.3, 0.3, 0.1);
-        const streamGeo = new THREE.PlaneGeometry(4, 30);
-        streamGeo.rotateX(-Math.PI / 2);
-        const streamMat = new THREE.MeshLambertMaterial({ color: 0x4a7a9a, transparent: true, opacity: 0.7 });
-        const stream = new THREE.Mesh(streamGeo, streamMat);
-        stream.position.set(30, 0.05, 50);
-        scene.add(stream);
-        waterMats.push(streamMat);
-        for (let bp = -3; bp <= 3; bp++) { vox(30, 0.3, 50 + bp * 1.1, 0x7a5c2a, 5, 0.18, 0.85, true); }
-        for (let br = -3; br <= 3; br++) {
-          vox(28, 0.8, 50 + br * 1.1, 0x6b4423, 0.18, 0.8, 0.18);
-          vox(32, 0.8, 50 + br * 1.1, 0x6b4423, 0.18, 0.8, 0.18);
-        }
-        buildSignpost(50, 2, '← Cherry Village', Math.PI);
-        buildSignpost(2, 50, '← Ocean Cliffs', Math.PI / 2);
-      }
-      buildBambooBiome();
-
-      // ── 2E: Ocean Cliffs Biome ────────────────────────────────────────
-      function buildOceanBiome() {
-        for (let cz = 0; cz < 100; cz++) {
-          for (let ch = 0; ch < 8; ch++) {
-            if (Math.random() > 0.7) continue;
-            vox(-90, -(ch + 0.5), cz, ch < 4 ? 0x6a7a8a : 0x8a9aaa, 1, 1, 1);
-          }
-        }
-        const oceanGeo = new THREE.PlaneGeometry(60, 120);
-        oceanGeo.rotateX(-Math.PI / 2);
-        const oceanMat = new THREE.MeshLambertMaterial({ color: 0x1a4a7a, transparent: true, opacity: 0.88 });
-        const ocean = new THREE.Mesh(oceanGeo, oceanMat);
-        ocean.position.set(-120, -7, 50);
-        scene.add(ocean);
-        waterMats.push(oceanMat);
-        const LHX = -70, LHZ = 20;
-        vox(LHX, 1, LHZ, 0xd0c8b8, 4, 2, 4, true);
-        for (let lh = 0; lh < 10; lh++) {
-          const w = lh < 7 ? 2.8 : 2.2;
-          vox(LHX, 2 + lh + 0.5, LHZ, 0xd8d0c0, w, 1, w, true);
-        }
-        vox(LHX, 6.5, LHZ, 0xcc3300, 3, 0.8, 3, true);
-        vox(LHX, 12.5, LHZ, 0x88aacc, 2.5, 1.5, 2.5, true);
-        const beamGrp = new THREE.Group();
-        beamGrp.position.set(LHX, 13, LHZ);
-        const beamGeo = new THREE.BoxGeometry(0.3, 0.3, 22);
-        const beamMat = new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.3 });
-        const beam = new THREE.Mesh(beamGeo, beamMat);
-        beam.position.z = 11;
-        beamGrp.add(beam);
-        scene.add(beamGrp);
-        lightBeam = beamGrp;
-        const SWX = -60, SWZ = 70;
-        const hullGrp = new THREE.Group();
-        for (let hx = -5; hx <= 5; hx++) {
-          for (let hz = 0; hz < 12; hz++) {
-            const isEdge = Math.abs(hx) === 5 || hz === 0 || hz === 11;
-            if (!isEdge) continue;
-            addBoxToGroup(hullGrp, hx, 0, hz, 1, 1.5, 1, hz < 4 ? 0x2a1a0e : 0x3a2a1e, true);
-          }
-        }
-        addBoxToGroup(hullGrp, 0, 1, 6, 0.4, 8, 0.4, 0x5a3a1a, true);
-        addBoxToGroup(hullGrp, 2, 4, 8, 4, 0.4, 0.4, 0x5a3a1a, true);
-        hullGrp.position.set(SWX, -0.5, SWZ);
-        hullGrp.rotation.z = 0.3; hullGrp.rotation.y = 0.6;
-        scene.add(hullGrp);
-        for (let px = -88; px < -82; px++) {
-          for (let pzv = 45; pzv < 55; pzv++) { vox(px, 0.15, pzv, 0x7a5c2a, 1, 0.18, 1, false, true); }
-        }
-        for (let rp = 45; rp < 55; rp++) { vox(-88, 0.8, rp, 0x6b4423, 0.18, 0.8, 0.18); }
-        for (let r = 0; r < 25; r++) {
-          const rx = -95 + Math.random() * 20, rz = Math.random() * 100;
-          const rs = 0.5 + Math.random() * 2;
-          vox(rx, rs * 0.5, rz, 0x6a7a8a, rs * 1.5, rs, rs, true);
-        }
-        buildSignpost(-50, 2, '← Cherry Village', Math.PI);
-        buildSignpost(-50, 98, '→ Volcanic Zone', Math.PI);
-      }
-      buildOceanBiome();
-
-      // ── 2F: Volcanic Biome ────────────────────────────────────────────
-      function buildVolcanicBiome() {
-        const VX = -50, VZ = -50;
-        for (let i = 0; i < 12; i++) {
-          const vx = -30 + (Math.random()-0.5)*60;
-          const vz = -30 + (Math.random()-0.5)*60;
-          addGlowBlock(vx, 0.02, vz, 0x3a0a00, 0xff2200, 2.0, 6);
-        }
-        buildChest(-85, 0, -85, 'chest_volc', 'Flame Core');
-        for (let vh = 0; vh < 20; vh++) {
-          const vr = 18 - vh;
-          for (let va = 0; va < vr * 2; va++) {
-            const angle = (va / (vr * 2)) * Math.PI * 2;
-            const col = vh > 15 ? 0x1a0a08 : vh > 10 ? 0x3a1808 : vh > 5 ? 0x5a2010 : 0x6a2a14;
-            vox(VX + Math.cos(angle) * vr, vh * 0.8 + 0.5, VZ + Math.sin(angle) * vr, col, 1.2, 0.8, 1.2, true);
-          }
-        }
-        const craterGeo = new THREE.PlaneGeometry(8, 8);
-        craterGeo.rotateX(-Math.PI / 2);
-        const craterMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.9 });
-        const crater = new THREE.Mesh(craterGeo, craterMat);
-        crater.position.set(VX, 16.5, VZ);
-        scene.add(crater);
-        const vLight = new THREE.PointLight(0xff4400, 4, 40);
-        vLight.position.set(VX, 18, VZ);
-        scene.add(vLight);
-        lavaLights.push(vLight);
-        const crackSegs: [number, number, number, number][] = [
-          [-80, -60, -60, -40], [-70, -80, -50, -60],
-          [-40, -70, -20, -50], [-90, -30, -70, -10], [-50, -90, -30, -70],
-        ];
-        crackSegs.forEach(([x1, z1, x2, z2]) => {
-          for (let s = 0; s <= 10; s++) {
-            const t = s / 10;
-            const lx = x1 + (x2 - x1) * t + (Math.random() - 0.5) * 3;
-            const lz = z1 + (z2 - z1) * t + (Math.random() - 0.5) * 3;
-            const lm = vox(lx, 0.02, lz, 0xff4400, 1.5, 0.08, 0.8);
-            lm.material.emissive = new THREE.Color(0xff2200);
-            lm.material.emissiveIntensity = 2.0;
-            if (s % 3 === 0) {
-              const lpl = new THREE.PointLight(0xff4400, 2, 8);
-              lpl.position.set(lx, 1, lz);
-              scene.add(lpl);
-              lavaLights.push(lpl);
-            }
-          }
-        });
-        ([[-80,-80],[-60,-70],[-70,-50],[-40,-80],[-90,-40],[-50,-30]] as [number,number][]).forEach(([ox, oz]) => {
-          const h = 3 + Math.random() * 6, w = 1.5 + Math.random() * 2;
-          for (let oh = 0; oh < h; oh++) {
-            vox(ox + (Math.random() - 0.5) * 0.4, oh + 0.5, oz + (Math.random() - 0.5) * 0.4,
-              0x1a0a2a, w * (1 - oh / h * 0.5), 1, w * (1 - oh / h * 0.5), true);
-          }
-        });
-        const FIRE_COUNT = 200;
-        const fGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-        const fMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
-        const fMesh = new THREE.InstancedMesh(fGeo, fMat, FIRE_COUNT);
-        scene.add(fMesh);
-        const fData = Array.from({ length: FIRE_COUNT }, () => ({
-          x: VX + (Math.random() - 0.5) * 20, y: Math.random() * 4,
-          z: VZ + (Math.random() - 0.5) * 20,
-          vy: 0.04 + Math.random() * 0.06,
-          life: Math.random(), maxLife: 1 + Math.random() * 2,
-          originX: VX, originZ: VZ,
-        }));
-        allParticles.push({ mesh: fMesh, data: fData, type: 'fire' });
-        buildSignpost(-50, -2, '← Cherry Village', Math.PI);
-      }
-      buildVolcanicBiome();
-
-      // ── 2G: Tundra Biome ──────────────────────────────────────────────
-      function buildTundraBiome() {
-        [[-5,-112],[15,-120],[-20,-125],[8,-130]].forEach(([tx,tz]) => {
-          addGlowBlock(tx, 0.05, tz, 0x0a1a3a, 0x44aaff, 1.8, 8);
-        });
-        buildTablet(0, 0, -135, 'tab_tun', 'The Frozen Wastes hold ancient secrets.');
-        for (let si = 0; si < 60; si++) {
-          const sx = (Math.random() - 0.5) * 90, sz = -110 - Math.random() * 25;
-          const ss = 0.5 + Math.random() * 2;
-          vox(sx, ss * 0.3, sz, 0xeef4ff, ss * 3, ss * 0.6, ss * 2);
-        }
-        const crystalPos: [number, number][] = [
-          [20, -110], [-30, -120], [10, -130], [-15, -115], [35, -125], [-40, -110]
-        ];
-        crystalPos.forEach(([cx, cz]) => {
-          const h = 4 + Math.random() * 8, bw = 0.8 + Math.random() * 1.2;
-          for (let ch = 0; ch < h; ch++) {
-            const w = bw * (1 - ch / h * 0.8);
-            const m = vox(cx, ch + 0.5, cz, 0xa0d8ef, w, 1, w, true);
-            m.material.transparent = true; m.material.opacity = 0.7 + (ch / h) * 0.2;
-          }
-        });
-        const iceGeo = new THREE.PlaneGeometry(14, 10);
-        iceGeo.rotateX(-Math.PI / 2);
-        const iceMat = new THREE.MeshLambertMaterial({ color: 0xb0d8e8, transparent: true, opacity: 0.88 });
-        const iceMesh = new THREE.Mesh(iceGeo, iceMat);
-        iceMesh.position.set(0, 0.08, -120);
-        scene.add(iceMesh);
-        for (let s = 0; s < 8; s++) {
-          const a = (s / 8) * Math.PI * 2, h = 2 + Math.random() * 2.5;
-          vox(-10 + Math.cos(a) * 10, h * 0.5, -128 + Math.sin(a) * 10, 0x8a8a9a, 1.2, h, 1.4, true);
-        }
-        vox(-10, 0.5, -128, 0x707080, 3, 1, 3, true);
-        const aColors = [0x00ff88, 0x0088ff, 0xff00aa, 0x00ffcc, 0x8800ff];
-        aColors.forEach((col, i) => {
-          const aGeo = new THREE.PlaneGeometry(120, 30);
-          const aMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.07, side: THREE.DoubleSide });
-          const aM = new THREE.Mesh(aGeo, aMat);
-          aM.position.set(0, 42 + i * 6, -120);
-          aM.rotation.x = Math.PI / 2 + 0.3;
-          aM.rotation.z = (i / 5) * Math.PI * 0.4;
-          scene.add(aM);
-          auroraMeshes.push({ mesh: aM, mat: aMat, phase: i });
-        });
-        const SNOW_COUNT = 300;
-        const sGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
-        const sMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const sMesh = new THREE.InstancedMesh(sGeo, sMat, SNOW_COUNT);
-        sMesh.position.set(0, 0, -120);
-        scene.add(sMesh);
-        const sData = Array.from({ length: SNOW_COUNT }, () => ({
-          x: (Math.random() - 0.5) * 100, y: Math.random() * 25 + 2,
-          z: (Math.random() - 0.5) * 60,
-          vy: -(0.03 + Math.random() * 0.04),
-          vx: (Math.random() - 0.5) * 0.008,
-          spin: (Math.random() - 0.5) * 0.02,
+          x: (Math.random() - 0.5) * 80, 
+          y: Math.random() * 10 + 2,
+          z: (Math.random() - 0.5) * 80,
+          vy: -(0.01 + Math.random() * 0.01),
+          vx: Math.random() * 0.01,
+          spin: (Math.random() - 0.5) * 0.05,
           rx: Math.random() * Math.PI, ry: 0, rz: 0,
         }));
-        allParticles.push({ mesh: sMesh, data: sData, type: 'snow' });
-        buildSignpost(0, -102, '→ Frozen Tundra');
-        buildSignpost(0, -98, '← Return to Village', Math.PI);
+        allParticles.push({ mesh: petMesh, data: petData, type: 'blossom' });
       }
-      buildTundraBiome();
-
+      buildGardenLayout();
 
       // ── 3A: Species mesh builder ──────────────────────────────────────
       interface PetMeshResult {
@@ -1930,11 +1615,11 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       // ── 3D: Camera follow ────────────────────────────────────────────
-      const camPos = new THREE.Vector3(60, 4, -60);
-      const camLook = new THREE.Vector3(60, 1.5, -75);
+      const camPos = new THREE.Vector3(0, 5.2, 42);
+      const camLook = new THREE.Vector3(0, 1.5, 27);
 
-      const CAM_HEIGHT = 4.5;
-      const CAM_DISTANCE = 10;
+      const CAM_HEIGHT = 5.2;
+      const CAM_DISTANCE = 12;
       const CAM_LERP = 0.08;
       const CAM_LOOK_LERP = 0.12;
 
@@ -2465,10 +2150,9 @@ export function WorldClient({ petState, species }: Props) {
         playerMesh.legs.FR.rotation.x = -sw;
         playerMesh.legs.BL.rotation.x = -sw;
 
-        // 4. Biome lighting every frame (lerp is cheap)
+        // 4. Update simple world effects
         const currentBiome = getBiome(player.pos.x, player.pos.z);
-        updateBiomeLighting(currentBiome as any);
-        raySun.material.opacity = 0.4 + Math.sin(elapsed * 0.3) * 0.15;
+        raySun.material.opacity = 0.6 + Math.sin(elapsed * 0.2) * 0.15;
 
         // 5. Biome state for React HUD + Reveal Animation
         if (currentBiome !== biomeStateRef.current) {
