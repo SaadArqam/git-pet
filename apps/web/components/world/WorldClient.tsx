@@ -1331,62 +1331,57 @@ export function WorldClient({ petState, species }: Props) {
         );
       }
 
-      function updatePlayer(_delta: number) {
+      const MOVE_SPEED = 4.0;
+      const TURN_SPEED = 2.5;
+
+      function updatePlayer(delta: number) {
         if (activeOverlayRef.current) {
-          player.vel.multiplyScalar(0.85);
-          player.pos.add(player.vel);
-          playerMesh.group.position.copy(player.pos);
+          player.isMoving = false;
           return;
         }
 
-        let accelerating = false;
-        const ACCEL = 0.015;
-        const MAX_SPEED = 0.12;
-        const TURN_SPEED = 0.055;
-        const DAMPING = 0.78;
+        let moved = false;
+        const dir = new THREE.Vector3(0, 0, 0);
 
         if (keys3d['KeyW'] || keys3d['ArrowUp']) {
-          player.vel.x -= Math.sin(player.rot) * ACCEL;
-          player.vel.z -= Math.cos(player.rot) * ACCEL;
-          accelerating = true;
+          dir.x -= Math.sin(player.rot);
+          dir.z -= Math.cos(player.rot);
+          moved = true;
         }
         if (keys3d['KeyS'] || keys3d['ArrowDown']) {
-          player.vel.x += Math.sin(player.rot) * ACCEL * 0.6;
-          player.vel.z += Math.cos(player.rot) * ACCEL * 0.6;
-          accelerating = true;
+          dir.x += Math.sin(player.rot);
+          dir.z += Math.cos(player.rot);
+          moved = true;
         }
-        if (keys3d['KeyA'] || keys3d['ArrowLeft']) player.rot += TURN_SPEED;
-        if (keys3d['KeyD'] || keys3d['ArrowRight']) player.rot -= TURN_SPEED;
+
+        if (keys3d['KeyA'] || keys3d['ArrowLeft']) player.rot += TURN_SPEED * delta;
+        if (keys3d['KeyD'] || keys3d['ArrowRight']) player.rot -= TURN_SPEED * delta;
 
         if (joystickRef.current.active) {
           const { dx, dy } = joystickRef.current;
-          player.vel.x -= Math.sin(player.rot) * ACCEL * (-dy);
-          player.vel.z -= Math.cos(player.rot) * ACCEL * (-dy);
-          player.rot -= dx * TURN_SPEED;
-          if (Math.abs(dy) > 0.1) accelerating = true;
+          dir.x -= Math.sin(player.rot) * (-dy);
+          dir.z -= Math.cos(player.rot) * (-dy);
+          player.rot -= dx * TURN_SPEED * delta;
+          if (Math.abs(dy) > 0.1) moved = true;
         }
 
-        const speed = Math.sqrt(player.vel.x**2 + player.vel.z**2);
-        if (speed > MAX_SPEED) {
-          player.vel.x = (player.vel.x / speed) * MAX_SPEED;
-          player.vel.z = (player.vel.z / speed) * MAX_SPEED;
-        }
+        player.isMoving = moved;
+        if (moved) {
+          dir.normalize().multiplyScalar(MOVE_SPEED * delta);
+          const next = player.pos.clone().add(dir);
+          next.x = Math.max(-95, Math.min(95, next.x));
+          next.z = Math.max(-140, Math.min(95, next.z));
+          next.y = 0.5;
 
-        player.vel.multiplyScalar(DAMPING);
-        player.isMoving = speed > 0.005;
-
-        const next = player.pos.clone().add(player.vel);
-        next.x = Math.max(-95, Math.min(95, next.x));
-        next.z = Math.max(-140, Math.min(95, next.z));
-        next.y = 0.5;
-
-        if (!checkCollision(next)) {
-          player.pos.copy(next);
-        } else {
-          const nx = new THREE.Vector3(player.pos.x + player.vel.x, 0.5, player.pos.z);
-          if (!checkCollision(nx)) player.pos.x = nx.x;
-          const nz = new THREE.Vector3(player.pos.x, 0.5, player.pos.z + player.vel.z);
-          if (!checkCollision(nz)) player.pos.z = nz.z;
+          if (!checkCollision(next)) {
+            player.pos.copy(next);
+          } else {
+            // Sliding collision
+            const nx = new THREE.Vector3(player.pos.x + dir.x, 0.5, player.pos.z);
+            if (!checkCollision(nx)) player.pos.x = nx.x;
+            const nz = new THREE.Vector3(player.pos.x, 0.5, player.pos.z + dir.z);
+            if (!checkCollision(nz)) player.pos.z = nz.z;
+          }
         }
       }
 
