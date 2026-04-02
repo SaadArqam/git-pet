@@ -624,7 +624,8 @@ export function WorldClient({ petState, species }: Props) {
       const allParticles: { mesh: any; data: any[]; type: string }[] = [];
       const auroraMeshes: { mesh: any; mat: any; phase: number }[] = [];
       let lightBeam: any = null;
-      const interactables: { x: number; z: number; type: string; id: string; meta?: any; group?: any }[] = [];
+      const interactables: { pos: any; radius: number; label: string; onInteract: () => void }[] = [];
+      const legacyInteractables: { x: number; z: number; type: string; id: string; meta?: any; group?: any }[] = [];
       let koiPondGeo: any = null;
       let koiPondWaterMesh: any = null;
       let audioCtx: AudioContext | null = null;
@@ -665,7 +666,7 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 0, 1.05, 0, 1.25, 0.2, 0.85, 0x4B3914, true);
         grp.position.set(x, y, z);
         scene.add(grp);
-        interactables.push({ x, z, type: 'chest', id, meta: loot, group: grp });
+        legacyInteractables.push({ x, z, type: 'chest', id, meta: loot, group: grp });
       }
 
       function buildTablet(x: number, y: number, z: number, id: string, text: string) {
@@ -673,7 +674,7 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 0, 1, 0, 0.8, 2, 0.2, 0x5a5a5a, true);
         grp.position.set(x, y, z);
         scene.add(grp);
-        interactables.push({ x, z, type: 'tablet', id, meta: text, group: grp });
+        legacyInteractables.push({ x, z, type: 'tablet', id, meta: text, group: grp });
       }
 
       function buildCampfire(x: number, y: number, z: number) {
@@ -685,7 +686,7 @@ export function WorldClient({ petState, species }: Props) {
         addBoxToGroup(grp, 0, 0.3, 0, 0.6, 0.6, 0.6, 0xff5500); 
         grp.position.set(x, y, z);
         scene.add(grp);
-        interactables.push({ x, z, type: 'campfire', id: `camp_${x}_${z}`, group: grp });
+        legacyInteractables.push({ x, z, type: 'campfire', id: `camp_${x}_${z}`, group: grp });
       }
 
       // suppress unused-until-later warnings (used in Parts 3-6)
@@ -961,6 +962,41 @@ export function WorldClient({ petState, species }: Props) {
           rx: Math.random() * Math.PI, ry: 0, rz: 0,
         }));
         allParticles.push({ mesh: petMesh, data: petData, type: 'blossom' });
+
+        // Populate new interaction system
+        interactables.push({
+          pos: new THREE.Vector3(0, 0, -40),
+          radius: 8,
+          label: 'Visit Shrine',
+          onInteract: () => { activeOverlayRef.current = 'SHRINE'; }
+        });
+        interactables.push({
+          pos: new THREE.Vector3(15, 0, -15),
+          radius: 10,
+          label: 'Watch Koi',
+          onInteract: () => {
+            waterRippleTime += 5.0; // Trigger ripples
+            cameraShakeTimer = 0.2;
+          }
+        });
+        interactables.push({
+          pos: new THREE.Vector3(-5, 0, -32),
+          radius: 4,
+          label: 'Read Tablet',
+          onInteract: () => { setTabletText('Welcome to the Pet Spirits Shrine. Seek and you shall find.'); }
+        });
+        // Flanking lanterns
+        [[-5.5, 0], [5.5, 0], [-5.5, -12], [5.5, -12]].forEach(([lx, lz]) => {
+          interactables.push({
+            pos: new THREE.Vector3(lx, 1, lz),
+            radius: 3,
+            label: 'Examine Lantern',
+            onInteract: () => {
+               cameraShakeTimer = 0.1;
+               // Trigger a light pulse in tick loop if needed, but here we can just shake
+            }
+          });
+        });
       }
       buildGardenLayout();
 
@@ -1103,7 +1139,7 @@ export function WorldClient({ petState, species }: Props) {
       const playerDark = darken(playerColor, 0.60);
 
       const player = {
-        pos: new THREE.Vector3(60, 0.5, -75),
+        pos: new THREE.Vector3(0, 0.5, 10),
         rot: 0,
         vel: new THREE.Vector3(),
         speed: 0.09,
@@ -1255,19 +1291,30 @@ export function WorldClient({ petState, species }: Props) {
           } else if (nearestNPC) {
             setNpcDialogue({ name: nearestNPC.name, lines: getNPCDialogue(nearestNPC.name) });
           } else {
-            // Find interactable again since scope might be stale here
-            let objDist = Infinity;
+            // Find interactable in the new system
+            let nearestObj: any = null;
+            let minDist = Infinity;
             interactables.forEach(obj => {
-              const d = Math.sqrt((player.pos.x - obj.x)**2 + (player.pos.z - obj.z)**2);
-              if (d < 4.0 && d < objDist) { objDist = d; nearestInteractable = obj; }
-            });
-            if (nearestInteractable && objDist < 4.0) {
-              if (nearestInteractable.type === 'tablet') setTabletText(nearestInteractable.meta);
-              else if (nearestInteractable.type === 'chest') setChestLoot(nearestInteractable.meta);
-              else if (nearestInteractable.type === 'campfire') {
-                setShowRest(true);
-                setTimeout(() => setShowRest(false), 4000);
+              const d = player.pos.distanceTo(obj.pos);
+              if (d < obj.radius && d < minDist) {
+                minDist = d; nearestObj = obj;
               }
+            });
+            if (nearestObj) {
+              nearestObj.onInteract();
+            } else {
+              // Check legacy ones if needed
+              legacyInteractables.forEach(obj => {
+                const d = Math.sqrt((player.pos.x - obj.x)**2 + (player.pos.z - obj.z)**2);
+                if (d < 4.0) {
+                  if (obj.type === 'tablet') setTabletText(obj.meta);
+                  else if (obj.type === 'chest') setChestLoot(obj.meta);
+                  else if (obj.type === 'campfire') {
+                    setShowRest(true);
+                    setTimeout(() => setShowRest(false), 4000);
+                  }
+                }
+              });
             }
           }
         }
@@ -1779,16 +1826,20 @@ export function WorldClient({ petState, species }: Props) {
       }
 
       // ── 5C: Main RAF loop ─────────────────────────────────────────────
+      let isEntering = true;
+      let entryProgress = 0;
+      const ENTRY_SPEED = 5.0;
+
       let elapsed = 0;
       let lastTime = performance.now();
       let mapFrame = 0;
       let biomeFrame = 0;
 
-      let cinematicPhase = 0;
-      let cinematicTimer = 0;
-      let controlEnabled = false;
       let waterRippleTime = 0;
       let ambientTimer = 20;
+      let controlEnabled = false;
+
+      playChime(); // Play entry chime
 
       function playChime() {
         if (!audioCtx) return;
@@ -1859,15 +1910,7 @@ export function WorldClient({ petState, species }: Props) {
       }
       let footstepTimer = 0;
 
-      setTimeout(() => {
-        controlEnabled = true;
-        if (mounted.current) {
-          setCinematicDone(true);
-          setTimeout(() => {
-            if (mounted.current) setControlsHint(false);
-          }, 10000);
-        }
-      }, 6000);
+      // Cinematic/Entry state is handled in the tick loop via isEntering variable
 
       const tick = () => {
         if (!mounted.current || !effectActive) return;
@@ -1879,23 +1922,33 @@ export function WorldClient({ petState, species }: Props) {
         mapFrame++;
         biomeFrame++;
 
-        if (!controlEnabled) {
-          cinematicTimer += delta;
-          if (cinematicTimer < 2) {
-            camPos.lerp(new THREE.Vector3(60, 20, 30), 0.02);
-            camLook.lerp(new THREE.Vector3(60, 0, -80), 0.03);
-          } else if (cinematicTimer < 4) {
-            camPos.lerp(new THREE.Vector3(60, 10, -50), 0.025);
-            camLook.lerp(new THREE.Vector3(60, 1, -100), 0.03);
-          } else {
-            camPos.lerp(
-              player.pos.clone().add(new THREE.Vector3(0, 4.5, 10)), 0.04
-            );
-            camLook.lerp(player.pos.clone().add(new THREE.Vector3(0, 1, -3)), 0.05);
-          }
-          camera.position.copy(camPos);
-          camera.lookAt(camLook);
+        if (isEntering) {
+          entryProgress += delta;
           
+          // Auto move player forward
+          player.pos.z -= 5.0 * delta; // Auto walk at speed
+          player.isMoving = true;
+
+          // Smooth camera lock
+          const camZ = player.pos.z + 10.0;
+          const camY = 6.0;
+          camera.position.lerp(new THREE.Vector3(player.pos.x, camY, camZ), 0.1);
+          camera.lookAt(player.pos.x, 1.2, player.pos.z - 5.0);
+          
+          // Camera zoom polish (FOV change)
+          camera.fov = 60 - (entryProgress * 5); 
+          camera.updateProjectionMatrix();
+
+          if (entryProgress > 2.0) {
+            isEntering = false;
+            controlEnabled = true;
+            if (mounted.current) {
+              setCinematicDone(true);
+              setControlsHint(true);
+              setTimeout(() => { if (mounted.current) setControlsHint(false); }, 8000);
+            }
+          }
+
           renderer.render(scene, camera);
           return;
         }
@@ -2000,8 +2053,8 @@ export function WorldClient({ petState, species }: Props) {
         let nearestObj: any = null;
         let nearestObjDist = Infinity;
         interactables.forEach(obj => {
-          const d = Math.sqrt((player.pos.x - obj.x)**2 + (player.pos.z - obj.z)**2);
-          if (d < 4.0 && d < nearestObjDist) {
+          const d = player.pos.distanceTo(obj.pos);
+          if (d < obj.radius && d < nearestObjDist) {
             nearestObjDist = d;
             nearestObj = obj;
           }
@@ -2013,10 +2066,7 @@ export function WorldClient({ petState, species }: Props) {
           } else if (nearestNPC) {
             setInteractPrompt(`[ E ]  Talk to ${(nearestNPC as NPCType).name}`);
           } else if (nearestObj) {
-            if (nearestObj.type === 'tablet') setInteractPrompt('[ E ]  Read Tablet');
-            else if (nearestObj.type === 'chest') setInteractPrompt('[ E ]  Open Chest');
-            else if (nearestObj.type === 'campfire') setInteractPrompt('[ E ]  Rest');
-            else setInteractPrompt('[ E ]  Interact');
+            setInteractPrompt(`[ E ]  ${nearestObj.label}`);
           } else {
             setInteractPrompt(null);
           }
