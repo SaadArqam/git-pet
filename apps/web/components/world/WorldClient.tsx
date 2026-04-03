@@ -371,11 +371,19 @@ export function WorldClient({ petState, species }: Props) {
         ambientLight.intensity = 0.1 + dayB * 0.45; hemiLight.intensity = 0.1 + dayB * 0.35;
         const skyL = 0.18 + dayB * 0.62; (scene.background as any).setHSL(0.6, 0.32, skyL); (scene.fog as any).color.setHSL(0.6, 0.22, skyL);
 
-        // Camera Follow
-        const offset = new THREE.Vector3(0, 7, 14).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
-        camPos.lerp(new THREE.Vector3(p.pos.x, 0, p.pos.z).add(offset), 0.065);
-        camLook.lerp(new THREE.Vector3(p.pos.x, 2, p.pos.z - 3).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot), 0.1);
-        camera.position.copy(camPos); camera.lookAt(camLook);
+        // Camera Follow (Precision Alignment with Landing Page)
+        const rotAxis = new THREE.Vector3(0, 1, 0);
+        const camOffset = new THREE.Vector3(0, 7, 14).applyAxisAngle(rotAxis, p.rot);
+        const lookOffset = new THREE.Vector3(0, 2, -4).applyAxisAngle(rotAxis, p.rot); // Look slightly ahead of player
+        
+        const targetCamPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(camOffset);
+        const targetLookAt = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(lookOffset);
+
+        camPos.lerp(targetCamPos, 0.065);
+        camLook.lerp(targetLookAt, 0.1);
+        
+        camera.position.copy(camPos);
+        camera.lookAt(camLook);
 
         // Minimap
         if (minimapRef.current) { const mc = minimapRef.current.getContext('2d')!; mc.fillStyle = '#020617'; mc.fillRect(0,0,120,120); const mx = (p.pos.x+30)/60*112+4, mz = (p.pos.z+30)/60*112+4; mc.fillStyle = '#f0ebe0'; mc.beginPath(); mc.arc(mx, mz, 3, 0, Math.PI*2); mc.fill(); }
