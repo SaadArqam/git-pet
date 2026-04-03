@@ -39,6 +39,8 @@ export function WorldClient({ petState, species }: Props) {
   const [cinematicDone, setCinematicDone] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
   const [promptLabel, setPromptLabel] = useState<string | null>(null);
+  const [timeDisplay, setTimeDisplay] = useState('☀️ Morning');
+  const [flashColor, setFlashColor] = useState<string | null>(null);
 
   useEffect(() => {
     return () => { mounted.current = false; };
@@ -300,16 +302,260 @@ export function WorldClient({ petState, species }: Props) {
         { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ]  Settings', onInteract: () => window.location.href = "/settings" },
         { pos: new THREE.Vector3(9, 0, -4), radius: 3.5, label: '[ E ]  Feed the koi', onInteract: () => { koiData.forEach(k => k.speed = 0.018); setTimeout(() => koiData.forEach(k => k.speed = 0.005), 3000); } },
         { pos: new THREE.Vector3(0, 0, 24), radius: 4, label: '[ E ]  Dashboard', onInteract: () => window.location.href = "/dashboard" },
+        // --- PEER INTERACTION ---
+        {
+          pos: new THREE.Vector3(1000, 0, 1000), radius: 3, label: '[ E ]  Interact',
+          onInteract: () => {
+            // Pick a random winner for demonstration logic
+            const isWin = Math.random() > 0.5;
+            triggerBattleAnimation(isWin ? 'local' : 'peer-id', isWin ? 'peer-id' : 'local');
+          }
+        }
       ];
 
-      // ─── PLAYER & PET ───
       const playerMesh = buildSpeciesMesh(species, petState.primaryColor);
       const petMeshObj = buildSpeciesMesh(species, petState.primaryColor);
       const p = playerRef.current; const pet = petRef.current;
       pet.mesh = petMeshObj.group; pet.legs = petMeshObj.legs;
 
+      // --- SUN / MOON / STARS ---
+      const sunGeo = new THREE.SphereGeometry(4, 8, 8);
+      const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffde0 });
+      const sunMesh = new THREE.Mesh(sunGeo, sunMat); scene.add(sunMesh);
+
+      const glowCanvas = document.createElement('canvas');
+      glowCanvas.width = 128; glowCanvas.height = 128;
+      const gctx = glowCanvas.getContext('2d')!;
+      const grad = gctx.createRadialGradient(64,64,0, 64,64,64);
+      grad.addColorStop(0, 'rgba(255,250,200,0.9)'); grad.addColorStop(0.3, 'rgba(255,220,100,0.4)'); grad.addColorStop(1, 'rgba(255,180,50,0)');
+      gctx.fillStyle = grad; gctx.fillRect(0,0,128,128);
+      const sunGlowMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(glowCanvas), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 });
+      const sunGlow = new THREE.Sprite(sunGlowMat); sunGlow.scale.set(30, 30, 1); scene.add(sunGlow);
+
+      const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(2.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0xd0d8f0 })); scene.add(moonMesh);
+
+      const STAR_COUNT = 200;
+      const starGeo = new THREE.SphereGeometry(0.3, 4, 4);
+      const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+      const starMesh = new THREE.InstancedMesh(starGeo, starMat, STAR_COUNT); scene.add(starMesh);
+      const starDummy = new THREE.Object3D();
+      for (let i = 0; i < STAR_COUNT; i++) {
+        const theta = Math.random() * Math.PI * 2, phi = Math.random() * Math.PI * 0.5, r = 90;
+        starDummy.position.set(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
+        starDummy.updateMatrix(); starMesh.setMatrixAt(i, starDummy.matrix);
+      }
+      starMesh.instanceMatrix.needsUpdate = true;
+      cleanupFns.current.push(() => {
+        scene.remove(sunMesh); sunGeo.dispose(); sunMat.dispose();
+        scene.remove(sunGlow); sunGlowMat.map?.dispose(); sunGlowMat.dispose();
+        scene.remove(moonMesh); (moonMesh.geometry as any).dispose(); (moonMesh.material as any).dispose();
+        scene.remove(starMesh); starGeo.dispose(); starMat.dispose();
+      });
+
+      // --- NEW UPDATE FUNCTIONS ---
+      function updateDayNight(delta: number, elapsed: number) {
+        worldTime = (worldTime + delta) % DAY_DURATION;
+        const phase = getTimePhase(), angle = getSunAngle();
+        const sunX = Math.cos(angle) * 80, sunY = Math.sin(angle) * 60, sunZ = -30;
+        sunMesh.position.set(sunX, sunY, sunZ); sunGlow.position.set(sunX, sunY, sunZ);
+        moonMesh.position.set(-sunX, -sunY * 0.8, sunZ);
+        const aboveHorizon = sunY > -5; sunMesh.visible = sunGlow.visible = aboveHorizon;
+        moonMesh.visible = !aboveHorizon || sunY < 10;
+        sun.position.set(sunX * 0.5, Math.max(sunY * 0.5, 1), sunZ * 0.3);
+        sun.intensity = Math.max(0, Math.sin(angle)) * 2.0;
+
+        const cfg = SKY_CONFIGS[phase as keyof typeof SKY_CONFIGS];
+        if (scene.background instanceof THREE.Color) scene.background.lerp(new THREE.Color(cfg.bg), 0.008);
+        if (scene.fog instanceof THREE.FogExp2) scene.fog.color.lerp(new THREE.Color(cfg.fog), 0.008);
+        
+        const dayFactor = Math.max(0, Math.sin(angle));
+        ambientLight.intensity = 0.15 + dayFactor * 0.45;
+        hemiLight.color.setHex((phase === 'night' || phase === 'evening' || phase === 'dawn') ? 0x0a1428 : 0x87CEEB);
+
+        const starOpacity = phase === 'night' ? 1.0 : (phase === 'dawn' || phase === 'evening' ? 0.4 : 0.0);
+        starMat.opacity = THREE.MathUtils.lerp(starMat.opacity, starOpacity, 0.02);
+        starMesh.visible = starMat.opacity > 0.05;
+
+        const lanternStrength = (phase === 'night' || phase === 'evening' || phase === 'dawn') ? 1.8 : 0.9;
+        lanternMats.forEach((mat: any, i: number) => { mat.emissiveIntensity = lanternStrength + Math.sin(elapsed * 1.6 + i * 1.2) * 0.3; });
+
+        const horizonBoost = 1.0 - Math.abs(Math.sin(angle)) * 0.6;
+        sunGlow.scale.setScalar(25 + horizonBoost * 20); sunGlowMat.opacity = 0.5 + horizonBoost * 0.4;
+        sunMat.color.setHex(dayFactor > 0.7 ? 0xfffde0 : 0xff8830);
+      }
+
+      function triggerBattleAnimation(winnerId: string, loserId: string) {
+        const isLocalWinner = winnerId === 'local';
+        const winnerMesh = isLocalWinner ? playerMesh : peerMeshes.get(winnerId);
+        const loserMesh = isLocalWinner ? peerMeshes.get(loserId) : playerMesh;
+        if (!winnerMesh || !loserMesh) return;
+
+        const winnerStart = winnerMesh.group.position.clone();
+        const loserStart = loserMesh.group.position.clone();
+        const clashPoint = winnerStart.clone().lerp(loserStart, 0.5);
+        battleAnim = {
+          phase: 'approach', timer: 0, winnerId, loserId, winnerMesh, loserMesh,
+          winnerStartPos: winnerStart, loserStartPos: loserStart,
+          winnerTargetPos: winnerStart.clone().lerp(clashPoint, 0.6),
+          loserTargetPos: loserStart.clone().lerp(clashPoint, 0.6),
+          flashTimer: 0
+        };
+        battlePlaying = true;
+        setTimeout(() => { battlePlaying = false; }, 3500);
+      }
+
+      function updateBattleAnim(delta: number, elapsed: number) {
+        if (!battleAnim) return;
+        battleAnim.timer += delta;
+        const { winnerMesh, loserMesh, phase } = battleAnim;
+
+        if (phase === 'approach') {
+          const t = Math.min(battleAnim.timer / 0.8, 1);
+          const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+          winnerMesh.group.position.lerp(battleAnim.winnerTargetPos, ease * 0.15);
+          loserMesh.group.position.lerp(battleAnim.loserTargetPos, ease * 0.15);
+          const w2l = loserMesh.group.position.clone().sub(winnerMesh.group.position);
+          winnerMesh.group.rotation.y = Math.atan2(w2l.x, w2l.z);
+          loserMesh.group.rotation.y = winnerMesh.group.rotation.y + Math.PI;
+          const sw = Math.sin(elapsed * 10) * 0.35;
+          winnerMesh.legs.FL.rotation.x = sw; winnerMesh.legs.BR.rotation.x = sw;
+          winnerMesh.legs.FR.rotation.x = -sw; winnerMesh.legs.BL.rotation.x = -sw;
+          loserMesh.legs.FL.rotation.x = sw; loserMesh.legs.BR.rotation.x = sw;
+          loserMesh.legs.FR.rotation.x = -sw; loserMesh.legs.BL.rotation.x = -sw;
+          if (battleAnim.timer >= 0.8) { battleAnim.phase = 'clash'; battleAnim.timer = 0; }
+        } else if (phase === 'clash') {
+          const shake = Math.sin(elapsed * 40) * 0.12 * Math.max(0, 1 - battleAnim.timer);
+          winnerMesh.group.position.x = battleAnim.winnerTargetPos.x + shake;
+          loserMesh.group.position.x = battleAnim.loserTargetPos.x - shake;
+          camPos.x += (Math.random()-0.5) * 0.08; camPos.y += (Math.random()-0.5) * 0.04;
+          if (battleAnim.timer < 0.15 && battleAnim.flashTimer === 0) {
+            battleAnim.flashTimer = 1; screenFlash = 1;
+            if (mounted.current) setFlashColor('rgba(255,255,255,0.6)');
+          }
+          if (screenFlash > 0) {
+            screenFlash -= delta * 4;
+            if (screenFlash <= 0) { screenFlash = 0; if (mounted.current) setFlashColor(null); }
+          }
+          if (battleAnim.timer >= 1.2) { battleAnim.phase = 'result'; battleAnim.timer = 0; }
+        } else if (phase === 'result') {
+          const jumpT = Math.min(battleAnim.timer / 0.5, 1);
+          winnerMesh.group.position.y = 0.5 + Math.sin(jumpT * Math.PI) * 1.2;
+          if (battleAnim.timer < 0.5) winnerMesh.group.rotation.y += delta * 6;
+          if (battleAnim.timer > 0.5 && battleAnim.timer < 0.65) winnerMesh.group.position.y = 0.5 - 0.15;
+          if (battleAnim.timer > 0.65) winnerMesh.group.position.y = THREE.MathUtils.lerp(winnerMesh.group.position.y, 0.5, 0.2);
+          const slumpT = Math.min(battleAnim.timer / 0.8, 1);
+          loserMesh.group.rotation.z = slumpT * 0.6; loserMesh.group.position.y = 0.5 - slumpT * 0.2;
+          if (battleAnim.timer < 0.3) loserMesh.group.traverse((c: any) => { if (c.material?.color) c.material.color.lerp(new THREE.Color(0xff3333), 0.1); });
+          if (battleAnim.timer > 1.5) {
+            loserMesh.group.rotation.z = THREE.MathUtils.lerp(loserMesh.group.rotation.z, 0, 0.1);
+            loserMesh.group.traverse((c: any) => { if (c.material?.color) c.material.color.lerp(new THREE.Color(0xffffff), 0.05); });
+          }
+          if (battleAnim.timer >= 2.0) battleAnim.phase = 'done';
+        } else if (phase === 'done') {
+          winnerMesh.group.position.lerp(battleAnim.winnerStartPos, 0.08);
+          loserMesh.group.position.lerp(battleAnim.loserStartPos, 0.08);
+          winnerMesh.group.rotation.z = THREE.MathUtils.lerp(winnerMesh.group.rotation.z, 0, 0.1);
+          loserMesh.group.rotation.z = THREE.MathUtils.lerp(loserMesh.group.rotation.z, 0, 0.1);
+          loserMesh.group.traverse((c: any) => { if (c.material?.color) c.material.color.set(0xffffff); });
+          if (winnerMesh.group.position.distanceTo(battleAnim.winnerStartPos) < 0.05 && loserMesh.group.position.distanceTo(battleAnim.loserStartPos) < 0.05) battleAnim = null;
+        }
+      }
+
+      function updateIdleAnimations(delta: number, elapsed: number) {
+        if (p.isMoving) { lastMoveTime = elapsed; idleAnim = 'none'; idleAnimTimer = 0; return; }
+        const timeSinceMove = elapsed - lastMoveTime;
+        idleTimer -= delta;
+        if (idleTimer <= 0 && idleAnim === 'none' && timeSinceMove > 1.5) {
+          idleAnim = (['tailwag', 'headtilt', 'sneeze', 'sit'] as any)[Math.floor(Math.random() * 4)];
+          idleAnimTimer = 0; idleTimer = (IDLE_FREQUENCY[species] || 6) + Math.random() * 4;
+        }
+        if (idleAnim === 'none') return;
+        idleAnimTimer += delta;
+        if (idleAnim === 'tailwag') {
+          playerMesh.group.rotation.z = (0.4 * Math.sin(idleAnimTimer * (8 + Math.sin(idleAnimTimer * 2) * 4))) * 0.08;
+          if (idleAnimTimer > 3.0) { playerMesh.group.rotation.z = THREE.MathUtils.lerp(playerMesh.group.rotation.z, 0, 0.1); if (idleAnimTimer > 3.5) idleAnim = 'none'; }
+        } else if (idleAnim === 'headtilt') {
+          const head = playerMesh.group.children[1];
+          if (head) head.rotation.z = Math.sin(idleAnimTimer * 2.5) * 0.22;
+          if (idleAnimTimer > 3.0) { if (head) head.rotation.z = THREE.MathUtils.lerp(head.rotation.z, 0, 0.1); if (idleAnimTimer > 3.5) idleAnim = 'none'; }
+        } else if (idleAnim === 'sneeze') {
+          const head = playerMesh.group.children[1];
+          if (idleAnimTimer < 0.8) { if (head) head.rotation.x = Math.sin(idleAnimTimer * 3) * 0.15; }
+          else if (idleAnimTimer < 1.0) {
+            const snapT = (idleAnimTimer - 0.8) / 0.2;
+            playerMesh.group.position.z = p.pos.z - Math.sin(snapT * Math.PI) * 0.3;
+            playerMesh.group.rotation.x = Math.sin(snapT * Math.PI) * 0.25;
+            if (head) head.rotation.x = 0;
+          } else {
+            playerMesh.group.rotation.x = THREE.MathUtils.lerp(playerMesh.group.rotation.x, 0, 0.15);
+            if (idleAnimTimer > 1.8) idleAnim = 'none';
+          }
+        } else if (idleAnim === 'sit') {
+          const sitT = Math.min(idleAnimTimer / 0.5, 1);
+          playerMesh.group.position.y = THREE.MathUtils.lerp(0.5, 0.3, sitT * sitT * (3 - 2 * sitT));
+          playerMesh.legs.BL.rotation.x = playerMesh.legs.BR.rotation.x = sitT * 0.6;
+          playerMesh.legs.FL.rotation.x = playerMesh.legs.FR.rotation.x = sitT * -0.3;
+          if (idleAnimTimer > 3.5) {
+            const standT = Math.min((idleAnimTimer - 3.5) / 0.5, 1);
+            playerMesh.group.position.y = THREE.MathUtils.lerp(0.3, 0.5, standT * standT * (3 - 2 * standT));
+            playerMesh.legs.BL.rotation.x = playerMesh.legs.BR.rotation.x = THREE.MathUtils.lerp(0.6, 0, standT);
+            playerMesh.legs.FL.rotation.x = playerMesh.legs.FR.rotation.x = THREE.MathUtils.lerp(-0.3, 0, standT);
+            if (idleAnimTimer > 4.5) idleAnim = 'none';
+          }
+        }
+      }
+
       let lastTime = performance.now();
-      let elapsed = 0; let dayNightT = 0.15;
+      let elapsed = 0;
+
+      // --- DAY/NIGHT SYSTEM ---
+      const DAY_DURATION = 600; // 10 minutes
+      let worldTime = 200; // start mid-morning
+      function getSunAngle() { return (worldTime / DAY_DURATION) * Math.PI * 2; }
+      function getTimePhase() {
+        const t = worldTime;
+        if (t < 100 || t > 560) return 'night';
+        if (t < 150) return 'dawn';
+        if (t < 220) return 'morning';
+        if (t < 340) return 'noon';
+        if (t < 420) return 'afternoon';
+        if (t < 470) return 'dusk';
+        return 'evening';
+      }
+      const SKY_CONFIGS = {
+        night:     { bg: 0x020510, fog: 0x030714, fogD: 0.018 },
+        dawn:      { bg: 0x1a0a2a, fog: 0x2a1020, fogD: 0.014 },
+        morning:   { bg: 0xf4a460, fog: 0xe8905a, fogD: 0.008 },
+        noon:      { bg: 0x87CEEB, fog: 0x87CEEB, fogD: 0.006 },
+        afternoon: { bg: 0x6ab0d8, fog: 0x7ab8d8, fogD: 0.007 },
+        dusk:      { bg: 0xff6030, fog: 0xd04020, fogD: 0.012 },
+        evening:   { bg: 0x1a0820, fog: 0x120618, fogD: 0.016 },
+      };
+
+      // --- BATTLE ANIMATION STATE ---
+      interface BattleAnim {
+        phase: 'approach' | 'clash' | 'result' | 'done';
+        timer: number;
+        winnerId: string; loserId: string;
+        winnerMesh: { group: any, legs: any };
+        loserMesh:  { group: any, legs: any };
+        winnerStartPos: any; loserStartPos: any;
+        winnerTargetPos: any; loserTargetPos: any;
+        flashTimer: number;
+      }
+      let battleAnim: BattleAnim | null = null;
+      let battlePlaying = false;
+      let screenFlash = 0;
+
+      // --- IDLE ANIMATIONS ---
+      let idleTimer = 0;
+      let idleAnim: 'none' | 'tailwag' | 'headtilt' | 'sneeze' | 'sit' = 'none';
+      let idleAnimTimer = 0;
+      let lastMoveTime = 0;
+      const IDLE_FREQUENCY: Record<string, number> = { wolf: 5, dragon: 8, sabertooth: 6, capybara: 12, axolotl: 4 };
+
+      // --- PEER STORAGE ---
+      const peerMeshes = new Map<string, { group: any, legs: any }>();
 
       const tick = () => {
         if (!mounted.current) return;
@@ -318,23 +564,38 @@ export function WorldClient({ petState, species }: Props) {
         const delta = Math.min((now - lastTime) / 1000, 0.05);
         lastTime = now; elapsed += delta;
 
-        // Entry Cinematic
-        if (!p.controlEnabled) {
-          p.pos.z -= 0.15; p.isMoving = true;
-          if (p.pos.z < 18) { p.controlEnabled = true; if (mounted.current) setCinematicDone(true); }
-        } else {
-          // Movement 1:1 Dashboard Parity
-          const spd = p.speed * (delta * 60);
-          const damping = Math.pow(0.72, delta * 60);
-          let moved = false;
-          if (keysRef.current["KeyW"] || keysRef.current["ArrowUp"]) { p.vel.x -= Math.sin(p.rot) * spd; p.vel.z -= Math.cos(p.rot) * spd; moved = true; }
-          if (keysRef.current["KeyS"] || keysRef.current["ArrowDown"]) { p.vel.x += Math.sin(p.rot) * spd; p.vel.z += Math.cos(p.rot) * spd; moved = true; }
-          if (keysRef.current["KeyA"] || keysRef.current["ArrowLeft"]) p.rot += 0.045 * (delta * 60);
-          if (keysRef.current["KeyD"] || keysRef.current["ArrowRight"]) p.rot -= 0.045 * (delta * 60);
-          p.isMoving = moved; p.vel.x *= damping; p.vel.z *= damping;
-          p.pos.x += p.vel.x; p.pos.z += p.vel.z;
+        // Day/Night Cycle
+        updateDayNight(delta, elapsed);
+        if (Math.floor(elapsed * 2) % 10 === 0) {
+          const phase = getTimePhase();
+          const icons: Record<string, string> = { night: '🌙 Night', dawn: '🌅 Dawn', morning: '☀️ Morning', noon: '☀️ Noon', afternoon: '🌤 Afternoon', dusk: '🌇 Dusk', evening: '🌆 Evening' };
+          if (mounted.current) setTimeDisplay(icons[phase] || '☀️');
         }
 
+        if (battlePlaying) { p.vel.x *= 0.5; p.vel.z *= 0.5; }
+        else {
+          // Entry Cinematic
+          if (!p.controlEnabled) {
+            p.pos.z -= 0.15; p.isMoving = true;
+            if (p.pos.z < 18) { p.controlEnabled = true; if (mounted.current) setCinematicDone(true); }
+          } else {
+            // Movement 1:1 Dashboard Parity
+            const spd = p.speed * (delta * 60);
+            const damping = Math.pow(0.72, delta * 60);
+            let moved = false;
+            if (keysRef.current["KeyW"] || keysRef.current["ArrowUp"]) { p.vel.x -= Math.sin(p.rot) * spd; p.vel.z -= Math.cos(p.rot) * spd; moved = true; }
+            if (keysRef.current["KeyS"] || keysRef.current["ArrowDown"]) { p.vel.x += Math.sin(p.rot) * spd; p.vel.z += Math.cos(p.rot) * spd; moved = true; }
+            if (keysRef.current["KeyA"] || keysRef.current["ArrowLeft"]) p.rot += 0.045 * (delta * 60);
+            if (keysRef.current["KeyD"] || keysRef.current["ArrowRight"]) p.rot -= 0.045 * (delta * 60);
+            p.isMoving = moved; p.vel.x *= damping; p.vel.z *= damping;
+            p.pos.x += p.vel.x; p.pos.z += p.vel.z;
+          }
+        }
+
+        updateBattleAnim(delta, elapsed);
+        updateIdleAnimations(delta, elapsed);
+
+        // --- RESTORED CORE LOGIC ---
         // Pet Follow
         const targetPetPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(new THREE.Vector3(2,0,2).applyAxisAngle(new THREE.Vector3(0,1,0), p.rot));
         const petV3 = new THREE.Vector3(pet.pos.x, pet.pos.y, pet.pos.z);
@@ -346,9 +607,11 @@ export function WorldClient({ petState, species }: Props) {
         // Update Meshes
         playerMesh.group.position.set(p.pos.x, 0.5 + Math.sin(elapsed*2.2)*0.035, p.pos.z);
         playerMesh.group.rotation.y = p.rot;
-        const swing = p.isMoving ? Math.sin(elapsed * 9) * 0.35 : 0;
-        playerMesh.legs.FL.rotation.x = swing; playerMesh.legs.BR.rotation.x = swing;
-        playerMesh.legs.FR.rotation.x = -swing; playerMesh.legs.BL.rotation.x = -swing;
+        if (!battleAnim) {
+          const swing = p.isMoving ? Math.sin(elapsed * 9) * 0.35 : 0;
+          playerMesh.legs.FL.rotation.x = swing; playerMesh.legs.BR.rotation.x = swing;
+          playerMesh.legs.FR.rotation.x = -swing; playerMesh.legs.BL.rotation.x = -swing;
+        }
 
         // Interaction Proximity
         let nearest: any = null; let minD = Infinity;
@@ -365,11 +628,14 @@ export function WorldClient({ petState, species }: Props) {
         streamMat.color.setHSL(0.55, 0.55, 0.36 + Math.sin(elapsed*1.3)*0.04);
         forestAltarMat.emissiveIntensity = 1.2 + Math.sin(elapsed*3.8)*0.45; forestAltarFlame.position.y = 1.15 + Math.sin(elapsed*4.2)*0.03;
 
-        // Day/Night Cycle
-        dayNightT = (dayNightT + delta / 75) % 1; const sunH = Math.sin(dayNightT*Math.PI*2 - Math.PI/2); const dayB = Math.max(0, Math.min(1, (sunH+0.3)/1.3));
-        sun.intensity = 0.35 + dayB * 2.1; sun.position.set(Math.cos(dayNightT*Math.PI*2)*30, Math.sin(dayNightT*Math.PI*2)*40, 10);
-        ambientLight.intensity = 0.1 + dayB * 0.45; hemiLight.intensity = 0.1 + dayB * 0.35;
-        const skyL = 0.18 + dayB * 0.62; (scene.background as any).setHSL(0.6, 0.32, skyL); (scene.fog as any).color.setHSL(0.6, 0.22, skyL);
+        // NPCs with Idle
+        npcStateData.forEach((npc, i) => {
+          if (npc.state === 'wander') { npc.angle += npc.speed; npc.mesh.position.set(npc.homeX + Math.cos(npc.angle)*npc.radius, 0.28, npc.homeZ + Math.sin(npc.angle)*npc.radius); npc.mesh.lookAt(npc.homeX + Math.cos(npc.angle+0.1)*npc.radius, 0.28, npc.homeZ + Math.sin(npc.angle+0.1)*npc.radius); }
+          else {
+            if (npc.timer > 2.5 && npc.timer < 3.0) npc.mesh.rotation.z = Math.sin(elapsed * 2 + i * 1.4) * 0.06;
+            else npc.mesh.rotation.z = THREE.MathUtils.lerp(npc.mesh.rotation.z, 0, 0.1);
+          }
+        });
 
         // Camera Follow (Precision Alignment with Landing Page)
         const rotAxis = new THREE.Vector3(0, 1, 0);
@@ -397,8 +663,29 @@ export function WorldClient({ petState, species }: Props) {
       if (host) {
         const socket = new PartySocket({ host, room: "world" }); socketRef.current = socket;
         socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species, petState } })));
-        socket.addEventListener("message", (e) => { const msg = JSON.parse(e.data); if (msg.type === "snapshot") setOnlineCount(Object.keys(msg.pets).length); });
-        const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z })); }, 100);
+        socket.addEventListener("message", (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "snapshot") {
+            setOnlineCount(Object.keys(msg.pets).length);
+            Object.entries(msg.pets).forEach(([id, petData]: [string, any]) => {
+              if (id === socket.id) return;
+              if (!peerMeshes.has(id)) {
+                const mesh = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
+                peerMeshes.set(id, mesh);
+              }
+            });
+          } else if (msg.type === "move") {
+            const peer = peerMeshes.get(msg.id);
+            if (peer) {
+              peer.group.position.set(msg.x, 0.5, msg.z);
+              peer.group.rotation.y = msg.rot || 0;
+            }
+          } else if (msg.type === "leave") {
+            const peer = peerMeshes.get(msg.id);
+            if (peer) { scene.remove(peer.group); peerMeshes.delete(msg.id); }
+          }
+        });
+        const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot })); }, 100);
         cleanupFns.current.push(() => clearInterval(broadcast));
       }
 
@@ -410,7 +697,9 @@ export function WorldClient({ petState, species }: Props) {
     };
 
     init();
-    return () => { cancelAnimationFrame(rafRef.current); if (rendererRef.current) rendererRef.current.dispose(); cleanupFns.current.forEach(f => f()); if (socketRef.current) socketRef.current.close(); };
+    return () => {
+      cancelAnimationFrame(rafRef.current); if (rendererRef.current) rendererRef.current.dispose(); cleanupFns.current.forEach(f => f()); if (socketRef.current) socketRef.current.close();
+    };
   }, [petState, species]);
 
   return (
@@ -426,9 +715,19 @@ export function WorldClient({ petState, species }: Props) {
 
       {cinematicDone && (
         <>
-          <div style={{ position: 'fixed', top: 24, left: 24, background: 'rgba(10,8,4,0.8)', padding: '12px 20px', borderRadius: 4, color: '#ffd4a0', border: '1px solid rgba(240,200,140,0.2)', backdropFilter: 'blur(10px)', zIndex: 10 }}>
+          {/* Screen flash for battle clash */}
+          {flashColor && (
+            <div style={{
+              position: 'fixed', inset: 0, background: flashColor, pointerEvents: 'none', zIndex: 45, transition: 'opacity 0.1s',
+            }} />
+          )}
+
+          <div style={{ position: 'fixed', top: 24, left: 24, background: 'rgba(10,8,4,0.8)', padding: '12px 20px', borderRadius: 4, color: '#ffd4a0', border: '1px solid rgba(240,200,140,0.2)', backdropFilter: 'blur(10px)', zIndex: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ fontSize: 11, letterSpacing: 2 }}>@{petState.gitData.username.toUpperCase()}</div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{onlineCount} PETS ONLINE</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>{onlineCount} PETS ONLINE</div>
+              <div style={{ fontSize: 9, color: 'rgba(240,235,224,0.45)', letterSpacing: 1 }}>{timeDisplay}</div>
+            </div>
           </div>
 
           <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.3)', fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', pointerEvents: 'none', zIndex: 10 }}>
