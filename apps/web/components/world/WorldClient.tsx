@@ -301,16 +301,7 @@ export function WorldClient({ petState, species }: Props) {
         { pos: new THREE.Vector3(-7, 0, 3), radius: 3, label: '[ E ]  Readme Link', onInteract: () => navigator.clipboard.writeText(`![My Pet](https://git-pet.vercel.app/api/card/${petState.gitData.username})`) },
         { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ]  Settings', onInteract: () => window.location.href = "/settings" },
         { pos: new THREE.Vector3(9, 0, -4), radius: 3.5, label: '[ E ]  Feed the koi', onInteract: () => { koiData.forEach(k => k.speed = 0.018); setTimeout(() => koiData.forEach(k => k.speed = 0.005), 3000); } },
-        { pos: new THREE.Vector3(0, 0, 24), radius: 4, label: '[ E ]  Dashboard', onInteract: () => window.location.href = "/dashboard" },
-        // --- PEER INTERACTION ---
-        {
-          pos: new THREE.Vector3(1000, 0, 1000), radius: 3, label: '[ E ]  Interact',
-          onInteract: () => {
-            // Pick a random winner for demonstration logic
-            const isWin = Math.random() > 0.5;
-            triggerBattleAnimation(isWin ? 'local' : 'peer-id', isWin ? 'peer-id' : 'local');
-          }
-        }
+        { pos: new THREE.Vector3(0, 0, 24), radius: 4, label: '[ E ]  Dashboard', onInteract: () => window.location.href = "/dashboard" }
       ];
 
       const playerMesh = buildSpeciesMesh(species, petState.primaryColor);
@@ -619,6 +610,19 @@ export function WorldClient({ petState, species }: Props) {
           const d = new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos);
           if (d < obj.radius && d < minD) { minD = d; nearest = obj; }
         });
+        peerMeshes.forEach((peer, id) => {
+          const d = Math.sqrt(Math.pow(p.pos.x - peer.group.position.x, 2) + Math.pow(p.pos.z - peer.group.position.z, 2));
+          if (d < 4 && d < minD) {
+            minD = d;
+            nearest = {
+              label: `[ E ]  Interact with @${id}`,
+              onInteract: () => {
+                const isWin = Math.random() > 0.5;
+                triggerBattleAnimation(isWin ? 'local' : id, isWin ? id : 'local');
+              }
+            };
+          }
+        });
         if (mounted.current) setPromptLabel(nearest ? nearest.label : null);
 
         // Environment Animations
@@ -659,30 +663,57 @@ export function WorldClient({ petState, species }: Props) {
       tick();
 
       // --- Multiplayer & Input ---
+      // --- Multiplayer & Input ---
       const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
       if (host) {
         const socket = new PartySocket({ host, room: "world" }); socketRef.current = socket;
         socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species, petState } })));
         socket.addEventListener("message", (e) => {
           const msg = JSON.parse(e.data);
+          
           if (msg.type === "snapshot") {
             setOnlineCount(Object.keys(msg.pets).length);
-            Object.entries(msg.pets).forEach(([id, petData]: [string, any]) => {
-              if (id === socket.id) return;
-              if (!peerMeshes.has(id)) {
+            Object.entries(msg.pets).forEach(([username, petData]: [string, any]) => {
+              if (username === petState.gitData.username) return;
+              if (!peerMeshes.has(username)) {
                 const mesh = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
-                peerMeshes.set(id, mesh);
+                // Server Y maps to 3D Z
+                mesh.group.position.set(petData.x ?? 0, 0.5, petData.y ?? 0);
+                peerMeshes.set(username, mesh);
               }
             });
-          } else if (msg.type === "move") {
-            const peer = peerMeshes.get(msg.id);
-            if (peer) {
-              peer.group.position.set(msg.x, 0.5, msg.z);
-              peer.group.rotation.y = msg.rot || 0;
+          } else if (msg.type === "pet_update" || msg.type === "move") {
+            const petData = msg.pet || msg;
+            const username = petData.username || msg.id;
+            if (username === petState.gitData.username) return;
+
+            let peer = peerMeshes.get(username);
+            if (!peer && petData.species) { // Create if they just joined and we missed them
+              peer = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
+              peerMeshes.set(username, peer);
             }
-          } else if (msg.type === "leave") {
-            const peer = peerMeshes.get(msg.id);
-            if (peer) { scene.remove(peer.group); peerMeshes.delete(msg.id); }
+            if (peer) {
+              if (petData.x !== undefined && petData.y !== undefined) {
+                peer.group.position.set(petData.x, 0.5, petData.y);
+              }
+              if (petData.rot !== undefined) peer.group.rotation.y = petData.rot;
+            }
+            setOnlineCount(peerMeshes.size + 1);
+          } else if (msg.type === "pet_left" || msg.type === "leave") {
+            const username = msg.username || msg.id;
+            const peer = peerMeshes.get(username);
+            if (peer) { 
+              scene.remove(peer.group); 
+              peer.group.traverse((c: any) => {
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) {
+                  if (Array.isArray(c.material)) c.material.forEach((m: any) => m.dispose());
+                  else c.material.dispose();
+                }
+              });
+              peerMeshes.delete(username); 
+            }
+            setOnlineCount(peerMeshes.size + 1);
           }
         });
         const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot })); }, 100);
