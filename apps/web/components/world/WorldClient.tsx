@@ -135,6 +135,74 @@ export function WorldClient({ petState, species }: Props) {
         scene.add(g); return { group: g, legs };
       }
 
+      // ─── AUDIO SYSTEM ───
+      let audioInit = false;
+      let audioCtx: any = null;
+      let audioListener: any = null;
+      let streamSound: any = null;
+
+      function initAudio() {
+        if (audioInit) return;
+        audioInit = true;
+        try {
+          audioListener = new THREE.AudioListener();
+          camera.add(audioListener);
+          audioCtx = audioListener.context;
+          
+          // Stream Positional Audio (Pink Noise)
+          streamSound = new THREE.PositionalAudio(audioListener);
+          const bufSize = audioCtx.sampleRate * 2;
+          const streamBuffer = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+          const sData = streamBuffer.getChannelData(0);
+          let lastOut = 0;
+          for (let i = 0; i < bufSize; i++) {
+            const white = Math.random() * 2 - 1;
+            sData[i] = (lastOut + (0.02 * white)) / 1.02;
+            lastOut = sData[i];
+          }
+          streamSound.setBuffer(streamBuffer);
+          streamSound.setRefDistance(3);
+          streamSound.setLoop(true);
+          streamSound.setVolume(0.15); // soft
+          streamSound.play();
+          
+          const soundTarget = new THREE.Object3D();
+          soundTarget.position.set(9, 0, -4); // Koi pond coordinates
+          scene.add(soundTarget);
+          soundTarget.add(streamSound);
+        } catch(e) { console.warn("Audio init failed", e); }
+      }
+
+      function playFootstep() {
+        if (!audioInit || !audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.05);
+        gain.gain.setValueAtTime(0.015, audioCtx.currentTime); // subtle
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(audioListener.getInput());
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+      }
+
+      function playInteract() {
+        if (!audioInit || !audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(900, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioListener.getInput());
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      }
+
       // ─── WORLD BUILDING ───
       // Ground
       const groundGeo = new THREE.PlaneGeometry(80, 80, 40, 40); groundGeo.rotateX(-Math.PI / 2);
@@ -498,6 +566,7 @@ export function WorldClient({ petState, species }: Props) {
 
       let lastTime = performance.now();
       let elapsed = 0;
+      let lastFootstep = 0;
 
       // --- DAY/NIGHT SYSTEM ---
       const DAY_DURATION = 600; // 10 minutes
@@ -580,6 +649,10 @@ export function WorldClient({ petState, species }: Props) {
             if (keysRef.current["KeyD"] || keysRef.current["ArrowRight"]) p.rot -= 0.045 * (delta * 60);
             p.isMoving = moved; p.vel.x *= damping; p.vel.z *= damping;
             p.pos.x += p.vel.x; p.pos.z += p.vel.z;
+            if (moved && elapsed - lastFootstep > 0.32) {
+              lastFootstep = elapsed;
+              playFootstep();
+            }
           }
         }
 
@@ -617,6 +690,7 @@ export function WorldClient({ petState, species }: Props) {
             nearest = {
               label: `[ E ]  Interact with @${id}`,
               onInteract: () => {
+                playInteract();
                 const isWin = Math.random() > 0.5;
                 triggerBattleAnimation(isWin ? 'local' : id, isWin ? id : 'local');
               }
@@ -720,7 +794,14 @@ export function WorldClient({ petState, species }: Props) {
         cleanupFns.current.push(() => clearInterval(broadcast));
       }
 
-      const onKeyDown = (e: KeyboardEvent) => { keysRef.current[e.code] = true; if (e.code === "KeyE") { const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius); if (near) near.onInteract(); } };
+      const onKeyDown = (e: KeyboardEvent) => { 
+        initAudio(); 
+        keysRef.current[e.code] = true; 
+        if (e.code === "KeyE") { 
+          const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius); 
+          if (near) { playInteract(); near.onInteract(); } 
+        } 
+      };
       const onKeyUp = (e: KeyboardEvent) => keysRef.current[e.code] = false;
       const onResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); };
       window.addEventListener("keydown", onKeyDown); window.addEventListener("keyup", onKeyUp); window.addEventListener("resize", onResize);
