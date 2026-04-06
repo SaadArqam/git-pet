@@ -650,10 +650,18 @@ export function WorldClient({ petState, species }: Props) {
 
         if (battlePlaying) { p.vel.x *= 0.5; p.vel.z *= 0.5; }
         else {
-          // Entry Cinematic
           if (!p.controlEnabled) {
-            p.pos.z -= 0.12; p.isMoving = true;
-            if (p.pos.z < 22) { p.controlEnabled = true; if (mounted.current) { setCinematicDone(true); setHasEntered(true); setNarrativeText('you\'re not alone here'); setTimeout(() => { setNarrativeText(null); }, 2500); } }
+            // Entry Cinematic — two-phase:
+            // Phase 1 (z=35→15): black screen, player walks invisibly toward world
+            // Phase 2 (z=15→-8): world visible, player walks through first torii (z=-7)
+            p.pos.z -= 0.14; p.isMoving = true;
+            if (p.pos.z < 15 && !cinematicDone && mounted.current) {
+              setCinematicDone(true); // fade black screen — world becomes visible
+            }
+            if (p.pos.z < -8) { // player has crossed through the first torii
+              p.controlEnabled = true;
+              if (mounted.current) { setHasEntered(true); setNarrativeText('you\'re not alone here'); setTimeout(() => { setNarrativeText(null); }, 2500); }
+            }
           } else {
             // Movement 1:1 Dashboard Parity
             const spd = p.speed * (delta * 60);
