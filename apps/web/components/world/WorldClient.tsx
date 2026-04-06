@@ -21,7 +21,7 @@ export function WorldClient({ petState, species }: Props) {
   // Movement & State
   const keysRef = useRef<Record<string, boolean>>({});
   const playerRef = useRef({
-    pos: { x: 0, y: 0.5, z: 28 }, // Spawn behind torii
+    pos: { x: 0, y: 0.5, z: 35 }, // Spawn behind outer gate
     rot: 0,
     vel: { x: 0, y: 0, z: 0 },
     isMoving: false,
@@ -30,7 +30,7 @@ export function WorldClient({ petState, species }: Props) {
   });
 
   const petRef = useRef({
-    pos: { x: 0, y: 0.5, z: 31 },
+    pos: { x: 0, y: 0.5, z: 38 },
     rot: 0,
     mesh: null as any,
     legs: {} as any,
@@ -41,6 +41,8 @@ export function WorldClient({ petState, species }: Props) {
   const [promptLabel, setPromptLabel] = useState<string | null>(null);
   const [timeDisplay, setTimeDisplay] = useState('☀️ Morning');
   const [flashColor, setFlashColor] = useState<string | null>(null);
+  const [narrativeText, setNarrativeText] = useState<string | null>(null);
+  const [hasEntered, setHasEntered] = useState(false);
 
   useEffect(() => {
     return () => { mounted.current = false; };
@@ -272,23 +274,29 @@ export function WorldClient({ petState, species }: Props) {
       // Shrine
       function buildShrine(x: number, z: number) {
         const wood = 0x6b4423, stone = 0x9a8a7a, roof = 0x2a1f14;
-        for (let s = 0; s < 3; s++) for (let sx = -(3-s); sx <= (3-s); sx++) for (let sz = -(2-s); sz <= (2-s); sz++) vox(x + sx, s * 0.45, z + sz + 3, stone, 1, 0.45, 1, false, true);
+        const g = new THREE.Group(); scene.add(g);
+        const gvox = (vx: number, vy: number, vz: number, color: number | string, w = 1, h = 1, d = 1, cs = false, rs = false) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }));
+          m.position.set(vx, vy, vz); m.castShadow = cs; m.receiveShadow = rs; g.add(m); return m;
+        };
+        for (let s = 0; s < 3; s++) for (let sx = -(3-s); sx <= (3-s); sx++) for (let sz = -(2-s); sz <= (2-s); sz++) gvox(x + sx, s * 0.45, z + sz + 3, stone, 1, 0.45, 1, false, true);
         for (let wx = -3; wx <= 3; wx++) for (let wy = 0; wy < 4; wy++) for (let wz = -2; wz <= 2; wz++) {
           const isWall = Math.abs(wx) === 3 || Math.abs(wz) === 2 || wy === 0; if (!isWall) continue;
           if (wx === 0 && wz === -2 && wy < 2) continue;
           const isWindow = Math.abs(wx) === 2 && wz === -2 && wy === 1;
-          const m = vox(x + wx, 1.4 + wy, z + wz, isWindow ? 0xffcc66 : wood, 1, 1, 1, true);
+          const m = gvox(x + wx, 1.4 + wy, z + wz, isWindow ? 0xffcc66 : wood, 1, 1, 1, true);
           if (isWindow) { (m.material as any).emissive = new THREE.Color(0xffaa22); (m.material as any).emissiveIntensity = 1.2; }
         }
         for (let ry = 0; ry < 3; ry++) {
           const ext = ry; for (let rx = -(3+ext); rx <= (3+ext); rx++) for (let rz = -(2+ext); rz <= (2+ext); rz++) {
             const isEdge = Math.abs(rx) === 3 + ext || Math.abs(rz) === 2 + ext; if (!isEdge && ry > 0) continue;
-            vox(x + rx, 5.4 + ry * 0.5, z + rz, ry === 0 ? 0x3a2f1e : roof, 1, 0.4, 1, true);
+            gvox(x + rx, 5.4 + ry * 0.5, z + rz, ry === 0 ? 0x3a2f1e : roof, 1, 0.4, 1, true);
           }
         }
-        vox(x, 5.2, z - 2.5, 0x886600, 0.4, 0.6, 0.4);
+        gvox(x, 5.2, z - 2.5, 0x886600, 0.4, 0.6, 0.4);
+        return g;
       }
-      buildShrine(0, -22);
+      const shrineGroup = buildShrine(0, -22);
 
       // Forest
       function buildForestTree(x: number, z: number, h: number) {
@@ -366,10 +374,10 @@ export function WorldClient({ petState, species }: Props) {
 
       // --- Interaction System (DASHBOARD LOGIC) ---
       const interactables: any[] = [
-        { pos: new THREE.Vector3(-7, 0, 3), radius: 3, label: '[ E ]  Readme Link', onInteract: () => navigator.clipboard.writeText(`![My Pet](https://git-pet.vercel.app/api/card/${petState.gitData.username})`) },
-        { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ]  Settings', onInteract: () => window.location.href = "/settings" },
-        { pos: new THREE.Vector3(9, 0, -4), radius: 3.5, label: '[ E ]  Feed the koi', onInteract: () => { koiData.forEach(k => k.speed = 0.018); setTimeout(() => koiData.forEach(k => k.speed = 0.005), 3000); } },
-        { pos: new THREE.Vector3(0, 0, 24), radius: 4, label: '[ E ]  Dashboard', onInteract: () => window.location.href = "/dashboard" }
+        { pos: new THREE.Vector3(-7, 0, 3), radius: 3, label: '[ E ]  Readme Link', hint: 'a wooden board holds your legend', onInteract: () => navigator.clipboard.writeText(`![My Pet](https://git-pet.vercel.app/api/card/${petState.gitData.username})`) },
+        { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ]  Settings', hint: 'this is where your work takes form', onInteract: () => { if (mounted.current) setNarrativeText('entering...'); setTimeout(() => { window.location.href = "/settings"; }, 600); } },
+        { pos: new THREE.Vector3(9, 0, -4), radius: 3.5, label: '[ E ]  Feed the koi', hint: 'step closer, something recognizes you', onInteract: () => { koiData.forEach(k => k.speed = 0.018); setTimeout(() => koiData.forEach(k => k.speed = 0.005), 3000); } },
+        { pos: new THREE.Vector3(0, 0, 24), radius: 4, label: '[ E ]  Dashboard', hint: 'the path leads back to your garden', onInteract: () => window.location.href = "/dashboard" }
       ];
 
       const playerMesh = buildSpeciesMesh(species, petState.primaryColor);
@@ -567,6 +575,7 @@ export function WorldClient({ petState, species }: Props) {
       let lastTime = performance.now();
       let elapsed = 0;
       let lastFootstep = 0;
+      let idleTime = 0;
 
       // --- DAY/NIGHT SYSTEM ---
       const DAY_DURATION = 600; // 10 minutes
@@ -641,10 +650,18 @@ export function WorldClient({ petState, species }: Props) {
 
         if (battlePlaying) { p.vel.x *= 0.5; p.vel.z *= 0.5; }
         else {
-          // Entry Cinematic
           if (!p.controlEnabled) {
-            p.pos.z -= 0.15; p.isMoving = true;
-            if (p.pos.z < 18) { p.controlEnabled = true; if (mounted.current) setCinematicDone(true); }
+            // Entry Cinematic — two-phase:
+            // Phase 1 (z=35→15): black screen, player walks invisibly toward world
+            // Phase 2 (z=15→-8): world visible, player walks through first torii (z=-7)
+            p.pos.z -= 0.14; p.isMoving = true;
+            if (p.pos.z < 15 && !cinematicDone && mounted.current) {
+              setCinematicDone(true); // fade black screen — world becomes visible
+            }
+            if (p.pos.z < -8) { // player has crossed through the first torii
+              p.controlEnabled = true;
+              if (mounted.current) { setHasEntered(true); setNarrativeText('you\'re not alone here'); setTimeout(() => { setNarrativeText(null); }, 2500); }
+            }
           } else {
             // Movement 1:1 Dashboard Parity
             const spd = p.speed * (delta * 60);
@@ -660,6 +677,8 @@ export function WorldClient({ petState, species }: Props) {
               lastFootstep = elapsed;
               playFootstep();
             }
+            // Track idle time
+            if (p.isMoving) { idleTime = 0; } else { idleTime += delta; }
           }
         }
 
@@ -706,6 +725,64 @@ export function WorldClient({ petState, species }: Props) {
         });
         if (mounted.current) setPromptLabel(nearest ? nearest.label : null);
 
+        // Narrative hint
+        let closestHint = null;
+        let closestDist = Infinity;
+        for (const obj of interactables) {
+          const dist = new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos);
+          if (dist < obj.radius && dist < closestDist) {
+            closestDist = dist;
+            closestHint = obj.hint ?? null;
+          }
+        }
+        // Shrine close-range secondary text
+        const shrineInteractable = interactables.find(i => i.label === '[ E ]  Settings');
+        if (shrineInteractable) {
+          const shrineDist = new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(shrineInteractable.pos);
+          if (shrineDist < shrineInteractable.radius * 0.5) {
+            closestHint = 'step forward when ready';
+          }
+        }
+        if (mounted.current) setNarrativeText(closestHint);
+
+        // Shrine scale pulse
+        if (shrineGroup && shrineInteractable) {
+          const shrineDist = new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(shrineInteractable.pos);
+          if (shrineDist < shrineInteractable.radius) {
+            const pulse = 1 + Math.sin(elapsed * 2) * 0.03;
+            shrineGroup.scale.set(pulse, pulse, pulse);
+          } else {
+            shrineGroup.scale.set(1, 1, 1);
+          }
+        }
+
+        // Nearby peer presence text
+        if (hasEntered) {
+          let nearbyPet = false;
+          peerMeshes.forEach((peer) => {
+            const d = Math.sqrt(Math.pow(p.pos.x - peer.group.position.x, 2) + Math.pow(p.pos.z - peer.group.position.z, 2));
+            if (d < 4) nearbyPet = true;
+          });
+          if (!narrativeText && nearbyPet) {
+            setNarrativeText('others are here too');
+            setTimeout(() => { setNarrativeText(null); }, 2000);
+          }
+        }
+
+        // Idle presence text
+        if (hasEntered && !narrativeText && idleTime > 3) {
+          idleTime = 0;
+          setNarrativeText('take your time');
+          setTimeout(() => { setNarrativeText(null); }, 2000);
+        }
+
+        // Edge return hint
+        const distFromCenter = Math.sqrt(p.pos.x * p.pos.x + p.pos.z * p.pos.z);
+        if (hasEntered && !narrativeText && distFromCenter > 20) {
+          setNarrativeText('you can always go back');
+          setTimeout(() => { setNarrativeText(null); }, 2000);
+        }
+
         // Environment Animations
         petalData.forEach((p, i) => { p.y += p.vy; p.x += p.vx + Math.sin(elapsed*0.4+p.z)*0.002; p.z += p.vz; p.rx += p.spin; if (p.y < -0.5) { p.y = 14; p.x = (Math.random()-0.5)*40; p.z = (Math.random()-0.5)*40; } dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(p.rx, p.ry, p.rz); dummy.updateMatrix(); petalMesh.setMatrixAt(i, dummy.matrix); }); petalMesh.instanceMatrix.needsUpdate = true;
         koiData.forEach(k => { k.angle += k.speed; k.mesh.position.set(POND_X + Math.cos(k.angle)*k.radius, 0.12, POND_Z + Math.sin(k.angle)*k.radius*0.6); k.mesh.rotation.y = -k.angle + Math.PI/2; });
@@ -745,15 +822,20 @@ export function WorldClient({ petState, species }: Props) {
 
         // Camera Follow (Precision Alignment with Landing Page)
         const rotAxis = new THREE.Vector3(0, 1, 0);
-        const camOffset = new THREE.Vector3(0, 7, 14).applyAxisAngle(rotAxis, p.rot);
-        const lookOffset = new THREE.Vector3(0, 2, -4).applyAxisAngle(rotAxis, p.rot); // Look slightly ahead of player
-        
-        const targetCamPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(camOffset);
-        const targetLookAt = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(lookOffset);
-
-        camPos.lerp(targetCamPos, 0.065);
-        camLook.lerp(targetLookAt, 0.1);
-        
+        if (!p.controlEnabled) {
+          // Cinematic: lock camera tight and low directly behind player
+          const entryCamOffset = new THREE.Vector3(0, 2.5, 6);
+          const entryCamPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(entryCamOffset);
+          camPos.copy(entryCamPos);
+          camLook.set(p.pos.x, 1.2, p.pos.z - 4);
+        } else {
+          const camOffset = new THREE.Vector3(0, 7, 14).applyAxisAngle(rotAxis, p.rot);
+          const lookOffset = new THREE.Vector3(0, 2, -4).applyAxisAngle(rotAxis, p.rot);
+          const targetCamPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(camOffset);
+          const targetLookAt = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(lookOffset);
+          camPos.lerp(targetCamPos, 0.065);
+          camLook.lerp(targetLookAt, 0.1);
+        }
         camera.position.copy(camPos);
         camera.lookAt(camLook);
 
@@ -908,6 +990,25 @@ export function WorldClient({ petState, species }: Props) {
           {promptLabel && (
             <div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(20,14,8,0.9)', border: '1px solid #ffd4a0', padding: '10px 24px', zIndex: 20, fontSize: 10, color: '#ffd4a0', letterSpacing: 2, textTransform: 'uppercase' }}>
               {promptLabel}
+            </div>
+          )}
+
+          {narrativeText && (
+            <div
+              style={{
+                position: 'fixed',
+                bottom: '40px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                color: '#f0ebe0',
+                fontSize: '12px',
+                letterSpacing: '1px',
+                opacity: 0.8,
+                pointerEvents: 'none',
+                transition: 'opacity 0.3s ease',
+              }}
+            >
+              {narrativeText}
             </div>
           )}
         </>
