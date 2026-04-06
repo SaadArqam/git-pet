@@ -614,8 +614,15 @@ export function WorldClient({ petState, species }: Props) {
       let lastMoveTime = 0;
       const IDLE_FREQUENCY: Record<string, number> = { wolf: 5, dragon: 8, sabertooth: 6, capybara: 12, axolotl: 4 };
 
-      // --- PEER STORAGE ---
-      const peerMeshes = new Map<string, { group: any, legs: any }>();
+      // --- PEER STORAGE WITH INTERPOLATION ---
+      const peerMeshes = new Map<string, { 
+        group: any, 
+        legs: any,
+        currentPos: any,
+        targetPos: any,
+        currentRot: number,
+        targetRot: number
+      }>();
 
       const tick = () => {
         if (!mounted.current) return;
@@ -715,6 +722,27 @@ export function WorldClient({ petState, species }: Props) {
           }
         });
 
+        // --- PEER INTERPOLATION ---
+        peerMeshes.forEach((peer) => {
+          // Smooth position interpolation
+          peer.currentPos.lerp(peer.targetPos, 0.1);
+          peer.group.position.copy(peer.currentPos);
+          
+          // Smooth rotation interpolation
+          const rotDiff = peer.targetRot - peer.currentRot;
+          let adjustedRotDiff = rotDiff;
+          
+          // Handle rotation wrapping (e.g., 350° to 10° should be +20° not -340°)
+          if (rotDiff > Math.PI) {
+            adjustedRotDiff = rotDiff - (Math.PI * 2);
+          } else if (rotDiff < -Math.PI) {
+            adjustedRotDiff = rotDiff + (Math.PI * 2);
+          }
+          
+          peer.currentRot += adjustedRotDiff * 0.1;
+          peer.group.rotation.y = peer.currentRot;
+        });
+
         // Camera Follow (Precision Alignment with Landing Page)
         const rotAxis = new THREE.Vector3(0, 1, 0);
         const camOffset = new THREE.Vector3(0, 7, 14).applyAxisAngle(rotAxis, p.rot);
@@ -751,9 +779,17 @@ export function WorldClient({ petState, species }: Props) {
               if (username === petState.gitData.username) return;
               if (!peerMeshes.has(username)) {
                 const mesh = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
+                const currentPos = new THREE.Vector3(petData.x ?? 0, 0.5, petData.y ?? 0);
+                const targetPos = currentPos.clone();
                 // Server Y maps to 3D Z
-                mesh.group.position.set(petData.x ?? 0, 0.5, petData.y ?? 0);
-                peerMeshes.set(username, mesh);
+                mesh.group.position.copy(currentPos);
+                peerMeshes.set(username, {
+                  ...mesh,
+                  currentPos,
+                  targetPos,
+                  currentRot: 0,
+                  targetRot: 0
+                });
               }
             });
           } else if (msg.type === "pet_update" || msg.type === "move") {
@@ -763,14 +799,33 @@ export function WorldClient({ petState, species }: Props) {
 
             let peer = peerMeshes.get(username);
             if (!peer && petData.species) { // Create if they just joined and we missed them
-              peer = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
+              const mesh = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
+              const currentPos = new THREE.Vector3(petData.x ?? 0, 0.5, petData.y ?? 0);
+              const targetPos = currentPos.clone();
+              mesh.group.position.copy(currentPos);
+              peer = {
+                ...mesh,
+                currentPos,
+                targetPos,
+                currentRot: 0,
+                targetRot: 0
+              };
               peerMeshes.set(username, peer);
             }
             if (peer) {
               if (petData.x !== undefined && petData.y !== undefined) {
-                peer.group.position.set(petData.x, 0.5, petData.y);
+                // Update target position only (interpolation happens in RAF loop)
+                peer.targetPos.set(petData.x, 0.5, petData.y);
+                
+                // Handle big jumps to prevent lag
+                const distance = peer.currentPos.distanceTo(peer.targetPos);
+                if (distance > 5) {
+                  peer.currentPos.copy(peer.targetPos);
+                }
               }
-              if (petData.rot !== undefined) peer.group.rotation.y = petData.rot;
+              if (petData.rot !== undefined) {
+                peer.targetRot = petData.rot;
+              }
             }
             setOnlineCount(peerMeshes.size + 1);
           } else if (msg.type === "pet_left" || msg.type === "leave") {
