@@ -124,13 +124,13 @@ export function WorldClient({ petState, species }: Props) {
         b(0.15, 1.2, -0.4, 0.1, 0.1, 0.05, 0x000000);
         // Features
         if (sp === 'axolotl') {
-           [1, -1].forEach(s => { b(0.4*s, 1.2, 0, 0.2, 0.3, 0.1, 0xec4899); b(0.45*s, 1.1, 0, 0.1, 0.2, 0.1, 0xec4899); });
+          [1, -1].forEach(s => { b(0.4 * s, 1.2, 0, 0.2, 0.3, 0.1, 0xec4899); b(0.45 * s, 1.1, 0, 0.1, 0.2, 0.1, 0xec4899); });
         } else if (sp === 'dragon') {
-           b(0, 1.5, 0.1, 0.1, 0.4, 0.1, dark); b(-0.3, 0.8, 0.3, 0.4, 0.1, 0.4, dark); b(0.3, 0.8, 0.3, 0.4, 0.1, 0.4, dark);
+          b(0, 1.5, 0.1, 0.1, 0.4, 0.1, dark); b(-0.3, 0.8, 0.3, 0.4, 0.1, 0.4, dark); b(0.3, 0.8, 0.3, 0.4, 0.1, 0.4, dark);
         } else if (sp === 'wolf') {
-           b(-0.25, 1.5, 0.1, 0.15, 0.3, 0.1, dark); b(0.25, 1.5, 0.1, 0.15, 0.3, 0.1, dark);
+          b(-0.25, 1.5, 0.1, 0.15, 0.3, 0.1, dark); b(0.25, 1.5, 0.1, 0.15, 0.3, 0.1, dark);
         } else if (sp === 'sabertooth') {
-           b(-0.15, 0.8, -0.42, 0.08, 0.4, 0.08, 0xffffff); b(0.15, 0.8, -0.42, 0.08, 0.4, 0.08, 0xffffff);
+          b(-0.15, 0.8, -0.42, 0.08, 0.4, 0.08, 0xffffff); b(0.15, 0.8, -0.42, 0.08, 0.4, 0.08, 0xffffff);
         }
         legs.FL = b(-0.25, 0.15, -0.25, 0.2, 0.3, 0.2, dark); legs.FR = b(0.25, 0.15, -0.25, 0.2, 0.3, 0.2, dark);
         legs.BL = b(-0.25, 0.15, 0.25, 0.2, 0.3, 0.2, dark); legs.BR = b(0.25, 0.15, 0.25, 0.2, 0.3, 0.2, dark);
@@ -150,7 +150,7 @@ export function WorldClient({ petState, species }: Props) {
           audioListener = new THREE.AudioListener();
           camera.add(audioListener);
           audioCtx = audioListener.context;
-          
+
           // Stream Positional Audio (Pink Noise)
           streamSound = new THREE.PositionalAudio(audioListener);
           const bufSize = audioCtx.sampleRate * 2;
@@ -167,12 +167,12 @@ export function WorldClient({ petState, species }: Props) {
           streamSound.setLoop(true);
           streamSound.setVolume(0.15); // soft
           streamSound.play();
-          
+
           const soundTarget = new THREE.Object3D();
           soundTarget.position.set(9, 0, -4); // Koi pond coordinates
           scene.add(soundTarget);
           soundTarget.add(streamSound);
-        } catch(e) { console.warn("Audio init failed", e); }
+        } catch (e) { console.warn("Audio init failed", e); }
       }
 
       function playFootstep() {
@@ -211,7 +211,7 @@ export function WorldClient({ petState, species }: Props) {
       const groundColors: number[] = []; const groundPos = groundGeo.attributes.position;
       for (let i = 0; i < groundPos.count; i++) {
         const gx = groundPos.getX(i), gz = groundPos.getZ(i);
-        const n = Math.sin(gx*2.3)*Math.cos(gz*1.9);
+        const n = Math.sin(gx * 2.3) * Math.cos(gz * 1.9);
         if (n > 0.2) groundColors.push(0.28, 0.54, 0.22);
         else if (n > -0.2) groundColors.push(0.32, 0.60, 0.26);
         else groundColors.push(0.26, 0.50, 0.20);
@@ -224,7 +224,7 @@ export function WorldClient({ petState, species }: Props) {
       // Path
       const pathPoints = [[0, 20], [0.5, 16], [0, 12], [-0.5, 8], [0, 4], [0.5, 0], [0, -4], [-0.5, -8], [0, -12], [0.5, -16], [0, -20]];
       const stoneColors = [0x9a9a9a, 0x8a8a8a, 0xaaaaaa, 0x888888];
-      pathPoints.forEach(([px, pz]) => { for (let w = -1; w <= 1; w++) vox(px + w, 0.06, pz, stoneColors[Math.floor(Math.random()*4)], 1, 0.12, 1, false, true); });
+      pathPoints.forEach(([px, pz]) => { for (let w = -1; w <= 1; w++) vox(px + w, 0.06, pz, stoneColors[Math.floor(Math.random() * 4)], 1, 0.12, 1, false, true); });
 
       // Torii
       const toriiBars: any[] = [];
@@ -242,9 +242,9 @@ export function WorldClient({ petState, species }: Props) {
         const stone = 0x888880;
         vox(x, 0.2, z, stone, 0.85, 0.45, 0.85); vox(x, 0.65, z, stone, 0.45, 0.6, 0.45); vox(x, 1.1, z, stone, 0.45, 0.55, 0.45);
         const lMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(0xffcc66), emissive: new THREE.Color(0xffaa22), emissiveIntensity: 1.0 });
-        const lMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.6,0.7), lMat); lMesh.position.set(x,1.75,z); lMesh.castShadow = true; scene.add(lMesh);
+        const lMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.7), lMat); lMesh.position.set(x, 1.75, z); lMesh.castShadow = true; scene.add(lMesh);
         lanternMats.push(lMat); vox(x, 2.15, z, stone, 0.95, 0.2, 0.95);
-        const pl = new THREE.PointLight(0xffaa22, 1.4, 8); pl.position.set(x,1.8,z); scene.add(pl);
+        const pl = new THREE.PointLight(0xffaa22, 1.4, 8); pl.position.set(x, 1.8, z); scene.add(pl);
       }
       buildLantern(-2, 4); buildLantern(2, 0); buildLantern(-2, -4); buildLantern(2, -12);
 
@@ -253,8 +253,8 @@ export function WorldClient({ petState, species }: Props) {
         const blossoms = [0xffb7c5, 0xff9eb5, 0xffc8d5, 0xff85a1];
         for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x6b3f1e, 0.7, 1, 0.7, true);
         for (let bx = -3; bx <= 3; bx++) for (let by = -1; by <= 2; by++) for (let bz = -3; bz <= 3; bz++) {
-          const dist = Math.sqrt(bx*bx + by*by*1.5 + bz*bz);
-          if (dist < 3.2 && Math.random() > dist * 0.15) vox(x + bx*0.88, h + by*0.88, z + bz*0.88, blossoms[Math.floor(Math.random()*4)], 0.85, 0.85, 0.85, true);
+          const dist = Math.sqrt(bx * bx + by * by * 1.5 + bz * bz);
+          if (dist < 3.2 && Math.random() > dist * 0.15) vox(x + bx * 0.88, h + by * 0.88, z + bz * 0.88, blossoms[Math.floor(Math.random() * 4)], 0.85, 0.85, 0.85, true);
         }
       }
       buildCherryTree(-11, -5, 6); buildCherryTree(-15, -13, 5); buildCherryTree(12, -8, 4); buildCherryTree(-9, 8, 4);
@@ -262,7 +262,7 @@ export function WorldClient({ petState, species }: Props) {
       // Pond
       const POND_X = 9, POND_Z = -4;
       for (let bx = -4; bx <= 4; bx++) for (let bz = -3; bz <= 3; bz++) if (Math.abs(bx) === 4 || Math.abs(bz) === 3) vox(POND_X + bx, 0.08, POND_Z + bz, 0x7a7a7a, 1, 0.2, 1);
-      const waterGeo = new THREE.PlaneGeometry(7,5); waterGeo.rotateX(-Math.PI/2);
+      const waterGeo = new THREE.PlaneGeometry(7, 5); waterGeo.rotateX(-Math.PI / 2);
       const waterMat = new THREE.MeshLambertMaterial({ color: 0x3d8fa8, transparent: true, opacity: 0.82 });
       const waterMesh = new THREE.Mesh(waterGeo, waterMat); waterMesh.position.set(POND_X, 0.1, POND_Z); waterMesh.receiveShadow = true; scene.add(waterMesh);
       [[POND_X - 2, POND_Z + 1], [POND_X + 1, POND_Z - 1], [POND_X + 2, POND_Z + 2]].forEach(([lx, lz]) => vox(lx, 0.13, lz, 0x3a8a3a, 0.7, 0.06, 0.7));
@@ -279,7 +279,7 @@ export function WorldClient({ petState, species }: Props) {
           const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }));
           m.position.set(vx, vy, vz); m.castShadow = cs; m.receiveShadow = rs; g.add(m); return m;
         };
-        for (let s = 0; s < 3; s++) for (let sx = -(3-s); sx <= (3-s); sx++) for (let sz = -(2-s); sz <= (2-s); sz++) gvox(x + sx, s * 0.45, z + sz + 3, stone, 1, 0.45, 1, false, true);
+        for (let s = 0; s < 3; s++) for (let sx = -(3 - s); sx <= (3 - s); sx++) for (let sz = -(2 - s); sz <= (2 - s); sz++) gvox(x + sx, s * 0.45, z + sz + 3, stone, 1, 0.45, 1, false, true);
         for (let wx = -3; wx <= 3; wx++) for (let wy = 0; wy < 4; wy++) for (let wz = -2; wz <= 2; wz++) {
           const isWall = Math.abs(wx) === 3 || Math.abs(wz) === 2 || wy === 0; if (!isWall) continue;
           if (wx === 0 && wz === -2 && wy < 2) continue;
@@ -288,7 +288,7 @@ export function WorldClient({ petState, species }: Props) {
           if (isWindow) { (m.material as any).emissive = new THREE.Color(0xffaa22); (m.material as any).emissiveIntensity = 1.2; }
         }
         for (let ry = 0; ry < 3; ry++) {
-          const ext = ry; for (let rx = -(3+ext); rx <= (3+ext); rx++) for (let rz = -(2+ext); rz <= (2+ext); rz++) {
+          const ext = ry; for (let rx = -(3 + ext); rx <= (3 + ext); rx++) for (let rz = -(2 + ext); rz <= (2 + ext); rz++) {
             const isEdge = Math.abs(rx) === 3 + ext || Math.abs(rz) === 2 + ext; if (!isEdge && ry > 0) continue;
             gvox(x + rx, 5.4 + ry * 0.5, z + rz, ry === 0 ? 0x3a2f1e : roof, 1, 0.4, 1, true);
           }
@@ -303,16 +303,16 @@ export function WorldClient({ petState, species }: Props) {
         const lc = [0x2d4a1e, 0x1e3014, 0x3a5a28, 0x4a6a38];
         for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x5a3a1a, 0.65, 1, 0.65, true);
         for (let fx = -2; fx <= 2; fx++) for (let fy = -1; fy <= 2; fy++) for (let fz = -2; fz <= 2; fz++) {
-          const d = Math.sqrt(fx*fx + fy*fy*1.2 + fz*fz); if (d < 2.4 && Math.random() > d * 0.18) vox(x + fx*0.9, h+fy*0.85, z+fz*0.9, lc[Math.floor(Math.random()*4)], 0.9, 0.9, 0.9);
+          const d = Math.sqrt(fx * fx + fy * fy * 1.2 + fz * fz); if (d < 2.4 && Math.random() > d * 0.18) vox(x + fx * 0.9, h + fy * 0.85, z + fz * 0.9, lc[Math.floor(Math.random() * 4)], 0.9, 0.9, 0.9);
         }
       }
-      [[22, -2], [24, -9], [27, -5], [29, -14], [23, -17], [31, -9], [26, -20], [20, -12]].forEach(([x, z]) => buildForestTree(x, z, 4 + Math.floor(Math.random()*3)));
+      [[22, -2], [24, -9], [27, -5], [29, -14], [23, -17], [31, -9], [26, -20], [20, -12]].forEach(([x, z]) => buildForestTree(x, z, 4 + Math.floor(Math.random() * 3)));
       const forestAltarMat = new THREE.MeshLambertMaterial({ color: 0xff9944, emissive: new THREE.Color(0xff7722), emissiveIntensity: 1.5, transparent: true, opacity: 0.9 });
       const forestAltarFlame = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.4, 0.25), forestAltarMat); forestAltarFlame.position.set(26, 1.15, -24); scene.add(forestAltarFlame);
       const forestAltarLight = new THREE.PointLight(0xff9944, 0.7, 7); forestAltarLight.position.set(26, 1.5, -24); scene.add(forestAltarLight);
 
       // Stream
-      const streamGeo = new THREE.PlaneGeometry(1.8, 13); streamGeo.rotateX(-Math.PI/2);
+      const streamGeo = new THREE.PlaneGeometry(1.8, 13); streamGeo.rotateX(-Math.PI / 2);
       const streamMat = new THREE.MeshLambertMaterial({ color: 0x4a9ab8, transparent: true, opacity: 0.72 });
       const streamMesh = new THREE.Mesh(streamGeo, streamMat); streamMesh.position.set(-13.4, 0.02, 18); scene.add(streamMesh);
       [-14.2, -13.5, -12.8].forEach(bx => vox(bx, 0.28, 18, 0x8B6914, 1, 0.2, 4, true));
@@ -330,11 +330,11 @@ export function WorldClient({ petState, species }: Props) {
         const cols = [0x4a5a3a, 0x3a4a2a, 0x5a6a4a];
         for (let my = 0; my < h; my++) {
           const r = Math.floor((h - my) * (w / h));
-          for (let mx = -r; mx <= r; mx++) for (let mz = -Math.floor(r * 0.5); mz <= Math.floor(r * 0.5); mz++) if (Math.abs(mx) === r) vox(x + mx, my + 0.5, z + mz, cols[Math.floor(Math.random()*3)]);
+          for (let mx = -r; mx <= r; mx++) for (let mz = -Math.floor(r * 0.5); mz <= Math.floor(r * 0.5); mz++) if (Math.abs(mx) === r) vox(x + mx, my + 0.5, z + mz, cols[Math.floor(Math.random() * 3)]);
         }
         for (let s = 0; s < 3; s++) vox(x, h - s, z, s === 0 ? 0xffffff : 0xdddddd, (3 - s) * 2, 1, (3 - s) * 2);
       }
-      buildMountain(-38,-50,16,10); buildMountain(35,-55,20,13); buildMountain(-22,-58,12,8);
+      buildMountain(-38, -50, 16, 10); buildMountain(35, -55, 20, 13); buildMountain(-22, -58, 12, 8);
 
       // Boards & Fences
       vox(-7, 0.8, 3, 0x6b4423, 0.2, 1.6, 0.2, true); vox(-7, 1.8, 3, 0x8B6914, 1.4, 1.0, 0.15, true); vox(-7, 1.8, 3.08, 0xf0ddb0, 1.2, 0.85, 0.05);
@@ -393,9 +393,9 @@ export function WorldClient({ petState, species }: Props) {
       const glowCanvas = document.createElement('canvas');
       glowCanvas.width = 128; glowCanvas.height = 128;
       const gctx = glowCanvas.getContext('2d')!;
-      const grad = gctx.createRadialGradient(64,64,0, 64,64,64);
+      const grad = gctx.createRadialGradient(64, 64, 0, 64, 64, 64);
       grad.addColorStop(0, 'rgba(255,250,200,0.9)'); grad.addColorStop(0.3, 'rgba(255,220,100,0.4)'); grad.addColorStop(1, 'rgba(255,180,50,0)');
-      gctx.fillStyle = grad; gctx.fillRect(0,0,128,128);
+      gctx.fillStyle = grad; gctx.fillRect(0, 0, 128, 128);
       const sunGlowMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(glowCanvas), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 });
       const sunGlow = new THREE.Sprite(sunGlowMat); sunGlow.scale.set(30, 30, 1); scene.add(sunGlow);
 
@@ -434,7 +434,7 @@ export function WorldClient({ petState, species }: Props) {
         const cfg = SKY_CONFIGS[phase as keyof typeof SKY_CONFIGS];
         if (scene.background instanceof THREE.Color) scene.background.lerp(new THREE.Color(cfg.bg), 0.008);
         if (scene.fog instanceof THREE.FogExp2) scene.fog.color.lerp(new THREE.Color(cfg.fog), 0.008);
-        
+
         const dayFactor = Math.max(0, Math.sin(angle));
         ambientLight.intensity = 0.15 + dayFactor * 0.45;
         hemiLight.color.setHex((phase === 'night' || phase === 'evening' || phase === 'dawn') ? 0x0a1428 : 0x87CEEB);
@@ -478,7 +478,7 @@ export function WorldClient({ petState, species }: Props) {
 
         if (phase === 'approach') {
           const t = Math.min(battleAnim.timer / 0.8, 1);
-          const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+          const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
           winnerMesh.group.position.lerp(battleAnim.winnerTargetPos, ease * 0.15);
           loserMesh.group.position.lerp(battleAnim.loserTargetPos, ease * 0.15);
           const w2l = loserMesh.group.position.clone().sub(winnerMesh.group.position);
@@ -494,7 +494,7 @@ export function WorldClient({ petState, species }: Props) {
           const shake = Math.sin(elapsed * 40) * 0.12 * Math.max(0, 1 - battleAnim.timer);
           winnerMesh.group.position.x = battleAnim.winnerTargetPos.x + shake;
           loserMesh.group.position.x = battleAnim.loserTargetPos.x - shake;
-          camPos.x += (Math.random()-0.5) * 0.08; camPos.y += (Math.random()-0.5) * 0.04;
+          camPos.x += (Math.random() - 0.5) * 0.08; camPos.y += (Math.random() - 0.5) * 0.04;
           if (battleAnim.timer < 0.15 && battleAnim.flashTimer === 0) {
             battleAnim.flashTimer = 1; screenFlash = 1;
             if (mounted.current) setFlashColor('rgba(255,255,255,0.6)');
@@ -592,13 +592,13 @@ export function WorldClient({ petState, species }: Props) {
         return 'evening';
       }
       const SKY_CONFIGS = {
-        night:     { bg: 0x020510, fog: 0x030714, fogD: 0.018 },
-        dawn:      { bg: 0x1a0a2a, fog: 0x2a1020, fogD: 0.014 },
-        morning:   { bg: 0xf4a460, fog: 0xe8905a, fogD: 0.008 },
-        noon:      { bg: 0x87CEEB, fog: 0x87CEEB, fogD: 0.006 },
+        night: { bg: 0x020510, fog: 0x030714, fogD: 0.018 },
+        dawn: { bg: 0x1a0a2a, fog: 0x2a1020, fogD: 0.014 },
+        morning: { bg: 0xf4a460, fog: 0xe8905a, fogD: 0.008 },
+        noon: { bg: 0x87CEEB, fog: 0x87CEEB, fogD: 0.006 },
         afternoon: { bg: 0x6ab0d8, fog: 0x7ab8d8, fogD: 0.007 },
-        dusk:      { bg: 0xff6030, fog: 0xd04020, fogD: 0.012 },
-        evening:   { bg: 0x1a0820, fog: 0x120618, fogD: 0.016 },
+        dusk: { bg: 0xff6030, fog: 0xd04020, fogD: 0.012 },
+        evening: { bg: 0x1a0820, fog: 0x120618, fogD: 0.016 },
       };
 
       // --- BATTLE ANIMATION STATE ---
@@ -607,7 +607,7 @@ export function WorldClient({ petState, species }: Props) {
         timer: number;
         winnerId: string; loserId: string;
         winnerMesh: { group: any, legs: any };
-        loserMesh:  { group: any, legs: any };
+        loserMesh: { group: any, legs: any };
         winnerStartPos: any; loserStartPos: any;
         winnerTargetPos: any; loserTargetPos: any;
         flashTimer: number;
@@ -623,13 +623,10 @@ export function WorldClient({ petState, species }: Props) {
       let lastMoveTime = 0;
       const IDLE_FREQUENCY: Record<string, number> = { wolf: 5, dragon: 8, sabertooth: 6, capybara: 12, axolotl: 4 };
 
-      // --- PEER STORAGE WITH INTERPOLATION ---
-      const peerMeshes = new Map<string, { 
-        group: any, 
+      const peerMeshes = new Map<string, {
+        group: any,
         legs: any,
-        currentPos: any,
         targetPos: any,
-        currentRot: number,
         targetRot: number
       }>();
 
@@ -687,15 +684,15 @@ export function WorldClient({ petState, species }: Props) {
 
         // --- RESTORED CORE LOGIC ---
         // Pet Follow
-        const targetPetPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(new THREE.Vector3(2,0,2).applyAxisAngle(new THREE.Vector3(0,1,0), p.rot));
+        const targetPetPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(new THREE.Vector3(2, 0, 2).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot));
         const petV3 = new THREE.Vector3(pet.pos.x, pet.pos.y, pet.pos.z);
         petV3.lerp(targetPetPos, 0.08);
         pet.pos.x = petV3.x; pet.pos.y = petV3.y; pet.pos.z = petV3.z;
-        pet.mesh.position.set(pet.pos.x, 0.5 + Math.abs(Math.sin(elapsed*4))*0.15, pet.pos.z);
+        pet.mesh.position.set(pet.pos.x, 0.5 + Math.abs(Math.sin(elapsed * 4)) * 0.15, pet.pos.z);
         pet.mesh.lookAt(p.pos.x, 0.5, p.pos.z);
 
         // Update Meshes
-        playerMesh.group.position.set(p.pos.x, 0.5 + Math.sin(elapsed*2.2)*0.035, p.pos.z);
+        playerMesh.group.position.set(p.pos.x, 0.5 + Math.sin(elapsed * 2.2) * 0.035, p.pos.z);
         playerMesh.group.rotation.y = p.rot;
         if (!battleAnim) {
           const swing = p.isMoving ? Math.sin(elapsed * 9) * 0.35 : 0;
@@ -784,15 +781,15 @@ export function WorldClient({ petState, species }: Props) {
         }
 
         // Environment Animations
-        petalData.forEach((p, i) => { p.y += p.vy; p.x += p.vx + Math.sin(elapsed*0.4+p.z)*0.002; p.z += p.vz; p.rx += p.spin; if (p.y < -0.5) { p.y = 14; p.x = (Math.random()-0.5)*40; p.z = (Math.random()-0.5)*40; } dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(p.rx, p.ry, p.rz); dummy.updateMatrix(); petalMesh.setMatrixAt(i, dummy.matrix); }); petalMesh.instanceMatrix.needsUpdate = true;
-        koiData.forEach(k => { k.angle += k.speed; k.mesh.position.set(POND_X + Math.cos(k.angle)*k.radius, 0.12, POND_Z + Math.sin(k.angle)*k.radius*0.6); k.mesh.rotation.y = -k.angle + Math.PI/2; });
-        wispData.forEach((w, i) => { w.angle += w.speed; rainDummy.position.set(-18 + Math.cos(w.angle)*w.radius, w.baseY + Math.sin(elapsed*0.8 + i)*0.35, -32 + Math.sin(w.angle)*w.radius*0.75); rainDummy.rotation.set(elapsed*0.4+i, elapsed*0.25+i, 0); rainDummy.updateMatrix(); wispMesh.setMatrixAt(i, rainDummy.matrix); }); wispMesh.instanceMatrix.needsUpdate = true;
-        streamMat.color.setHSL(0.55, 0.55, 0.36 + Math.sin(elapsed*1.3)*0.04);
-        forestAltarMat.emissiveIntensity = 1.2 + Math.sin(elapsed*3.8)*0.45; forestAltarFlame.position.y = 1.15 + Math.sin(elapsed*4.2)*0.03;
+        petalData.forEach((p, i) => { p.y += p.vy; p.x += p.vx + Math.sin(elapsed * 0.4 + p.z) * 0.002; p.z += p.vz; p.rx += p.spin; if (p.y < -0.5) { p.y = 14; p.x = (Math.random() - 0.5) * 40; p.z = (Math.random() - 0.5) * 40; } dummy.position.set(p.x, p.y, p.z); dummy.rotation.set(p.rx, p.ry, p.rz); dummy.updateMatrix(); petalMesh.setMatrixAt(i, dummy.matrix); }); petalMesh.instanceMatrix.needsUpdate = true;
+        koiData.forEach(k => { k.angle += k.speed; k.mesh.position.set(POND_X + Math.cos(k.angle) * k.radius, 0.12, POND_Z + Math.sin(k.angle) * k.radius * 0.6); k.mesh.rotation.y = -k.angle + Math.PI / 2; });
+        wispData.forEach((w, i) => { w.angle += w.speed; rainDummy.position.set(-18 + Math.cos(w.angle) * w.radius, w.baseY + Math.sin(elapsed * 0.8 + i) * 0.35, -32 + Math.sin(w.angle) * w.radius * 0.75); rainDummy.rotation.set(elapsed * 0.4 + i, elapsed * 0.25 + i, 0); rainDummy.updateMatrix(); wispMesh.setMatrixAt(i, rainDummy.matrix); }); wispMesh.instanceMatrix.needsUpdate = true;
+        streamMat.color.setHSL(0.55, 0.55, 0.36 + Math.sin(elapsed * 1.3) * 0.04);
+        forestAltarMat.emissiveIntensity = 1.2 + Math.sin(elapsed * 3.8) * 0.45; forestAltarFlame.position.y = 1.15 + Math.sin(elapsed * 4.2) * 0.03;
 
         // NPCs with Idle
         npcStateData.forEach((npc, i) => {
-          if (npc.state === 'wander') { npc.angle += npc.speed; npc.mesh.position.set(npc.homeX + Math.cos(npc.angle)*npc.radius, 0.28, npc.homeZ + Math.sin(npc.angle)*npc.radius); npc.mesh.lookAt(npc.homeX + Math.cos(npc.angle+0.1)*npc.radius, 0.28, npc.homeZ + Math.sin(npc.angle+0.1)*npc.radius); }
+          if (npc.state === 'wander') { npc.angle += npc.speed; npc.mesh.position.set(npc.homeX + Math.cos(npc.angle) * npc.radius, 0.28, npc.homeZ + Math.sin(npc.angle) * npc.radius); npc.mesh.lookAt(npc.homeX + Math.cos(npc.angle + 0.1) * npc.radius, 0.28, npc.homeZ + Math.sin(npc.angle + 0.1) * npc.radius); }
           else {
             if (npc.timer > 2.5 && npc.timer < 3.0) npc.mesh.rotation.z = Math.sin(elapsed * 2 + i * 1.4) * 0.06;
             else npc.mesh.rotation.z = THREE.MathUtils.lerp(npc.mesh.rotation.z, 0, 0.1);
@@ -801,23 +798,22 @@ export function WorldClient({ petState, species }: Props) {
 
         // --- PEER INTERPOLATION ---
         peerMeshes.forEach((peer) => {
-          // Smooth position interpolation
-          peer.currentPos.lerp(peer.targetPos, 0.1);
-          peer.group.position.copy(peer.currentPos);
-          
+          // Smooth position interpolation (Strictly following Rule 3)
+          peer.group.position.lerp(peer.targetPos, 0.12);
+
           // Smooth rotation interpolation
-          const rotDiff = peer.targetRot - peer.currentRot;
+          const rotDiff = peer.targetRot - peer.group.rotation.y;
           let adjustedRotDiff = rotDiff;
-          
-          // Handle rotation wrapping (e.g., 350° to 10° should be +20° not -340°)
-          if (rotDiff > Math.PI) {
-            adjustedRotDiff = rotDiff - (Math.PI * 2);
-          } else if (rotDiff < -Math.PI) {
-            adjustedRotDiff = rotDiff + (Math.PI * 2);
-          }
-          
-          peer.currentRot += adjustedRotDiff * 0.1;
-          peer.group.rotation.y = peer.currentRot;
+          if (rotDiff > Math.PI) adjustedRotDiff = rotDiff - (Math.PI * 2);
+          else if (rotDiff < -Math.PI) adjustedRotDiff = rotDiff + (Math.PI * 2);
+
+          peer.group.rotation.y += adjustedRotDiff * 0.12;
+
+          // Simple walk animation for peers if moving
+          const isMoving = peer.group.position.distanceTo(peer.targetPos) > 0.01;
+          const swing = isMoving ? Math.sin(elapsed * 9) * 0.35 : 0;
+          peer.legs.FL.rotation.x = swing; peer.legs.BR.rotation.x = swing;
+          peer.legs.FR.rotation.x = -swing; peer.legs.BL.rotation.x = -swing;
         });
 
         // Camera Follow (Precision Alignment with Landing Page)
@@ -840,13 +836,12 @@ export function WorldClient({ petState, species }: Props) {
         camera.lookAt(camLook);
 
         // Minimap
-        if (minimapRef.current) { const mc = minimapRef.current.getContext('2d')!; mc.fillStyle = '#020617'; mc.fillRect(0,0,120,120); const mx = (p.pos.x+30)/60*112+4, mz = (p.pos.z+30)/60*112+4; mc.fillStyle = '#f0ebe0'; mc.beginPath(); mc.arc(mx, mz, 3, 0, Math.PI*2); mc.fill(); }
+        if (minimapRef.current) { const mc = minimapRef.current.getContext('2d')!; mc.fillStyle = '#020617'; mc.fillRect(0, 0, 120, 120); const mx = (p.pos.x + 30) / 60 * 112 + 4, mz = (p.pos.z + 30) / 60 * 112 + 4; mc.fillStyle = '#f0ebe0'; mc.beginPath(); mc.arc(mx, mz, 3, 0, Math.PI * 2); mc.fill(); }
 
         renderer.render(scene, camera);
       };
       tick();
 
-      // --- Multiplayer & Input ---
       // --- Multiplayer & Input ---
       const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
       if (host) {
@@ -854,24 +849,16 @@ export function WorldClient({ petState, species }: Props) {
         socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species, petState } })));
         socket.addEventListener("message", (e) => {
           const msg = JSON.parse(e.data);
-          
+
           if (msg.type === "snapshot") {
             setOnlineCount(Object.keys(msg.pets).length);
             Object.entries(msg.pets).forEach(([username, petData]: [string, any]) => {
               if (username === petState.gitData.username) return;
               if (!peerMeshes.has(username)) {
                 const mesh = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
-                const currentPos = new THREE.Vector3(petData.x ?? 0, 0.5, petData.y ?? 0);
-                const targetPos = currentPos.clone();
-                // Server Y maps to 3D Z
-                mesh.group.position.copy(currentPos);
-                peerMeshes.set(username, {
-                  ...mesh,
-                  currentPos,
-                  targetPos,
-                  currentRot: 0,
-                  targetRot: 0
-                });
+                const targetPos = new THREE.Vector3(petData.x ?? 0, 0.5, petData.y ?? 0);
+                mesh.group.position.copy(targetPos);
+                peerMeshes.set(username, { ...mesh, targetPos, targetRot: 0 });
               }
             });
           } else if (msg.type === "pet_update" || msg.type === "move") {
@@ -880,30 +867,17 @@ export function WorldClient({ petState, species }: Props) {
             if (username === petState.gitData.username) return;
 
             let peer = peerMeshes.get(username);
-            if (!peer && petData.species) { // Create if they just joined and we missed them
+            if (!peer && petData.species) {
               const mesh = buildSpeciesMesh(petData.species, petData.petState?.primaryColor || '#ffffff');
-              const currentPos = new THREE.Vector3(petData.x ?? 0, 0.5, petData.y ?? 0);
-              const targetPos = currentPos.clone();
-              mesh.group.position.copy(currentPos);
-              peer = {
-                ...mesh,
-                currentPos,
-                targetPos,
-                currentRot: 0,
-                targetRot: 0
-              };
+              const targetPos = new THREE.Vector3(petData.x ?? 0, 0.5, petData.y ?? 0);
+              mesh.group.position.copy(targetPos);
+              peer = { ...mesh, targetPos, targetRot: 0 };
               peerMeshes.set(username, peer);
             }
+
             if (peer) {
               if (petData.x !== undefined && petData.y !== undefined) {
-                // Update target position only (interpolation happens in RAF loop)
                 peer.targetPos.set(petData.x, 0.5, petData.y);
-                
-                // Handle big jumps to prevent lag
-                const distance = peer.currentPos.distanceTo(peer.targetPos);
-                if (distance > 5) {
-                  peer.currentPos.copy(peer.targetPos);
-                }
               }
               if (petData.rot !== undefined) {
                 peer.targetRot = petData.rot;
@@ -913,8 +887,8 @@ export function WorldClient({ petState, species }: Props) {
           } else if (msg.type === "pet_left" || msg.type === "leave") {
             const username = msg.username || msg.id;
             const peer = peerMeshes.get(username);
-            if (peer) { 
-              scene.remove(peer.group); 
+            if (peer) {
+              scene.remove(peer.group);
               peer.group.traverse((c: any) => {
                 if (c.geometry) c.geometry.dispose();
                 if (c.material) {
@@ -922,7 +896,7 @@ export function WorldClient({ petState, species }: Props) {
                   else c.material.dispose();
                 }
               });
-              peerMeshes.delete(username); 
+              peerMeshes.delete(username);
             }
             setOnlineCount(peerMeshes.size + 1);
           }
@@ -931,13 +905,13 @@ export function WorldClient({ petState, species }: Props) {
         cleanupFns.current.push(() => clearInterval(broadcast));
       }
 
-      const onKeyDown = (e: KeyboardEvent) => { 
-        initAudio(); 
-        keysRef.current[e.code] = true; 
-        if (e.code === "KeyE") { 
-          const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius); 
-          if (near) { playInteract(); near.onInteract(); } 
-        } 
+      const onKeyDown = (e: KeyboardEvent) => {
+        initAudio();
+        keysRef.current[e.code] = true;
+        if (e.code === "KeyE") {
+          const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius);
+          if (near) { playInteract(); near.onInteract(); }
+        }
       };
       const onKeyUp = (e: KeyboardEvent) => keysRef.current[e.code] = false;
       const onResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); };
@@ -951,12 +925,17 @@ export function WorldClient({ petState, species }: Props) {
     };
   }, [petState, species]);
 
+  const [isHydrated, setIsHydrated] = useState(false);
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
   return (
     <div style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', background: '#0d0f18', overflow: 'hidden', fontFamily: 'monospace' }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 2, background: 'radial-gradient(ellipse 75% 75% at 50% 50%, transparent 40%, rgba(8,6,4,0.7) 100%)' }} />
-      
-      {!cinematicDone && (
+
+      {(!cinematicDone || !isHydrated) && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 91, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none', background: '#000', transition: 'opacity 2s ease' }}>
           <div style={{ fontSize: 13, color: '#ffd4a0', letterSpacing: 4, textTransform: 'uppercase' }}>Entering the Garden...</div>
         </div>
