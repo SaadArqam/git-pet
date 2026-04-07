@@ -103,10 +103,16 @@ export function WorldClient({ petState, species }: Props) {
       const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.45); scene.add(hemiLight);
 
       // --- Helpers ---
-      function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false): any {
+      const colliders: { box: any, mesh: any }[] = [];
+      function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false, isSolid = false): any {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }));
         mesh.position.set(x, y, z); mesh.castShadow = castShadow; mesh.receiveShadow = receiveShadow;
-        scene.add(mesh); return mesh;
+        scene.add(mesh);
+        if (isSolid) {
+          const box = new THREE.Box3().setFromObject(mesh);
+          colliders.push({ box, mesh });
+        }
+        return mesh;
       }
 
       function buildSpeciesMesh(sp: string, color: string) {
@@ -207,7 +213,7 @@ export function WorldClient({ petState, species }: Props) {
 
       // ─── WORLD BUILDING ───
       // Ground
-      const groundGeo = new THREE.PlaneGeometry(80, 80, 40, 40); groundGeo.rotateX(-Math.PI / 2);
+      const groundGeo = new THREE.PlaneGeometry(300, 300, 100, 100); groundGeo.rotateX(-Math.PI / 2);
       const groundColors: number[] = []; const groundPos = groundGeo.attributes.position;
       for (let i = 0; i < groundPos.count; i++) {
         const gx = groundPos.getX(i), gz = groundPos.getZ(i);
@@ -230,8 +236,8 @@ export function WorldClient({ petState, species }: Props) {
       const toriiBars: any[] = [];
       function buildTorii(x: number, z: number) {
         const red = 0xcc3300, darkRed = 0x992200;
-        for (let py = 0; py < 5; py++) { vox(x - 1.8, py + 0.5, z, red, 1, 1, 0.35, true); vox(x + 1.8, py + 0.5, z, red, 1, 1, 0.35, true); }
-        toriiBars.push(vox(x, 5.3, z, darkRed, 6, 0.45, 0.5, true)); toriiBars.push(vox(x, 4.6, z, red, 5, 0.35, 0.45, true));
+        for (let py = 0; py < 5; py++) { vox(x - 1.8, py + 0.5, z, red, 1, 1, 0.35, true, false, true); vox(x + 1.8, py + 0.5, z, red, 1, 1, 0.35, true, false, true); }
+        toriiBars.push(vox(x, 5.3, z, darkRed, 6, 0.45, 0.5, true, false, true)); toriiBars.push(vox(x, 4.6, z, red, 5, 0.35, 0.45, true));
         vox(x - 1.8, 4.6, z, darkRed, 0.25, 0.8, 0.35); vox(x + 1.8, 4.6, z, darkRed, 0.25, 0.8, 0.35);
       }
       buildTorii(0, -7); buildTorii(0, -18);
@@ -240,9 +246,10 @@ export function WorldClient({ petState, species }: Props) {
       const lanternMats: any[] = [];
       function buildLantern(x: number, z: number) {
         const stone = 0x888880;
-        vox(x, 0.2, z, stone, 0.85, 0.45, 0.85); vox(x, 0.65, z, stone, 0.45, 0.6, 0.45); vox(x, 1.1, z, stone, 0.45, 0.55, 0.45);
+        vox(x, 0.2, z, stone, 0.85, 0.45, 0.85, false, false, true); vox(x, 0.65, z, stone, 0.45, 0.6, 0.45, false, false, true); vox(x, 1.1, z, stone, 0.45, 0.55, 0.45, false, false, true);
         const lMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(0xffcc66), emissive: new THREE.Color(0xffaa22), emissiveIntensity: 1.0 });
         const lMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.7), lMat); lMesh.position.set(x, 1.75, z); lMesh.castShadow = true; scene.add(lMesh);
+        colliders.push({ box: new THREE.Box3().setFromObject(lMesh), mesh: lMesh });
         lanternMats.push(lMat); vox(x, 2.15, z, stone, 0.95, 0.2, 0.95);
         const pl = new THREE.PointLight(0xffaa22, 1.4, 8); pl.position.set(x, 1.8, z); scene.add(pl);
       }
@@ -251,7 +258,7 @@ export function WorldClient({ petState, species }: Props) {
       // Cherry trees
       function buildCherryTree(x: number, z: number, h: number) {
         const blossoms = [0xffb7c5, 0xff9eb5, 0xffc8d5, 0xff85a1];
-        for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x6b3f1e, 0.7, 1, 0.7, true);
+        for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x6b3f1e, 0.7, 1, 0.7, true, false, ty < 2);
         for (let bx = -3; bx <= 3; bx++) for (let by = -1; by <= 2; by++) for (let bz = -3; bz <= 3; bz++) {
           const dist = Math.sqrt(bx * bx + by * by * 1.5 + bz * bz);
           if (dist < 3.2 && Math.random() > dist * 0.15) vox(x + bx * 0.88, h + by * 0.88, z + bz * 0.88, blossoms[Math.floor(Math.random() * 4)], 0.85, 0.85, 0.85, true);
@@ -284,8 +291,9 @@ export function WorldClient({ petState, species }: Props) {
           const isWall = Math.abs(wx) === 3 || Math.abs(wz) === 2 || wy === 0; if (!isWall) continue;
           if (wx === 0 && wz === -2 && wy < 2) continue;
           const isWindow = Math.abs(wx) === 2 && wz === -2 && wy === 1;
-          const m = gvox(x + wx, 1.4 + wy, z + wz, isWindow ? 0xffcc66 : wood, 1, 1, 1, true);
+          const m = gvox(x + wx, 1.4 + wy, z + wz, isWindow ? 0xffcc66 : wood, 1, 1, 1, true, false);
           if (isWindow) { (m.material as any).emissive = new THREE.Color(0xffaa22); (m.material as any).emissiveIntensity = 1.2; }
+          else { colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m }); }
         }
         for (let ry = 0; ry < 3; ry++) {
           const ext = ry; for (let rx = -(3 + ext); rx <= (3 + ext); rx++) for (let rz = -(2 + ext); rz <= (2 + ext); rz++) {
@@ -301,7 +309,7 @@ export function WorldClient({ petState, species }: Props) {
       // Forest
       function buildForestTree(x: number, z: number, h: number) {
         const lc = [0x2d4a1e, 0x1e3014, 0x3a5a28, 0x4a6a38];
-        for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x5a3a1a, 0.65, 1, 0.65, true);
+        for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x5a3a1a, 0.65, 1, 0.65, true, false, ty < 2);
         for (let fx = -2; fx <= 2; fx++) for (let fy = -1; fy <= 2; fy++) for (let fz = -2; fz <= 2; fz++) {
           const d = Math.sqrt(fx * fx + fy * fy * 1.2 + fz * fz); if (d < 2.4 && Math.random() > d * 0.18) vox(x + fx * 0.9, h + fy * 0.85, z + fz * 0.9, lc[Math.floor(Math.random() * 4)], 0.9, 0.9, 0.9);
         }
@@ -337,8 +345,8 @@ export function WorldClient({ petState, species }: Props) {
       buildMountain(-38, -50, 16, 10); buildMountain(35, -55, 20, 13); buildMountain(-22, -58, 12, 8);
 
       // Boards & Fences
-      vox(-7, 0.8, 3, 0x6b4423, 0.2, 1.6, 0.2, true); vox(-7, 1.8, 3, 0x8B6914, 1.4, 1.0, 0.15, true); vox(-7, 1.8, 3.08, 0xf0ddb0, 1.2, 0.85, 0.05);
-      vox(9, 0.5, -1, 0x6b4423, 0.2, 1.0, 0.2, true); vox(9, 1.3, -1, 0x7a5c2a, 2.0, 1.3, 0.15, true);
+      vox(-7, 0.8, 3, 0x6b4423, 0.2, 1.6, 0.2, true, false, true); vox(-7, 1.8, 3, 0x8B6914, 1.4, 1.0, 0.15, true, false, true); vox(-7, 1.8, 3.08, 0xf0ddb0, 1.2, 0.85, 0.05);
+      vox(9, 0.5, -1, 0x6b4423, 0.2, 1.0, 0.2, true, false, true); vox(9, 1.3, -1, 0x7a5c2a, 2.0, 1.3, 0.15, true, false, true);
       const leaderStoneMesh = vox(0, 0, -24.5, 0x6a6a6a, 3.2, 0.01, 0.35, true);
 
       // Petals
@@ -379,6 +387,73 @@ export function WorldClient({ petState, species }: Props) {
         { pos: new THREE.Vector3(9, 0, -4), radius: 3.5, label: '[ E ]  Feed the koi', hint: 'step closer, something recognizes you', onInteract: () => { koiData.forEach(k => k.speed = 0.018); setTimeout(() => koiData.forEach(k => k.speed = 0.005), 3000); } },
         { pos: new THREE.Vector3(0, 0, 24), radius: 4, label: '[ E ]  Dashboard', hint: 'the path leads back to your garden', onInteract: () => window.location.href = "/dashboard" }
       ];
+
+      // ─── WORLD EXPANSION ZONES ───
+      function createForestZone(offsetX: number, offsetZ: number) {
+        const leafColors = [0x1a330a, 0x244214, 0x2d4a1e, 0x3a5a28];
+        const woodColor = 0x5a3a1a;
+        for (let i = 0; i < 40; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 80;
+          const rz = offsetZ + (Math.random() - 0.5) * 80;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue; // Safety gap for center
+          const h = 4 + Math.random() * 4;
+          vox(rx, h/2, rz, woodColor, 0.7, h, 0.7, true, false, true);
+          const fSize = 2.5 + Math.random() * 2;
+          vox(rx, h + fSize/2, rz, leafColors[Math.floor(Math.random()*4)], fSize, fSize, fSize, true);
+        }
+      }
+
+      function createDesertZone(offsetX: number, offsetZ: number) {
+        const cactusColor = 0x2d5a27, rockColor = 0x8b7355;
+        for (let i = 0; i < 30; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 80;
+          const rz = offsetZ + (Math.random() - 0.5) * 80;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          if (Math.random() > 0.4) {
+             const h = 2 + Math.random() * 2.5;
+             vox(rx, h/2, rz, cactusColor, 0.5, h, 0.5, true, false, true);
+             if (h > 3) { vox(rx + 0.4, h*0.7, rz, cactusColor, 0.3, 0.8, 0.3); vox(rx - 0.4, h*0.5, rz, cactusColor, 0.3, 0.6, 0.3); }
+          } else {
+             const s = 1 + Math.random() * 3;
+             vox(rx, s/2, rz, rockColor, s, s*0.6, s*0.8, true, false, true);
+          }
+        }
+      }
+
+      function createWaterZone(offsetX: number, offsetZ: number) {
+        const pondColor = 0x2a7a9a, reedColor = 0x3a6a38;
+        for (let p = 0; p < 4; p++) {
+          const px = offsetX + (Math.random() - 0.5) * 60, pz = offsetZ + (Math.random() - 0.5) * 60;
+          if (new THREE.Vector3(px, 0, pz).length() < 35) continue;
+          const pw = 8 + Math.random() * 8, pd = 8 + Math.random() * 8;
+          const pg = new THREE.PlaneGeometry(pw, pd); pg.rotateX(-Math.PI/2);
+          const pm = new THREE.Mesh(pg, new THREE.MeshLambertMaterial({ color: pondColor, transparent: true, opacity: 0.6 }));
+          pm.position.set(px, 0.05, pz); scene.add(pm);
+          for (let r = 0; r < 8; r++) {
+            const ra = Math.random() * Math.PI*2;
+            vox(px + Math.cos(ra)*(pw/2 + 0.3), 0.8, pz + Math.sin(ra)*(pd/2 + 0.3), reedColor, 0.1, 1.6, 0.1);
+          }
+        }
+      }
+
+      function createMountainZone(offsetX: number, offsetZ: number) {
+        const stoneCols = [0x5a5a5a, 0x6a6a6a, 0x4a4a4a];
+        for (let i = 0; i < 12; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 80, rz = offsetZ + (Math.random() - 0.5) * 80;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const h = 8 + Math.random() * 12, w = 6 + Math.random() * 6;
+          for (let my = 0; my < h; my += 1.5) {
+            const r = (h - my) * (w / h);
+            vox(rx, my + 0.75, rz, stoneCols[Math.floor(Math.random()*3)], r, 1.5, r, true, false, my < 3);
+          }
+          vox(rx, h + 0.3, rz, 0xffffff, w*0.4, 0.6, w*0.4);
+        }
+      }
+
+      createForestZone(0, -100);   // NORTH
+      createWaterZone(0, 100);    // SOUTH
+      createDesertZone(100, 0);   // EAST
+      createMountainZone(-100, 0); // WEST
 
       const playerMesh = buildSpeciesMesh(species, petState.primaryColor);
       const petMeshObj = buildSpeciesMesh(species, petState.primaryColor);
@@ -669,7 +744,32 @@ export function WorldClient({ petState, species }: Props) {
             if (keysRef.current["KeyA"] || keysRef.current["ArrowLeft"]) p.rot += 0.045 * (delta * 60);
             if (keysRef.current["KeyD"] || keysRef.current["ArrowRight"]) p.rot -= 0.045 * (delta * 60);
             p.isMoving = moved; p.vel.x *= damping; p.vel.z *= damping;
-            p.pos.x += p.vel.x; p.pos.z += p.vel.z;
+
+            // Collision Check (Strictly following Rule 4 & 5)
+            const nextX = p.pos.x + p.vel.x;
+            const nextZ = p.pos.z + p.vel.z;
+            const nextPosition = new THREE.Vector3(nextX, 0.5, nextZ);
+            const playerBox = new THREE.Box3().setFromCenterAndSize(
+              nextPosition,
+              new THREE.Vector3(1, 2, 1)
+            );
+
+            let blocked = false;
+            for (let i = 0; i < colliders.length; i++) {
+              if (playerBox.intersectsBox(colliders[i].box)) {
+                blocked = true;
+                break;
+              }
+            }
+
+            if (!blocked) {
+              p.pos.x = nextX;
+              p.pos.z = nextZ;
+            } else {
+              p.vel.x = 0;
+              p.vel.z = 0;
+            }
+
             if (moved && elapsed - lastFootstep > 0.32) {
               lastFootstep = elapsed;
               playFootstep();
