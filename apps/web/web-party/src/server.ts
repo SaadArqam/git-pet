@@ -2,8 +2,10 @@ import type * as Party from "partykit/server";
 
 export interface PetPresence {
   username: string;
+  species: string; // The pet type (e.g., 'dragon', 'wolf')
   x: number;
   y: number;
+  rot?: number;
   petState: {
     stage: string;
     mood: string;
@@ -30,7 +32,7 @@ type ServerMessage =
 
 type ClientMessage =
   | { type: "join"; pet: PetPresence }
-  | { type: "move"; x: number; y: number }
+  | { type: "move"; x: number; y: number; rot?: number; petType?: string }
   | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
   | { type: "presence_update"; pet: PetPresence };
 
@@ -60,6 +62,8 @@ export default class WorldServer implements Party.Server {
       if (username && this.pets[username]) {
         this.pets[username].x = data.x;
         this.pets[username].y = data.y;
+        if (data.rot !== undefined) this.pets[username].rot = data.rot;
+        if (data.petType) this.pets[username].species = data.petType;
         this.pets[username].lastSeen = Date.now();
         const msg: ServerMessage = { type: "pet_update", pet: this.pets[username] };
         this.room.broadcast(JSON.stringify(msg));
