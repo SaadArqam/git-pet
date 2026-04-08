@@ -376,11 +376,37 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           if (keysRef.current["KeyD"] || keysRef.current["ArrowRight"]) p.rot -= 0.045 * (delta * 60);
           p.isMoving = moved; p.vel.x *= damping; p.vel.z *= damping;
 
-          // Basic collision
-          const nextPos = new THREE.Vector3(p.pos.x + p.vel.x, 0.5, p.pos.z + p.vel.z);
-          const pBox = new THREE.Box3().setFromCenterAndSize(nextPos, new THREE.Vector3(1, 2, 1));
-          let hit = false; for (const c of colliders) if (pBox.intersectsBox(c.box)) hit = true;
-          if (!hit) { p.pos.x += p.vel.x; p.pos.z += p.vel.z; }
+          // Smooth sliding collision
+          const moveX = new THREE.Vector3(p.vel.x, 0, 0);
+          const moveZ = new THREE.Vector3(0, 0, p.vel.z);
+          
+          // Try X movement first
+          const nextX = new THREE.Vector3(p.pos.x + p.vel.x, 0.5, p.pos.z);
+          const pBoxX = new THREE.Box3().setFromCenterAndSize(nextX, new THREE.Vector3(1, 2, 1));
+          let hitX = false;
+          for (const c of colliders) {
+            if (pBoxX.intersectsBox(c.box)) {
+              hitX = true;
+              break;
+            }
+          }
+          if (!hitX) {
+            p.pos.x += p.vel.x;
+          }
+          
+          // Try Z movement second
+          const nextZ = new THREE.Vector3(p.pos.x, 0.5, p.pos.z + p.vel.z);
+          const pBoxZ = new THREE.Box3().setFromCenterAndSize(nextZ, new THREE.Vector3(1, 2, 1));
+          let hitZ = false;
+          for (const c of colliders) {
+            if (pBoxZ.intersectsBox(c.box)) {
+              hitZ = true;
+              break;
+            }
+          }
+          if (!hitZ) {
+            p.pos.z += p.vel.z;
+          }
           if (moved && now - lastFootstep > 320) { lastFootstep = now; playFootstep(); }
         } else {
           p.pos.z -= 0.14 * (delta * 60); p.isMoving = true;
@@ -399,29 +425,19 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         updateBillboard(pet.bb, frameCount, "front");
         pet.bb.group.position.set(pet.pos.x, 0.5 + Math.abs(Math.sin(frameCount * 0.15)) * 0.15, pet.pos.z);
 
-        peerMeshes.forEach((peer) => {
-          peer.bb.group.position.lerp(peer.targetPos, 0.12);
-          updateBillboard(peer.bb, frameCount, "front");
-        });
-
-        // Camera follow
-        const camOffset = !p.controlEnabled ? new THREE.Vector3(0, 2.5, 6) : new THREE.Vector3(0, 7, 14).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
-        camPos.lerp(new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(camOffset), 0.065);
-        camera.position.copy(camPos); camera.lookAt(p.pos.x, 1.2, p.pos.z - 4);
-
-        // Interaction Proximity
-        let nearest: any = null; let minD = Infinity;
-        interactables.forEach(obj => {
-          const d = new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos);
-          if (d < obj.radius && d < minD) { minD = d; nearest = obj; }
-        });
-        if (mounted.current) setPromptLabel(nearest ? nearest.label : null);
-
-        // Environment
         petalData.forEach((p, i) => { p.y += p.vy; if (p.y < -0.5) p.y = 14; dummy.position.set(p.x, p.y, p.z); dummy.updateMatrix(); petalMesh.setMatrixAt(i, dummy.matrix); }); petalMesh.instanceMatrix.needsUpdate = true;
         waterMat.color.setHSL(0.55, 0.55, 0.36 + Math.sin(elapsed * 1.3) * 0.04);
 
         if (minimapRef.current) { const mc = minimapRef.current.getContext('2d')!; mc.fillStyle = '#020617'; mc.fillRect(0, 0, 120, 120); const mx = (p.pos.x + 30) / 60 * 112 + 4, mz = (p.pos.z + 30) / 60 * 112 + 4; mc.fillStyle = '#f0ebe0'; mc.beginPath(); mc.arc(mx, mz, 3, 0, Math.PI * 2); mc.fill(); }
+
+        // Camera Follow (Exact Landing Page Logic)
+        const playerPos = new THREE.Vector3(p.pos.x, p.pos.y, p.pos.z);
+        const offset = new THREE.Vector3(0, 7, 14);
+        offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
+        camPos.lerp(playerPos.clone().add(offset), 0.065);
+        camLook.lerp(playerPos.clone().add(new THREE.Vector3(0, 1, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot).multiplyScalar(3)), 0.1);
+        camera.position.copy(camPos);
+        camera.lookAt(camLook);
 
         renderer.render(scene, camera);
       };
