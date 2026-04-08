@@ -265,13 +265,21 @@ export function SpeciesSelect({ username, suggestedSpecies, topLanguage }: Props
   const handleConfirm = async () => {
     if (!effectiveSpecies) return;
     setSaving(true);
+
+    // 1. Save to localStorage as Source of Truth
+    const petObject = {
+      type: effectiveSpecies,
+      id: `${effectiveSpecies}-${Date.now()}`
+    };
+    localStorage.setItem("selectedPet", JSON.stringify(petObject));
+
     await fetch("/api/species", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ species: effectiveSpecies }),
     });
-    // Hard navigate so Next.js server component re-runs fresh from Redis
-    window.location.href = "/";
+    // Hard navigate to dashboard
+    window.location.href = "/dashboard";
   };
 
   return (
