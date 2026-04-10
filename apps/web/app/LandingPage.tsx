@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 
@@ -27,10 +28,12 @@ export default function LandingPage() {
   const cleanupFns = useRef<(() => void)[]>([])
   const activeOverlayRef = useRef<string | null>(null)
   const joystickRef = useRef({ active: false, dx: 0, dy: 0 })
+  const router = useRouter()
 
-  const { data: session } = useSession()
-  const isLoggedIn = !!(session as any)?.user
+  const { data: session, status } = useSession()
+  const isLoggedIn = !!session?.user
 
+  const [triggerWorldEnter, setTriggerWorldEnter] = useState(false)
   const [promptLabel, setPromptLabel] = useState<string | null>(null)
   const [activeOverlay, setActiveOverlay] = useState<
     'about' | 'signin' | 'species' | 'leaderboard' | 'pets' | 'shrineChoice' | null
@@ -39,6 +42,18 @@ export default function LandingPage() {
   const [controlsHint, setControlsHint] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [joystick, setJoystick] = useState({ active: false, dx: 0, dy: 0 })
+
+  useEffect(() => {
+    if (!triggerWorldEnter || status === 'loading') return
+
+    if (status === 'authenticated') {
+      router.push('/world')
+    }
+    
+    // Reset trigger after a tick to avoid cascading render warning
+    const t = setTimeout(() => setTriggerWorldEnter(false), 0)
+    return () => clearTimeout(t)
+  }, [triggerWorldEnter, status, router])
 
   useEffect(() => { return () => { mounted.current = false } }, [])
 
@@ -106,10 +121,10 @@ export default function LandingPage() {
       const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.45); scene.add(hemiLight)
 
       // Vox helper
-      function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false): any {
-        const mesh = new THREE.Mesh(
-          new THREE.BoxGeometry(w, h, d),
-          new THREE.MeshLambertMaterial({ color: new THREE.Color(color) })
+      function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false) {
+        const mesh = new (window as any).THREE.Mesh(
+          new (window as any).THREE.BoxGeometry(w, h, d),
+          new (window as any).THREE.MeshLambertMaterial({ color: new (window as any).THREE.Color(color) })
         )
         mesh.position.set(x, y, z)
         mesh.castShadow = castShadow; mesh.receiveShadow = receiveShadow
@@ -458,7 +473,7 @@ export default function LandingPage() {
       const onKeyDown = (e: KeyboardEvent) => {
         keys[e.code] = true
         if (activeOverlayRef.current === 'shrineChoice') {
-          if (e.code === 'Digit1') signIn('github', { callbackUrl: '/world' })
+          if (e.code === 'Digit1') setTriggerWorldEnter(true)
           if (e.code === 'Digit2') signIn('github', { callbackUrl: '/dashboard' })
         }
         if (e.code === 'KeyE' && nearestObj) nearestObj.onInteract()
@@ -761,7 +776,7 @@ export default function LandingPage() {
 
             {activeOverlay === 'about' && <>
               <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 'clamp(28px,4vw,48px)', color: '#f0ebe0', marginBottom: 24, lineHeight: 1 }}>What is Git-Pet?</div>
-              <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 13, color: 'rgba(240,235,224,0.65)', lineHeight: 1.9, marginBottom: 16 }}>Every commit you push on GitHub feeds a living pixel creature. Miss a day, it gets sick. Keep your streak, it evolves. It's your GitHub consistency — made visible.</p>
+              <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 13, color: 'rgba(240,235,224,0.65)', lineHeight: 1.9, marginBottom: 16 }}>Every commit you push on GitHub feeds a living pixel creature. Miss a day, it gets sick. Keep your streak, it evolves. It&apos;s your GitHub consistency — made visible.</p>
               <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 13, color: 'rgba(240,235,224,0.65)', lineHeight: 1.9, marginBottom: 32 }}>Walk through this world. Find the shrine. Meet your pet.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 2, marginBottom: 32 }}>
                 {[['1,284', 'Pets alive'], ['94,720', 'Commits tracked'], ['3,871', 'World battles']].map(([n, l]) => (
@@ -781,7 +796,7 @@ export default function LandingPage() {
                 <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 12, color: 'rgba(240,235,224,0.5)', lineHeight: 1.8, marginBottom: 32 }}>Choose your path</p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <button onClick={() => signIn('github', { callbackUrl: '/world' })} style={{ width: '100%', padding: '18px 32px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase', background: 'rgba(26,20,14,0.7)', border: '1px solid rgba(255,180,80,0.4)', color: '#ffd4a0', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}>
+                <button onClick={() => setTriggerWorldEnter(true)} style={{ width: '100%', padding: '18px 32px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase', background: 'rgba(26,20,14,0.7)', border: '1px solid rgba(255,180,80,0.4)', color: '#ffd4a0', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}>
                   <span>[ 1 ] Enter the World</span><span>→</span>
                 </button>
                 <button onClick={() => signIn('github', { callbackUrl: '/dashboard' })} style={{ width: '100%', padding: '18px 32px', fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase', background: 'rgba(181,71,10,0.6)', border: '1px solid rgba(255,180,80,0.4)', color: '#fff', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}>
