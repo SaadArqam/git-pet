@@ -46,7 +46,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   });
 
   const playerRef = useRef<any>(null); // Billboard group ref
-  const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number }>>({});
+  const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number, species: string }>>({});
   const [cinematicDone, setCinematicDone] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
   const [promptLabel, setPromptLabel] = useState<string | null>(null);
@@ -477,29 +477,48 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         socket.addEventListener("message", async (e) => {
           const msg = JSON.parse(e.data);
           if (msg.type === "snapshot") {
-            console.log("Players from server:", msg.pets);
             Object.entries(msg.pets).forEach(async ([username, pData]: [string, any]) => {
               if (username === petState.gitData.username) return;
-              if (!remotePlayersRef.current[username]) {
-                const sp = await fetchSpeciesForUser(username);
-                const bb = createPetBillboard(username, sp || "cat", pData.petState || petState);
-                
-                // Debug visibility
-                if (bb.group.children[0] && (bb.group.children[0] as any).material) {
-                  (bb.group.children[0] as any).material.color.set(0xff0000);
-                }
+              
+              const sp = (pData.species || pData.petType || await fetchSpeciesForUser(username) || "cat").toLowerCase();
+              console.log("Incoming player:", username, sp);
 
+              const existing = remotePlayersRef.current[username];
+              if (existing) {
+                if (existing.species !== sp) {
+                  scene.remove(existing.bb.group);
+                  const bb = createPetBillboard(username, sp, pData.petState || petState);
+                  scene.add(bb.group);
+                  remotePlayersRef.current[username] = { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0, species: sp };
+                }
+              } else {
+                const bb = createPetBillboard(username, sp, pData.petState || petState);
                 scene.add(bb.group);
-                remotePlayersRef.current[username] = { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0 };
+                remotePlayersRef.current[username] = { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0, species: sp };
               }
             });
           } else if (msg.type === "move" || msg.type === "pet_update") {
             const data = msg.pet || msg; const uid = data.username || msg.id;
             if (uid === petState.gitData.username) return;
+            
+            const sp = (data.species || data.petType || "cat").toLowerCase();
             let peer = remotePlayersRef.current[uid];
-            if (peer) { 
+            
+            if (peer) {
+              if (peer.species !== sp && (data.species || data.petType)) {
+                scene.remove(peer.bb.group);
+                const bb = createPetBillboard(uid, sp, data.petState || petState);
+                scene.add(bb.group);
+                peer.bb = bb;
+                peer.species = sp;
+              }
               peer.targetPos.set(data.x, 0.5, data.y); 
               peer.targetRot = data.rot; 
+            } else {
+              // Create if move received before snapshot (rare but possible)
+              const bb = createPetBillboard(uid, sp, data.petState || petState);
+              scene.add(bb.group);
+              remotePlayersRef.current[uid] = { bb, targetPos: new THREE.Vector3(data.x, 0.5, data.y), targetRot: data.rot || 0, species: sp };
             }
           } else if (msg.type === "leave") {
             const peer = remotePlayersRef.current[msg.id]; 
