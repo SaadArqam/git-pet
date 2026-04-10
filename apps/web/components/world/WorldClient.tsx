@@ -46,6 +46,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   });
 
   const playerRef = useRef<any>(null); // Billboard group ref
+  const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number }>>({});
   const [cinematicDone, setCinematicDone] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
   const [promptLabel, setPromptLabel] = useState<string | null>(null);
@@ -425,6 +426,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         updateBillboard(pet.bb, frameCount, "front");
         pet.bb.group.position.set(pet.pos.x, 0.5 + Math.abs(Math.sin(frameCount * 0.15)) * 0.15, pet.pos.z);
 
+        // Update remote players
+        for (const id in remotePlayersRef.current) {
+          const remote = remotePlayersRef.current[id];
+          remote.bb.group.position.lerp(remote.targetPos, 0.1);
+          updateBillboard(remote.bb, frameCount, "front");
+        }
+
         petalData.forEach((p, i) => { p.y += p.vy; if (p.y < -0.5) p.y = 14; dummy.position.set(p.x, p.y, p.z); dummy.updateMatrix(); petalMesh.setMatrixAt(i, dummy.matrix); }); petalMesh.instanceMatrix.needsUpdate = true;
         waterMat.color.setHSL(0.55, 0.55, 0.36 + Math.sin(elapsed * 1.3) * 0.04);
 
@@ -443,36 +451,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       };
       tick();
 
-      const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
-      if (host) {
-        const socket = new PartySocket({ host, room: "world" }); socketRef.current = socket;
-        socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species: localSpecies, petState } })));
-        socket.addEventListener("message", async (e) => {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "snapshot") {
-            Object.entries(msg.pets).forEach(async ([username, pData]: [string, any]) => {
-              if (username === petState.gitData.username) return;
-              if (!peerMeshes.has(username)) {
-                const sp = await fetchSpeciesForUser(username);
-                const bb = createPetBillboard(username, sp || "cat", pData.petState || petState);
-                scene.add(bb.group);
-                peerMeshes.set(username, { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0, species: sp || "cat" });
-              }
-            });
-          } else if (msg.type === "move" || msg.type === "pet_update") {
-            const data = msg.pet || msg; const uid = data.username || msg.id;
-            if (uid === petState.gitData.username) return;
-            let peer = peerMeshes.get(uid);
-            if (peer) { peer.targetPos.set(data.x, 0.5, data.y); peer.targetRot = data.rot; }
-          } else if (msg.type === "leave") {
-            const peer = peerMeshes.get(msg.id); if (peer) { scene.remove(peer.bb.group); peerMeshes.delete(msg.id); }
-          }
-          setOnlineCount(peerMeshes.size + 1);
-        });
-        const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot })); }, 100);
-        cleanupFns.current.push(() => clearInterval(broadcast));
-      }
-
       const onKD = (e: any) => {
         initAudio();
         keysRef.current[e.code] = true;
@@ -483,9 +461,58 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       };
       const onKU = (e: any) => keysRef.current[e.code] = false;
       window.addEventListener("keydown", onKD); window.addEventListener("keyup", onKU);
+
       const onResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); };
       window.addEventListener("resize", onResize);
-      cleanupFns.current.push(() => { window.removeEventListener("keydown", onKD); window.removeEventListener("keyup", onKU); window.removeEventListener("resize", onResize); });
+      cleanupFns.current.push(() => {
+        window.removeEventListener("keydown", onKD);
+        window.removeEventListener("keyup", onKU);
+        window.removeEventListener("resize", onResize);
+      });
+
+      const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+      if (host) {
+        const socket = new PartySocket({ host, room: "world" }); socketRef.current = socket;
+        socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species: localSpecies, petState } })));
+        socket.addEventListener("message", async (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "snapshot") {
+            console.log("Players from server:", msg.pets);
+            Object.entries(msg.pets).forEach(async ([username, pData]: [string, any]) => {
+              if (username === petState.gitData.username) return;
+              if (!remotePlayersRef.current[username]) {
+                const sp = await fetchSpeciesForUser(username);
+                const bb = createPetBillboard(username, sp || "cat", pData.petState || petState);
+                
+                // Debug visibility
+                if (bb.group.children[0] && (bb.group.children[0] as any).material) {
+                  (bb.group.children[0] as any).material.color.set(0xff0000);
+                }
+
+                scene.add(bb.group);
+                remotePlayersRef.current[username] = { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0 };
+              }
+            });
+          } else if (msg.type === "move" || msg.type === "pet_update") {
+            const data = msg.pet || msg; const uid = data.username || msg.id;
+            if (uid === petState.gitData.username) return;
+            let peer = remotePlayersRef.current[uid];
+            if (peer) { 
+              peer.targetPos.set(data.x, 0.5, data.y); 
+              peer.targetRot = data.rot; 
+            }
+          } else if (msg.type === "leave") {
+            const peer = remotePlayersRef.current[msg.id]; 
+            if (peer) { 
+              scene.remove(peer.bb.group); 
+              delete remotePlayersRef.current[msg.id]; 
+            }
+          }
+          setOnlineCount(Object.keys(remotePlayersRef.current).length + 1);
+        });
+        const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot })); }, 100);
+        cleanupFns.current.push(() => clearInterval(broadcast));
+      }
     };
     init();
     return () => { cancelAnimationFrame(rafRef.current); if (rendererRef.current) rendererRef.current.dispose(); cleanupFns.current.forEach(f => f()); if (socketRef.current) socketRef.current.close(); };
