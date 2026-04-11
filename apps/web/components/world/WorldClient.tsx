@@ -211,6 +211,39 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       // ─── WORLD BUILDING ───
+      const swayables: any[] = [];
+      const worldDecor = new THREE.Group();
+      scene.add(worldDecor);
+
+      const fallingPetals: any[] = [];
+      let pondMesh: any = null;
+      let shrineBellHitbox: any = null;
+      let shrineBellMesh: any = null;
+      function seededRandom(seed: number) {
+        let x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+      }
+
+      for (let i = 0; i < 9; i++) {
+        const zPos = 5 - i * 1.5;
+        const pathPiece = new THREE.Mesh(
+          new THREE.BoxGeometry(1.2, 0.05, 0.8),
+          new THREE.MeshLambertMaterial({ color: 0xFFF5E4 })
+        );
+        pathPiece.position.set(0, 0.025, zPos);
+        pathPiece.rotation.y = (Math.random() - 0.5) * 0.52;
+        worldDecor.add(pathPiece);
+      }
+
+      function buildCommunityBoard() {
+        const g = new THREE.Group();
+        vox(0, 1.5, 5, 0x8B5E3C, 0.4, 3, 0.4, true, true, true); // Post
+        vox(0, 3, 5, 0xF5CBA7, 3, 1.5, 0.2, true, true, true); // Sign board
+        vox(0, 3.8, 5, 0xE07B39, 3.2, 0.2, 0.3, true, true, false); // Accent trim
+        scene.add(g);
+      }
+      buildCommunityBoard();
+
       const groundGeo = new THREE.PlaneGeometry(300, 300, 100, 100); groundGeo.rotateX(-Math.PI / 2);
       const groundColors: number[] = []; const groundPos = groundGeo.attributes.position;
       for (let i = 0; i < groundPos.count; i++) {
@@ -223,8 +256,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       ground.receiveShadow = true; scene.add(ground);
       for (let gx = -30; gx < 30; gx++) vox(gx + 0.5, -0.3, -32, 0x8B6914, 1, 0.4, 1);
 
-      const pathPoints = [[0, 20], [0.5, 16], [0, 12], [-0.5, 8], [0, 4], [0.5, 0], [0, -4], [-0.5, -8], [0, -12], [0.5, -16], [0, -20]];
-      pathPoints.forEach(([px, pz]) => { for (let w = -1; w <= 1; w++) vox(px + w, 0.06, pz, 0x9a9a9a, 1, 0.12, 1, false, true); });
 
       function buildTorii(x: number, z: number) {
         const red = 0xcc3300;
@@ -233,16 +264,33 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
       buildTorii(0, -7); buildTorii(0, -18);
 
-      const lanternMats: any[] = [];
-      function buildLantern(x: number, z: number) {
-        vox(x, 0.2, z, 0x888880, 0.85, 0.45, 0.85, false, false, true); vox(x, 1.1, z, 0x888880, 0.45, 0.55, 0.45, false, false, true);
-        const lMat = new THREE.MeshLambertMaterial({ color: 0xffcc66, emissive: 0xffaa22, emissiveIntensity: 1.0 });
-        const lMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.7), lMat);
-        lMesh.position.set(x, 1.75, z); lMesh.castShadow = true; scene.add(lMesh); colliders.push({ box: new THREE.Box3().setFromObject(lMesh), mesh: lMesh });
-        lanternMats.push(lMat);
-        scene.add(new THREE.PointLight(0xffaa22, 1.4, 8).clone().translateY(1.8).translateX(x).translateZ(z));
+      function buildStoneLantern(x: number, z: number) {
+        const g = new THREE.Group();
+        g.position.set(x, 0, z);
+        
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), new THREE.MeshLambertMaterial({ color: 0x808080 }));
+        base.position.y = 0.15;
+        g.add(base);
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.5, 0.35), new THREE.MeshLambertMaterial({ color: 0xFFF5E4 }));
+        body.position.y = 0.55;
+        g.add(body);
+
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.5), new THREE.MeshLambertMaterial({ color: 0x404040 }));
+        cap.position.y = 0.875;
+        g.add(cap);
+
+        const light = new THREE.PointLight(0xFFD580, 0.4, 4);
+        light.position.y = 0.55;
+        g.add(light);
+        
+        worldDecor.add(g);
+        colliders.push({ box: new THREE.Box3().setFromObject(g), mesh: g });
       }
-      buildLantern(-2, 4); buildLantern(2, 0); buildLantern(-2, -4); buildLantern(2, -12);
+      buildStoneLantern(-2, -7);
+      buildStoneLantern(2, -7);
+      buildStoneLantern(-2, 0);
+      buildStoneLantern(2, 0);
 
       function buildCherryTree(x: number, z: number, h: number) {
         const blossoms = [0xffb7c5, 0xff9eb5, 0xffc8d5, 0xff85a1];
@@ -251,14 +299,52 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const dist = Math.sqrt(bx * bx + by * by * 1.5 + bz * bz);
           if (dist < 3.2 && Math.random() > dist * 0.15) vox(x + bx * 0.88, h + by * 0.88, z + bz * 0.88, blossoms[Math.floor(Math.random() * 4)], 0.85, 0.85, 0.85, true);
         }
+
+        // Flower patches
+        for (let i = 0; i < 4; i++) {
+          const px = x + (Math.random() - 0.5) * 5;
+          const pz = z + (Math.random() - 0.5) * 5;
+          const patch = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8),
+            new THREE.MeshLambertMaterial({ color: 0xFFB7C5 })
+          );
+          patch.position.set(px, 0.02, pz);
+          scene.add(patch);
+        }
+
+        // Fallen petals
+        for (let i = 0; i < 8; i++) {
+          const px = x + (Math.random() - 0.5) * 6;
+          const pz = z + (Math.random() - 0.5) * 6;
+          const petal = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.2, 0.2),
+            new THREE.MeshLambertMaterial({ color: 0xFFCDD9, side: THREE.DoubleSide })
+          );
+          petal.position.set(px, 0.01 + Math.random() * 0.02, pz);
+          petal.rotation.x = -Math.PI / 2;
+          petal.rotation.z = Math.random() * Math.PI;
+          scene.add(petal);
+        }
       }
       buildCherryTree(-11, -5, 6); buildCherryTree(-15, -13, 5); buildCherryTree(12, -8, 4); buildCherryTree(-9, 8, 4);
 
       const POND_X = 9, POND_Z = -4;
-      for (let bx = -4; bx <= 4; bx++) for (let bz = -3; bz <= 3; bz++) if (Math.abs(bx) === 4 || Math.abs(bz) === 3) vox(POND_X + bx, 0.08, POND_Z + bz, 0x7a7a7a, 1, 0.2, 1);
-      const waterMat = new THREE.MeshLambertMaterial({ color: 0x3d8fa8, transparent: true, opacity: 0.82 });
-      const water = new THREE.Mesh(new THREE.PlaneGeometry(7, 5), waterMat);
-      water.rotateX(-Math.PI / 2); water.position.set(POND_X, 0.1, POND_Z); water.receiveShadow = true; scene.add(water);
+      const pondGeo = new THREE.CylinderGeometry(4, 4, 0.1, 16);
+      const pondMat = new THREE.MeshLambertMaterial({ color: 0xA8D8EA, transparent: true, opacity: 0.9 });
+      pondMesh = new THREE.Mesh(pondGeo, pondMat);
+      pondMesh.position.set(POND_X, 0.05, POND_Z);
+      worldDecor.add(pondMesh);
+
+      for (let i=0; i<6; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 3.8 + Math.random() * 0.4;
+        const rx = POND_X + Math.cos(angle) * radius;
+        const rz = POND_Z + Math.sin(angle) * radius;
+        const reed = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.5), new THREE.MeshLambertMaterial({ color: 0x7BAF5A }));
+        reed.position.set(rx, 0.75, rz);
+        worldDecor.add(reed);
+        swayables.push({ mesh: reed, speed: 1.5, offset: Math.random() });
+      }
 
       function buildShrine(x: number, z: number) {
         const wood = 0x6b4423, stone = 0x9a8a7a, roof = 0x2a1f14;
@@ -287,39 +373,159 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
       }
 
+      // ─── DECORATIVE FACTORY FUNCTIONS ───
+      function createMushroom(x: number, z: number, seed: number) {
+        const h = 0.4 + seededRandom(seed)*0.3;
+        vox(x, h/2, z, 0xdcdcdc, 0.2, h, 0.2, false, false, false);
+        const top = vox(x, h+0.1, z, 0xcc3333, 0.6, 0.2, 0.6, true, false, false);
+        swayables.push({ mesh: top, speed: 1.2, offset: seed });
+      }
+
+      function createLilyPad(x: number, z: number, seed: number) {
+        const s = 0.5 + seededRandom(seed)*0.5;
+        const pad = vox(x, 0.12, z, 0x3d7a4d, s, 0.05, s, false, true, false);
+        swayables.push({ mesh: pad, speed: 0.5, offset: seed });
+      }
+
+      function createIceSpire(x: number, z: number, seed: number) {
+        const h = 2 + seededRandom(seed)*4;
+        const mat = new THREE.MeshStandardMaterial({ color: 0xaeeeee, emissive: 0x2244aa, emissiveIntensity: 0.2, transparent: true, opacity: 0.8 });
+        const mesh = new THREE.Mesh(new THREE.ConeGeometry(h/3, h, 4), mat);
+        mesh.position.set(x, h/2, z);
+        scene.add(mesh);
+        colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh });
+      }
+
+      function createRuins(x: number, z: number, seed: number) {
+        const height = 1 + seededRandom(seed)*2;
+        vox(x, height/2, z, 0xd2b48c, 1.5, height, 0.5, true, true, true);
+        vox(x+1, height/4, z, 0xd2b48c, 0.5, height/2, 0.5, true, true, true);
+      }
+
       function createForestZone(offsetX: number, offsetZ: number) {
         for (let i = 0; i < 40; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const h = 4 + Math.random() * 4; buildForestTree(rx, rz, h);
+          if (Math.random() > 0.7) createMushroom(rx + 2, rz + 1, i);
         }
       }
 
       function createDesertZone(offsetX: number, offsetZ: number) {
-        const cactusColor = 0x2d5a27, rockColor = 0x8b7355;
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 6; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          if (Math.random() > 0.4) {
-            const h = 2 + Math.random() * 2.5; vox(rx, h / 2, rz, cactusColor, 0.5, h, 0.5, true, false, true);
-          } else {
-            const s = 1 + Math.random() * 3; vox(rx, s / 2, rz, rockColor, s, s * 0.6, s * 0.8, true, false, true);
+          const dirt = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.02, 1.5), new THREE.MeshLambertMaterial({ color: 0xC4A882 }));
+          dirt.position.set(rx, 0.01, rz);
+          worldDecor.add(dirt);
+        }
+
+        for (let i = 0; i < 7; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          
+          const hMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), new THREE.MeshLambertMaterial({ color: 0xD4A853 }));
+          hMesh.position.set(rx, 0.4, rz);
+          hMesh.rotation.y = Math.random() * Math.PI;
+          worldDecor.add(hMesh);
+          colliders.push({ box: new THREE.Box3().setFromObject(hMesh), mesh: hMesh });
+          if(Math.random() > 0.5) {
+            const hMesh2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), new THREE.MeshLambertMaterial({ color: 0xD4A853 }));
+            hMesh2.position.set(rx + 0.2, 1.2, rz - 0.1);
+            hMesh2.rotation.y = Math.random() * Math.PI;
+            worldDecor.add(hMesh2);
+            colliders.push({ box: new THREE.Box3().setFromObject(hMesh2), mesh: hMesh2 });
+          }
+        }
+
+        for (let i = 0; i < 5; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 70; const rz = offsetZ + (Math.random() - 0.5) * 70;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          
+          const g = new THREE.Group(); g.position.set(rx, 0, rz); g.rotation.y = Math.random() * Math.PI;
+          const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, 0.15), new THREE.MeshLambertMaterial({ color: 0x8B5E3C })); p1.position.set(-0.9, 0.5, 0);
+          const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, 0.15), new THREE.MeshLambertMaterial({ color: 0x8B5E3C })); p2.position.set(0.9, 0.5, 0);
+          const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.1), new THREE.MeshLambertMaterial({ color: 0xA0724A })); r1.position.set(0, 0.7, 0);
+          const r2 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.1), new THREE.MeshLambertMaterial({ color: 0xA0724A })); r2.position.set(0, 0.35, 0);
+          g.add(p1, p2, r1, r2); worldDecor.add(g);
+          colliders.push({ box: new THREE.Box3().setFromObject(p1), mesh: p1 }); colliders.push({ box: new THREE.Box3().setFromObject(p2), mesh: p2 });
+
+          for (let s = 0; s < 2; s++) {
+            const sx = rx + (Math.random() - 0.5) * 3; const sz = rz + (Math.random() - 0.5) * 3;
+            const sg = new THREE.Group(); sg.position.set(sx, 0, sz);
+            const stem = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 0.1), new THREE.MeshLambertMaterial({ color: 0x7BAF5A })); stem.position.y = 0.7;
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.1), new THREE.MeshLambertMaterial({ color: 0xFFD580 })); head.position.y = 1.5;
+            sg.add(stem, head);
+            [ [0,0.3,0], [0,-0.3,0], [0.3,0,Math.PI/2], [-0.3,0,Math.PI/2] ].forEach(d => {
+              const p = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.08), new THREE.MeshLambertMaterial({ color: 0xEF9F27 }));
+              p.position.set(d[0], 1.5 + d[1], 0.02); p.rotation.z = d[2]; sg.add(p);
+            });
+            worldDecor.add(sg);
           }
         }
       }
 
       function createMountainZone(offsetX: number, offsetZ: number) {
         for (let i = 0; i < 12; i++) {
-          const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
+          const rx = (offsetX + (Math.random() - 0.5) * 80) * 1.6;
+          const rz = (offsetZ + (Math.random() - 0.5) * 80) * 1.6;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          const h = 8 + Math.random() * 12, w = 6 + Math.random() * 6;
-          for (let my = 0; my < h; my += 1.5) {
-            const r = (h - my) * (w / h); vox(rx, my + 0.75, rz, 0x5a5a5a, r, 1.5, r, true, false, my < 3);
+          
+          const h = (8 + Math.random() * 12) * 0.5, w = (6 + Math.random() * 6) * 0.5;
+          for (let my = 0; my < h; my += 1.5 * 0.5) {
+            const r = (h - my) * (w / h);
+            const m = new THREE.Mesh(new THREE.BoxGeometry(r*2, 1.5*0.5, r*2), new THREE.MeshLambertMaterial({ color: 0xF0EEF8, emissive: 0xE8E4F0, emissiveIntensity: 0.05 }));
+            m.position.set(rx, my + 0.75*0.5, rz);
+            if (my < 3 * 0.5) colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
+            worldDecor.add(m);
           }
+          const cap = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.6), new THREE.MeshLambertMaterial({ color: 0xFFFFFF }));
+          cap.position.set(rx, h, rz);
+          worldDecor.add(cap);
+        }
+
+        for (let i = 0; i < 10; i++) {
+          const rx = (offsetX + (Math.random() - 0.5) * 80) * 1.2;
+          const rz = (offsetZ + (Math.random() - 0.5) * 80) * 1.2;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          
+          const pg = new THREE.Group(); pg.position.set(rx, 0, rz);
+          const t = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshLambertMaterial({ color: 0x8B5E3C })); t.position.y = 0.4;
+          const t1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshLambertMaterial({ color: 0x3B6D11 })); t1.position.y = 0.8 + 0.25;
+          const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.9), new THREE.MeshLambertMaterial({ color: 0x4A8A1A })); t2.position.y = 1.3 + 0.25;
+          const t3 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x5AA020 })); t3.position.y = 1.8 + 0.25;
+          pg.add(t, t1, t2, t3); worldDecor.add(pg);
+          colliders.push({ box: new THREE.Box3().setFromObject(t), mesh: t });
         }
       }
 
       createForestZone(0, -100); createDesertZone(100, 0); createMountainZone(-100, 0);
+
+      for(let i=0; i<8; i++) {
+        createLilyPad(POND_X + (Math.random()-0.5)*5, POND_Z + (Math.random()-0.5)*4, i);
+      }
+
+      const ambientParticles: any[] = [];
+      const snowParticles: any[] = [];
+      for(let i=0; i<50; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 4, 4), new THREE.MeshBasicMaterial({ color: 0xA8D8EA }));
+        const ox = (Math.random()-0.5)*80;
+        const oy = 0.3 + Math.random()*2.2;
+        const oz = (Math.random()-0.5)*80;
+        m.position.set(ox, oy, oz);
+        worldDecor.add(m);
+        ambientParticles.push({ mesh: m, baseY: oy, offset: Math.random()*100 });
+      }
+
+      for (let i = 0; i < 40; i++) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+        const ox = -100 + (Math.random() - 0.5) * 80 * 1.6;
+        const oy = Math.random() * 20;
+        const oz = (Math.random() - 0.5) * 80 * 1.6;
+        m.position.set(ox, oy, oz);
+        worldDecor.add(m);
+        snowParticles.push({ mesh: m });
+      }
 
       // Identify local species
       let localSpecies = selectedPet.type;
@@ -354,10 +560,81 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         return "cat";
       }
 
-      const petalMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.18, 0.04, 0.18), new THREE.MeshLambertMaterial({ color: 0xffb7c5 }), 100);
-      scene.add(petalMesh);
-      const petalData = Array.from({ length: 100 }, () => ({ x: (Math.random() - 0.5) * 40, y: Math.random() * 14 + 2, z: (Math.random() - 0.5) * 40, vy: -(0.007 + Math.random() * 0.01) }));
+      const bellGroup = new THREE.Group();
+      bellGroup.position.set(3, 0, -2);
+      const postMat = new THREE.MeshLambertMaterial({ color: 0x8B5E3C });
+      const post1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.5, 0.2), postMat);
+      post1.position.set(-0.8, 1.25, 0);
+      const post2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.5, 0.2), postMat);
+      post2.position.set(0.8, 1.25, 0);
+      const crossbar = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 0.2), postMat);
+      crossbar.position.set(0, 2.4, 0);
+      bellGroup.add(post1, post2, crossbar);
+
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.2), new THREE.MeshLambertMaterial({ color: 0x8B5E3C }));
+      rope.position.set(0, 1.8, 0);
+      bellGroup.add(rope);
+
+      shrineBellMesh = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.05, 8, 16), new THREE.MeshStandardMaterial({ color: 0xB8860B }));
+      shrineBellMesh.position.set(0, 1.2, 0);
+      shrineBellMesh.rotation.x = Math.PI / 2;
+      bellGroup.add(shrineBellMesh);
+
+      worldDecor.add(bellGroup);
+      shrineBellHitbox = bellGroup;
+      colliders.push({ box: new THREE.Box3().setFromObject(post1), mesh: post1 });
+      colliders.push({ box: new THREE.Box3().setFromObject(post2), mesh: post2 });
+
+      const petalGeo = new THREE.PlaneGeometry(0.18, 0.18);
+      const petalMat = new THREE.MeshStandardMaterial({ color: 0xFFB7C5, side: THREE.DoubleSide });
+      for (let i = 0; i < 60; i++) {
+        const pMesh = new THREE.Mesh(petalGeo, petalMat);
+        const trees = [[-11, -5], [-15, -13], [12, -8], [-9, 8]];
+        const t = trees[Math.floor(Math.random() * trees.length)];
+        pMesh.position.set(t[0] + (Math.random() - 0.5) * 6, 4 + Math.random() * 4, t[1] + (Math.random() - 0.5) * 6);
+        pMesh.rotation.set(Math.random(), Math.random(), Math.random());
+        worldDecor.add(pMesh);
+        fallingPetals.push({ mesh: pMesh, treePos: t });
+      }
+
+      const fireflyCount = 60;
+      const fireflyGeo = new THREE.BufferGeometry();
+      const fireflyPos = new Float32Array(fireflyCount * 3);
+      const fireflyData: any[] = [];
+
+      for (let i = 0; i < fireflyCount; i++) {
+        const fx = (Math.random() - 0.5) * 80;
+        const fy = 0.5 + Math.random() * 2.5; 
+        const fz = (Math.random() - 0.5) * 80;
+        fireflyPos[i * 3] = fx;
+        fireflyPos[i * 3 + 1] = fy;
+        fireflyPos[i * 3 + 2] = fz;
+        fireflyData.push({ x: fx, y: fy, z: fz, offset: Math.random() * 100 });
+      }
+      fireflyGeo.setAttribute('position', new THREE.BufferAttribute(fireflyPos, 3));
+
+      const circleCanvas = document.createElement('canvas');
+      circleCanvas.width = 32; circleCanvas.height = 32;
+      const cCtx = circleCanvas.getContext('2d')!;
+      cCtx.beginPath();
+      cCtx.arc(16, 16, 14, 0, Math.PI * 2);
+      cCtx.fillStyle = '#FFF8E7';
+      cCtx.fill();
+      const circleTex = new THREE.CanvasTexture(circleCanvas);
+
+      const fireflyMat = new THREE.PointsMaterial({
+        size: 2.0,
+        map: circleTex,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        alphaTest: 0.1
+      });
+      const fireflies = new THREE.Points(fireflyGeo, fireflyMat);
+      scene.add(fireflies);
+
       const dummy = new THREE.Object3D();
+
 
       let lastTime = performance.now(); let elapsed = 0; let lastFootstep = 0;
       let frameCount = 0;
@@ -433,8 +710,60 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           updateBillboard(remote.bb, frameCount, "front");
         }
 
-        petalData.forEach((p, i) => { p.y += p.vy; if (p.y < -0.5) p.y = 14; dummy.position.set(p.x, p.y, p.z); dummy.updateMatrix(); petalMesh.setMatrixAt(i, dummy.matrix); }); petalMesh.instanceMatrix.needsUpdate = true;
-        waterMat.color.setHSL(0.55, 0.55, 0.36 + Math.sin(elapsed * 1.3) * 0.04);
+        const timeCycle = Math.sin(elapsed * 0.05); // Slow cycle
+        const skyDay = new THREE.Color(0x87b4d0);
+        const skyNight = new THREE.Color(0x0a1128);
+        scene.background.copy(skyDay).lerp(skyNight, (timeCycle + 1) / 2);
+        sunLink.intensity = 2.4 - ((timeCycle + 1) / 2) * 2.0;
+
+        const positions = fireflies.geometry.attributes.position.array as Float32Array;
+        for (let i = 0; i < fireflyCount; i++) {
+          const data = fireflyData[i];
+          positions[i * 3 + 1] = data.y + Math.sin(elapsed * 0.3 + data.offset) * 0.5;
+          positions[i * 3] = data.x + Math.sin(elapsed * 0.1 + data.offset) * 0.2;
+        }
+        fireflies.geometry.attributes.position.needsUpdate = true;
+
+        fallingPetals.forEach((obj, i) => {
+          obj.mesh.position.y -= 0.008;
+          obj.mesh.position.x += Math.sin(elapsed * 0.5 + i * 0.3) * 0.004;
+          obj.mesh.rotation.z += 0.008;
+          if (obj.mesh.position.y < 0) {
+            obj.mesh.position.y = 6 + Math.random() * 3;
+            obj.mesh.position.x = obj.treePos[0] + (Math.random() - 0.5) * 6;
+            obj.mesh.position.z = obj.treePos[1] + (Math.random() - 0.5) * 6;
+          }
+        });
+
+        if (pondMesh) {
+          pondMesh.scale.x = 1 + Math.sin(elapsed * 0.5) * 0.02;
+          pondMesh.scale.z = 1 + Math.sin(elapsed * 0.5) * 0.02;
+        }
+
+        if (shrineBellHitbox) {
+          if (new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(shrineBellHitbox.position) < 3) {
+            shrineBellMesh.rotation.y = Math.sin(elapsed * 3) * 0.2;
+          } else {
+            shrineBellMesh.rotation.y = 0;
+          }
+        }
+
+        const pBox = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(p.pos.x, 1, p.pos.z), new THREE.Vector3(2, 2, 2));
+        ambientParticles.forEach((a, i) => {
+          a.mesh.position.y = a.baseY + Math.sin(elapsed * 0.4 + i) * 0.003;
+        });
+
+        snowParticles.forEach((s) => {
+          s.mesh.position.y -= 0.01;
+          s.mesh.position.x += Math.sin(elapsed * 0.2) * 0.002;
+          if (s.mesh.position.y < 0) {
+            s.mesh.position.y = 20;
+          }
+        });
+
+        swayables.forEach(s => {
+          s.mesh.rotation.z = Math.sin(elapsed * s.speed + s.offset) * 0.1;
+        });
 
         if (minimapRef.current) { const mc = minimapRef.current.getContext('2d')!; mc.fillStyle = '#020617'; mc.fillRect(0, 0, 120, 120); const mx = (p.pos.x + 30) / 60 * 112 + 4, mz = (p.pos.z + 30) / 60 * 112 + 4; mc.fillStyle = '#f0ebe0'; mc.beginPath(); mc.arc(mx, mz, 3, 0, Math.PI * 2); mc.fill(); }
 
@@ -520,16 +849,17 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               scene.add(bb.group);
               remotePlayersRef.current[uid] = { bb, targetPos: new THREE.Vector3(data.x, 0.5, data.y), targetRot: data.rot || 0, species: sp };
             }
-          } else if (msg.type === "leave") {
-            const peer = remotePlayersRef.current[msg.id]; 
+          } else if (msg.type === "pet_left") {
+            const uid = msg.username || msg.id;
+            const peer = remotePlayersRef.current[uid]; 
             if (peer) { 
               scene.remove(peer.bb.group); 
-              delete remotePlayersRef.current[msg.id]; 
+              delete remotePlayersRef.current[uid]; 
             }
           }
           setOnlineCount(Object.keys(remotePlayersRef.current).length + 1);
         });
-        const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot })); }, 100);
+        const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot, petType: localSpecies })); }, 100);
         cleanupFns.current.push(() => clearInterval(broadcast));
       }
     };

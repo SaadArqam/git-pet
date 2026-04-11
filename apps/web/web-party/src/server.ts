@@ -54,7 +54,7 @@ export default class WorldServer implements Party.Server {
       this.connToUser.set(sender.id, data.pet.username);
       this.pets[data.pet.username] = { ...data.pet, lastSeen: Date.now() };
       const msg: ServerMessage = { type: "pet_update", pet: this.pets[data.pet.username] };
-      this.room.broadcast(JSON.stringify(msg));
+      this.room.broadcast(JSON.stringify(msg), [sender.id]);
     }
 
     if (data.type === "move") {
@@ -66,7 +66,7 @@ export default class WorldServer implements Party.Server {
         if (data.petType) this.pets[username].species = data.petType;
         this.pets[username].lastSeen = Date.now();
         const msg: ServerMessage = { type: "pet_update", pet: this.pets[username] };
-        this.room.broadcast(JSON.stringify(msg));
+        this.room.broadcast(JSON.stringify(msg), [sender.id]);
       }
     }
 
