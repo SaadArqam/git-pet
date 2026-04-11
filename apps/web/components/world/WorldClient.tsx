@@ -108,8 +108,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       rendererRef.current = renderer;
 
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0xb8cce0, 0.018);
-      scene.background = new THREE.Color(0x87b4d0);
+      scene.fog = new THREE.Fog(0xf5e6d3, 50, 200);
+      scene.background = new THREE.Color(0xf5e6d3);
 
       const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 140);
       const camPos = new THREE.Vector3(0, 14, 40);
@@ -219,38 +219,122 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       let pondMesh: any = null;
       let shrineBellHitbox: any = null;
       let shrineBellMesh: any = null;
-      function seededRandom(seed: number) {
-        let x = Math.sin(seed) * 10000;
-        return x - Math.floor(x);
+      function getGroundHeight(x: number, z: number) {
+        const dist = Math.sqrt(x * x + z * z);
+        const yOffset = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 1.2 + Math.sin(x * 0.02) * 0.5;
+        let groundY = dist < 30 ? 0 : yOffset * Math.min(1, (dist - 30) / 40);
+        
+        // Edge drop-off
+        if (dist > 240) {
+          const edgeFactor = (dist - 240) / 60;
+          groundY -= edgeFactor * edgeFactor * 20;
+        }
+        return groundY;
       }
 
-      for (let i = 0; i < 9; i++) {
-        const zPos = 5 - i * 1.5;
-        const pathPiece = new THREE.Mesh(
-          new THREE.BoxGeometry(1.2, 0.05, 0.8),
-          new THREE.MeshLambertMaterial({ color: 0xFFF5E4 })
-        );
-        pathPiece.position.set(0, 0.025, zPos);
-        pathPiece.rotation.y = (Math.random() - 0.5) * 0.52;
-        worldDecor.add(pathPiece);
+      function buildPath(startX: number, startZ: number, endX: number, endZ: number, count: number) {
+        for (let i = 0; i < count; i++) {
+          const t = i / count;
+          const x = startX + (endX - startX) * t;
+          const z = startZ + (endZ - startZ) * t;
+          const y = getGroundHeight(x, z);
+          const pathPiece = new THREE.Mesh(
+            new THREE.BoxGeometry(1.0, 0.06, 0.7),
+            new THREE.MeshLambertMaterial({ color: 0xFFF5E4 })
+          );
+          pathPiece.position.set(x + (Math.random()-0.5)*0.5, y + 0.03, z + (Math.random()-0.5)*0.5);
+          pathPiece.rotation.y = Math.atan2(endX - startX, endZ - startZ) + (Math.random() - 0.5) * 0.6;
+          worldDecor.add(pathPiece);
+        }
+      }
+      
+      buildPath(0, 8, 0, 100, 35);    // Plains (Front)
+      buildPath(0, -15, 0, -100, 35); // Mountain (Back)
+      buildPath(8, 0, 100, 0, 35);   // Desert (Right)
+      buildPath(-8, 0, -100, 0, 35); // Forest (Left)
+
+      const instancedRocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1.0, 0), new THREE.MeshLambertMaterial({ color: 0x888888 }), 600);
+      let rockIndex = 0;
+
+      const instancedBushes = new THREE.InstancedMesh(new THREE.SphereGeometry(1.0, 5, 5), new THREE.MeshLambertMaterial({ color: 0x4B7B31 }), 600);
+      let bushIndex = 0;
+
+      const instancedGrass = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), new THREE.MeshLambertMaterial({ color: 0x7BAF5A }), 1200);
+      let grassIndex = 0;
+
+      const instancedTreeTrunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.5, 2, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a1a }), 400);
+      let treeTrunkIndex = 0;
+
+      const instancedTreeCanopies = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2, 0), new THREE.MeshLambertMaterial({ color: 0x3a5a28 }), 800);
+      let treeCanopyIndex = 0;
+
+      const instancedCacti = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 1, 0.3), new THREE.MeshLambertMaterial({ color: 0x2d5a27 }), 200);
+      let cactusIndex = 0;
+
+      worldDecor.add(instancedRocks, instancedBushes, instancedGrass, instancedTreeTrunks, instancedTreeCanopies, instancedCacti);
+
+      const matrix = new THREE.Matrix4();
+      
+      function addInstancedRock(x: number, y: number, z: number, scale: number) {
+        if (rockIndex >= 600) return;
+        matrix.compose(new THREE.Vector3(x, y + scale*0.5, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale, scale, scale));
+        instancedRocks.setMatrixAt(rockIndex, matrix);
+        instancedRocks.setColorAt(rockIndex, new THREE.Color(0x888888).offsetHSL(0, 0, (Math.random() - 0.5) * 0.1));
+        rockIndex++;
       }
 
-      function buildCommunityBoard() {
-        const g = new THREE.Group();
-        vox(0, 1.5, 5, 0x8B5E3C, 0.4, 3, 0.4, true, true, true); // Post
-        vox(0, 3, 5, 0xF5CBA7, 3, 1.5, 0.2, true, true, true); // Sign board
-        vox(0, 3.8, 5, 0xE07B39, 3.2, 0.2, 0.3, true, true, false); // Accent trim
-        scene.add(g);
+      function addInstancedBush(x: number, y: number, z: number, scale: number) {
+        if (bushIndex >= 600) return;
+        matrix.compose(new THREE.Vector3(x, y + scale*0.5, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
+        instancedBushes.setMatrixAt(bushIndex, matrix);
+        instancedBushes.setColorAt(bushIndex, new THREE.Color(0x4B7B31).offsetHSL((Math.random() - 0.5) * 0.05, 0, 0));
+        bushIndex++;
       }
-      buildCommunityBoard();
 
-      const groundGeo = new THREE.PlaneGeometry(300, 300, 100, 100); groundGeo.rotateX(-Math.PI / 2);
+      function addInstancedGrass(x: number, y: number, z: number, scale: number) {
+        if (grassIndex >= 1200) return;
+        matrix.compose(new THREE.Vector3(x, y + scale*0.3, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
+        instancedGrass.setMatrixAt(grassIndex, matrix);
+        instancedGrass.setColorAt(grassIndex, new THREE.Color(0x7BAF5A).offsetHSL((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.05));
+        grassIndex++;
+      }
+
+      function addInstancedTree(x: number, y: number, z: number, scale: number) {
+        if (treeTrunkIndex >= 400 || treeCanopyIndex >= 798) return;
+        matrix.compose(new THREE.Vector3(x, y + 1 * scale, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
+        instancedTreeTrunks.setMatrixAt(treeTrunkIndex++, matrix);
+        
+        matrix.compose(new THREE.Vector3(x, y + 2.5 * scale, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale, scale, scale));
+        instancedTreeCanopies.setMatrixAt(treeCanopyIndex++, matrix);
+        if (Math.random() > 0.5) {
+          matrix.compose(new THREE.Vector3(x + (Math.random()-0.5)*scale, y + 3.5 * scale, z + (Math.random()-0.5)*scale), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale*0.8, scale*0.8, scale*0.8));
+          instancedTreeCanopies.setMatrixAt(treeCanopyIndex++, matrix);
+        }
+      }
+
+      function addInstancedCactus(x: number, y: number, z: number, scale: number) {
+        if (cactusIndex >= 200) return;
+        matrix.compose(new THREE.Vector3(x, y + scale * 0.5, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
+        instancedCacti.setMatrixAt(cactusIndex, matrix);
+        instancedCacti.setColorAt(cactusIndex, new THREE.Color(0x2d5a27).offsetHSL(0.02, 0, (Math.random() - 0.5) * 0.1));
+        cactusIndex++;
+      }
+
+
+      const groundGeo = new THREE.PlaneGeometry(600, 600, 150, 150); groundGeo.rotateX(-Math.PI / 2);
       const groundColors: number[] = []; const groundPos = groundGeo.attributes.position;
       for (let i = 0; i < groundPos.count; i++) {
         const gx = groundPos.getX(i), gz = groundPos.getZ(i);
+        const dist = Math.sqrt(gx * gx + gz * gz);
+        const yOffset = Math.sin(gx * 0.05) * Math.cos(gz * 0.05) * 1.2 + Math.sin(gx * 0.02) * 0.5;
+        const finalY = dist < 30 ? 0 : yOffset * Math.min(1, (dist - 30) / 40);
+        groundPos.setY(i, finalY);
+
         const n = Math.sin(gx * 2.3) * Math.cos(gz * 1.9);
         if (n > 0.2) groundColors.push(0.28, 0.54, 0.22); else if (n > -0.2) groundColors.push(0.32, 0.60, 0.26); else groundColors.push(0.26, 0.50, 0.20);
       }
+      groundGeo.attributes.position.needsUpdate = true;
+      groundGeo.computeVertexNormals();
       groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(groundColors, 3));
       const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ vertexColors: true }));
       ground.receiveShadow = true; scene.add(ground);
@@ -373,6 +457,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
       }
 
+      function seededRandom(seed: number) {
+        let x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+      }
+
       // ─── DECORATIVE FACTORY FUNCTIONS ───
       function createMushroom(x: number, z: number, seed: number) {
         const h = 0.4 + seededRandom(seed)*0.3;
@@ -403,103 +492,220 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       function createForestZone(offsetX: number, offsetZ: number) {
-        for (let i = 0; i < 40; i++) {
-          const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
+        for (let i = 0; i < 90; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          const h = 4 + Math.random() * 4; buildForestTree(rx, rz, h);
-          if (Math.random() > 0.7) createMushroom(rx + 2, rz + 1, i);
+          const gy = getGroundHeight(rx, rz);
+          addInstancedTree(rx, gy, rz, 0.8 + Math.random()*0.5);
         }
+        for (let i = 0; i < 150; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedBush(rx, gy, rz, 0.5 + Math.random()*1.0);
+        }
+        for (let i = 0; i < 80; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedRock(rx, gy, rz, 0.3 + Math.random()*0.5);
+        }
+        for (let i = 0; i < 20; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          createMushroom(rx, rz, i);
+        }
+      }
+
+      function createHayBale(x: number, z: number, stacked = false) {
+        const base = getGroundHeight(x, z);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xD4A853 })
+        const bale = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), mat)
+        bale.position.set(x, base + 0.4, z)
+        if (stacked) {
+          const top = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), mat)
+          top.position.set(x, base + 1.2, z)
+          worldDecor.add(top)
+          colliders.push({ box: new THREE.Box3().setFromObject(top), mesh: top })
+        }
+        worldDecor.add(bale)
+        colliders.push({ box: new THREE.Box3().setFromObject(bale), mesh: bale })
+      }
+
+      function createFenceSection(x: number, z: number, angle = 0) {
+        const g = new THREE.Group()
+        const base = getGroundHeight(x, z);
+        const postMat = new THREE.MeshStandardMaterial({ color: 0x8B5E3C })
+        const railMat = new THREE.MeshStandardMaterial({ color: 0xA0724A })
+        const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.15,1.0,0.15), postMat)
+        p1.position.set(-1, 0.5, 0)
+        const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.15,1.0,0.15), postMat)
+        p2.position.set(1, 0.5, 0)
+        const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.1,0.1), railMat)
+        r1.position.set(0, 0.7, 0)
+        const r2 = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.1,0.1), railMat)
+        r2.position.set(0, 0.35, 0)
+        g.add(p1,p2,r1,r2)
+        g.position.set(x, base, z)
+        g.rotation.y = angle
+        worldDecor.add(g)
+        colliders.push({ box: new THREE.Box3().setFromObject(p1), mesh: p1 });
+        colliders.push({ box: new THREE.Box3().setFromObject(p2), mesh: p2 });
+      }
+
+      function createSunflower(x: number, z: number) {
+        const g = new THREE.Group()
+        const base = getGroundHeight(x, z);
+        const stem = new THREE.Mesh(new THREE.BoxGeometry(0.1,1.4,0.1), new THREE.MeshStandardMaterial({color:0x7BAF5A}))
+        stem.position.y = 0.7
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.1,0.5), new THREE.MeshStandardMaterial({color:0xFFD580}))
+        head.position.y = 1.5
+        const petalGeo = new THREE.BoxGeometry(0.15,0.08,0.4)
+        const petalMat = new THREE.MeshStandardMaterial({color:0xEF9F27})
+        for (let i = 0; i < 4; i++) {
+          const p = new THREE.Mesh(petalGeo, petalMat)
+          p.rotation.y = (i / 4) * Math.PI * 2
+          p.position.set(Math.sin(p.rotation.y)*0.3, 1.5, Math.cos(p.rotation.y)*0.3)
+          g.add(p)
+        }
+        g.add(stem, head)
+        g.position.set(x, base, z)
+        worldDecor.add(g)
       }
 
       function createDesertZone(offsetX: number, offsetZ: number) {
         for (let i = 0; i < 6; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          const dirt = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.02, 1.5), new THREE.MeshLambertMaterial({ color: 0xC4A882 }));
-          dirt.position.set(rx, 0.01, rz);
+          const gy = getGroundHeight(rx, rz);
+          const dirt = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.02, 1.8), new THREE.MeshLambertMaterial({ color: 0xC4A882 }));
+          dirt.position.set(rx, gy + 0.01, rz);
           worldDecor.add(dirt);
         }
 
-        for (let i = 0; i < 7; i++) {
-          const rx = offsetX + (Math.random() - 0.5) * 80; const rz = offsetZ + (Math.random() - 0.5) * 80;
-          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          
-          const hMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), new THREE.MeshLambertMaterial({ color: 0xD4A853 }));
-          hMesh.position.set(rx, 0.4, rz);
-          hMesh.rotation.y = Math.random() * Math.PI;
-          worldDecor.add(hMesh);
-          colliders.push({ box: new THREE.Box3().setFromObject(hMesh), mesh: hMesh });
-          if(Math.random() > 0.5) {
-            const hMesh2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), new THREE.MeshLambertMaterial({ color: 0xD4A853 }));
-            hMesh2.position.set(rx + 0.2, 1.2, rz - 0.1);
-            hMesh2.rotation.y = Math.random() * Math.PI;
-            worldDecor.add(hMesh2);
-            colliders.push({ box: new THREE.Box3().setFromObject(hMesh2), mesh: hMesh2 });
-          }
-        }
-
+        let fenceAngle = Math.random() * Math.PI;
         for (let i = 0; i < 5; i++) {
-          const rx = offsetX + (Math.random() - 0.5) * 70; const rz = offsetZ + (Math.random() - 0.5) * 70;
-          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          
-          const g = new THREE.Group(); g.position.set(rx, 0, rz); g.rotation.y = Math.random() * Math.PI;
-          const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, 0.15), new THREE.MeshLambertMaterial({ color: 0x8B5E3C })); p1.position.set(-0.9, 0.5, 0);
-          const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, 0.15), new THREE.MeshLambertMaterial({ color: 0x8B5E3C })); p2.position.set(0.9, 0.5, 0);
-          const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.1), new THREE.MeshLambertMaterial({ color: 0xA0724A })); r1.position.set(0, 0.7, 0);
-          const r2 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.1), new THREE.MeshLambertMaterial({ color: 0xA0724A })); r2.position.set(0, 0.35, 0);
-          g.add(p1, p2, r1, r2); worldDecor.add(g);
-          colliders.push({ box: new THREE.Box3().setFromObject(p1), mesh: p1 }); colliders.push({ box: new THREE.Box3().setFromObject(p2), mesh: p2 });
-
-          for (let s = 0; s < 2; s++) {
-            const sx = rx + (Math.random() - 0.5) * 3; const sz = rz + (Math.random() - 0.5) * 3;
-            const sg = new THREE.Group(); sg.position.set(sx, 0, sz);
-            const stem = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 0.1), new THREE.MeshLambertMaterial({ color: 0x7BAF5A })); stem.position.y = 0.7;
-            const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.1), new THREE.MeshLambertMaterial({ color: 0xFFD580 })); head.position.y = 1.5;
-            sg.add(stem, head);
-            [ [0,0.3,0], [0,-0.3,0], [0.3,0,Math.PI/2], [-0.3,0,Math.PI/2] ].forEach(d => {
-              const p = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.08), new THREE.MeshLambertMaterial({ color: 0xEF9F27 }));
-              p.position.set(d[0], 1.5 + d[1], 0.02); p.rotation.z = d[2]; sg.add(p);
-            });
-            worldDecor.add(sg);
-          }
+          const rx = offsetX + 20 + (i - 2) * 2 * Math.cos(fenceAngle);
+          const rz = offsetZ + 20 + (i - 2) * 2 * Math.sin(fenceAngle);
+          createFenceSection(rx, rz, -fenceAngle);
         }
+
+        for (let i = 0; i < 6; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 60; const rz = offsetZ + (Math.random() - 0.5) * 60;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          createHayBale(rx, rz, i < 2);
+        }
+
+        for (let i = 0; i < 7; i++) {
+          const rx = offsetX + 20 + (Math.random() - 0.5) * 20; const rz = offsetZ + 20 + (Math.random() - 0.5) * 20;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          createSunflower(rx, rz);
+        }
+        for (let i = 0; i < 60; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedRock(rx, gy, rz, 0.2 + Math.random()*0.4);
+          if (Math.random() > 0.7) addInstancedCactus(rx + 2, gy, rz + 1, 0.8 + Math.random() * 1.5);
+        }
+      }
+
+      function createPineTree(x: number, z: number) {
+        const group = new THREE.Group()
+        const base = getGroundHeight(x, z);
+        const brown = 0x8B5E3C
+        const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:brown}))
+        trunk.position.y = 0.4
+        const t1 = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.5,1.2), new THREE.MeshStandardMaterial({color:0x3B6D11}))
+        t1.position.y = 1.1
+        const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.9,0.5,0.9), new THREE.MeshStandardMaterial({color:0x4A8A1A}))
+        t2.position.y = 1.6
+        const t3 = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.4,0.5), new THREE.MeshStandardMaterial({color:0x5AA020}))
+        t3.position.y = 2.05
+        group.add(trunk, t1, t2, t3)
+        group.position.set(x, base, z)
+        colliders.push({ box: new THREE.Box3().setFromObject(trunk), mesh: trunk })
+        return group
       }
 
       function createMountainZone(offsetX: number, offsetZ: number) {
-        for (let i = 0; i < 12; i++) {
-          const rx = (offsetX + (Math.random() - 0.5) * 80) * 1.6;
-          const rz = (offsetZ + (Math.random() - 0.5) * 80) * 1.6;
+        for (let i = 0; i < 15; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 130;
+          const rz = offsetZ + (Math.random() - 0.5) * 130;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           
-          const h = (8 + Math.random() * 12) * 0.5, w = (6 + Math.random() * 6) * 0.5;
-          for (let my = 0; my < h; my += 1.5 * 0.5) {
+          const base = getGroundHeight(rx, rz);
+          const h = (8 + Math.random() * 12) * 0.45, w = (6 + Math.random() * 6) * 0.45;
+          for (let my = 0; my < h; my += 1.5 * 0.45) {
             const r = (h - my) * (w / h);
-            const m = new THREE.Mesh(new THREE.BoxGeometry(r*2, 1.5*0.5, r*2), new THREE.MeshLambertMaterial({ color: 0xF0EEF8, emissive: 0xE8E4F0, emissiveIntensity: 0.05 }));
-            m.position.set(rx, my + 0.75*0.5, rz);
-            if (my < 3 * 0.5) colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
+            const m = new THREE.Mesh(new THREE.BoxGeometry(r*2, 1.5*0.45, r*2), new THREE.MeshLambertMaterial({ color: 0xF0EEF8, emissive: 0xE8E4F0, emissiveIntensity: 0.04 }));
+            m.position.set(rx, base + my + 0.75*0.45, rz);
+            if (my < 3 * 0.45) colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
             worldDecor.add(m);
           }
-          const cap = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.6), new THREE.MeshLambertMaterial({ color: 0xFFFFFF }));
-          cap.position.set(rx, h, rz);
+          const cap = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 0.8), new THREE.MeshLambertMaterial({ color: 0xFFFFFF }));
+          cap.position.set(rx, base + h, rz);
           worldDecor.add(cap);
         }
 
-        for (let i = 0; i < 10; i++) {
-          const rx = (offsetX + (Math.random() - 0.5) * 80) * 1.2;
-          const rz = (offsetZ + (Math.random() - 0.5) * 80) * 1.2;
+        for (let i = 0; i < 12; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120;
+          const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           
-          const pg = new THREE.Group(); pg.position.set(rx, 0, rz);
-          const t = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshLambertMaterial({ color: 0x8B5E3C })); t.position.y = 0.4;
-          const t1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshLambertMaterial({ color: 0x3B6D11 })); t1.position.y = 0.8 + 0.25;
-          const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.9), new THREE.MeshLambertMaterial({ color: 0x4A8A1A })); t2.position.y = 1.3 + 0.25;
-          const t3 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x5AA020 })); t3.position.y = 1.8 + 0.25;
-          pg.add(t, t1, t2, t3); worldDecor.add(pg);
-          colliders.push({ box: new THREE.Box3().setFromObject(t), mesh: t });
+          const tree = createPineTree(rx, rz);
+          worldDecor.add(tree);
+        }
+
+        for (let i = 0; i < 100; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedRock(rx, gy, rz, 1.0 + Math.random()*1.5);
         }
       }
 
-      createForestZone(0, -100); createDesertZone(100, 0); createMountainZone(-100, 0);
+      function createPlainsZone(offsetX: number, offsetZ: number) {
+        for (let i = 0; i < 400; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedGrass(rx, gy, rz, 0.8 + Math.random()*1.2);
+        }
+        for (let i = 0; i < 30; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedBush(rx, gy, rz, 0.3 + Math.random()*0.4);
+        }
+        for (let i = 0; i < 5; i++) {
+          const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
+          if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
+          const gy = getGroundHeight(rx, rz);
+          addInstancedTree(rx, gy, rz, 0.8 + Math.random()*0.5);
+        }
+      }
+
+      createForestZone(-150, 0); 
+      createDesertZone(150, 0); 
+      createMountainZone(0, -150);
+      createPlainsZone(0, 150);
+
+      function createBoundaries() {
+        for (let i = 0; i < 200; i++) {
+          const angle = (i / 200) * Math.PI * 2;
+          const dist = 260 + Math.random() * 30;
+          const x = Math.cos(angle) * dist;
+          const z = Math.sin(angle) * dist;
+          const y = getGroundHeight(x, z);
+          if (Math.random() > 0.5) {
+            addInstancedTree(x, y, z, 1.5 + Math.random());
+          } else {
+            addInstancedRock(x, y, z, 2 + Math.random() * 3);
+          }
+        }
+      }
+      createBoundaries();
 
       for(let i=0; i<8; i++) {
         createLilyPad(POND_X + (Math.random()-0.5)*5, POND_Z + (Math.random()-0.5)*4, i);
@@ -507,21 +713,21 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       const ambientParticles: any[] = [];
       const snowParticles: any[] = [];
-      for(let i=0; i<50; i++) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 4, 4), new THREE.MeshBasicMaterial({ color: 0xA8D8EA }));
-        const ox = (Math.random()-0.5)*80;
-        const oy = 0.3 + Math.random()*2.2;
-        const oz = (Math.random()-0.5)*80;
+      for(let i=0; i<40; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshBasicMaterial({ color: 0xA8D8EA, transparent: true, opacity: 0.6 }));
+        const ox = (Math.random()-0.5)*30;
+        const oy = 0.4 + Math.random()*2.1;
+        const oz = (Math.random()-0.5)*30;
         m.position.set(ox, oy, oz);
         worldDecor.add(m);
-        ambientParticles.push({ mesh: m, baseY: oy, offset: Math.random()*100 });
+        ambientParticles.push({ mesh: m, offset: i });
       }
 
-      for (let i = 0; i < 40; i++) {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
-        const ox = -100 + (Math.random() - 0.5) * 80 * 1.6;
+      for (let i = 0; i < 35; i++) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+        const ox = (-100 + (Math.random() - 0.5) * 80) * 1.7;
         const oy = Math.random() * 20;
-        const oz = (Math.random() - 0.5) * 80 * 1.6;
+        const oz = ((Math.random() - 0.5) * 80) * 1.7;
         m.position.set(ox, oy, oz);
         worldDecor.add(m);
         snowParticles.push({ mesh: m });
@@ -589,12 +795,14 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const petalMat = new THREE.MeshStandardMaterial({ color: 0xFFB7C5, side: THREE.DoubleSide });
       for (let i = 0; i < 60; i++) {
         const pMesh = new THREE.Mesh(petalGeo, petalMat);
-        const trees = [[-11, -5], [-15, -13], [12, -8], [-9, 8]];
-        const t = trees[Math.floor(Math.random() * trees.length)];
-        pMesh.position.set(t[0] + (Math.random() - 0.5) * 6, 4 + Math.random() * 4, t[1] + (Math.random() - 0.5) * 6);
-        pMesh.rotation.set(Math.random(), Math.random(), Math.random());
+        pMesh.position.set(
+          (Math.random() - 0.5) * 30,
+          4 + Math.random() * 6,
+          (Math.random() - 0.5) * 30
+        );
+        pMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
         worldDecor.add(pMesh);
-        fallingPetals.push({ mesh: pMesh, treePos: t });
+        fallingPetals.push({ mesh: pMesh, offset: Math.random() * Math.PI * 2 });
       }
 
       const fireflyCount = 60;
@@ -711,7 +919,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
 
         const timeCycle = Math.sin(elapsed * 0.05); // Slow cycle
-        const skyDay = new THREE.Color(0x87b4d0);
+        const skyDay = new THREE.Color(0xf5e6d3);
         const skyNight = new THREE.Color(0x0a1128);
         scene.background.copy(skyDay).lerp(skyNight, (timeCycle + 1) / 2);
         sunLink.intensity = 2.4 - ((timeCycle + 1) / 2) * 2.0;
@@ -724,14 +932,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
         fireflies.geometry.attributes.position.needsUpdate = true;
 
-        fallingPetals.forEach((obj, i) => {
-          obj.mesh.position.y -= 0.008;
-          obj.mesh.position.x += Math.sin(elapsed * 0.5 + i * 0.3) * 0.004;
-          obj.mesh.rotation.z += 0.008;
-          if (obj.mesh.position.y < 0) {
-            obj.mesh.position.y = 6 + Math.random() * 3;
-            obj.mesh.position.x = obj.treePos[0] + (Math.random() - 0.5) * 6;
-            obj.mesh.position.z = obj.treePos[1] + (Math.random() - 0.5) * 6;
+        fallingPetals.forEach(({ mesh, offset }, i) => {
+          mesh.position.y -= 0.008;
+          mesh.position.x += Math.sin(elapsed * 0.5 + offset) * 0.004;
+          mesh.rotation.z += 0.008;
+          if (mesh.position.y < 0) {
+            mesh.position.y = 7 + Math.random() * 3;
           }
         });
 
@@ -750,7 +956,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
         const pBox = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(p.pos.x, 1, p.pos.z), new THREE.Vector3(2, 2, 2));
         ambientParticles.forEach((a, i) => {
-          a.mesh.position.y = a.baseY + Math.sin(elapsed * 0.4 + i) * 0.003;
+          a.mesh.position.y += Math.sin(elapsed * 0.4 + i) * 0.002;
         });
 
         snowParticles.forEach((s) => {
