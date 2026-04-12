@@ -47,6 +47,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   const playerRef = useRef<any>(null); // Billboard group ref
   const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number, species: string }>>({});
+  const nearbyPlayer = useRef<{ id: string, mesh: any } | null>(null);
+  const interactionOpen = useRef(false);
+  const prevNearbyId = useRef<string | null>(null);
+
+  const [showInteractHint, setShowInteractHint] = useState(false);
   const [cinematicDone, setCinematicDone] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
   const [promptLabel, setPromptLabel] = useState<string | null>(null);
@@ -223,7 +228,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const dist = Math.sqrt(x * x + z * z);
         const yOffset = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 1.2 + Math.sin(x * 0.02) * 0.5;
         let groundY = dist < 30 ? 0 : yOffset * Math.min(1, (dist - 30) / 40);
-        
+
         // Edge drop-off
         if (dist > 240) {
           const edgeFactor = (dist - 240) / 60;
@@ -242,12 +247,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             new THREE.BoxGeometry(1.0, 0.06, 0.7),
             new THREE.MeshLambertMaterial({ color: 0xFFF5E4 })
           );
-          pathPiece.position.set(x + (Math.random()-0.5)*0.5, y + 0.03, z + (Math.random()-0.5)*0.5);
+          pathPiece.position.set(x + (Math.random() - 0.5) * 0.5, y + 0.03, z + (Math.random() - 0.5) * 0.5);
           pathPiece.rotation.y = Math.atan2(endX - startX, endZ - startZ) + (Math.random() - 0.5) * 0.6;
           worldDecor.add(pathPiece);
         }
       }
-      
+
       buildPath(0, 8, 0, 100, 35);    // Plains (Front)
       buildPath(0, -15, 0, -100, 35); // Mountain (Back)
       buildPath(8, 0, 100, 0, 35);   // Desert (Right)
@@ -274,10 +279,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       worldDecor.add(instancedRocks, instancedBushes, instancedGrass, instancedTreeTrunks, instancedTreeCanopies, instancedCacti);
 
       const matrix = new THREE.Matrix4();
-      
+
       function addInstancedRock(x: number, y: number, z: number, scale: number) {
         if (rockIndex >= 600) return;
-        matrix.compose(new THREE.Vector3(x, y + scale*0.5, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale, scale, scale));
+        matrix.compose(new THREE.Vector3(x, y + scale * 0.5, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale, scale, scale));
         instancedRocks.setMatrixAt(rockIndex, matrix);
         instancedRocks.setColorAt(rockIndex, new THREE.Color(0x888888).offsetHSL(0, 0, (Math.random() - 0.5) * 0.1));
         rockIndex++;
@@ -285,7 +290,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       function addInstancedBush(x: number, y: number, z: number, scale: number) {
         if (bushIndex >= 600) return;
-        matrix.compose(new THREE.Vector3(x, y + scale*0.5, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
+        matrix.compose(new THREE.Vector3(x, y + scale * 0.5, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
         instancedBushes.setMatrixAt(bushIndex, matrix);
         instancedBushes.setColorAt(bushIndex, new THREE.Color(0x4B7B31).offsetHSL((Math.random() - 0.5) * 0.05, 0, 0));
         bushIndex++;
@@ -293,7 +298,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       function addInstancedGrass(x: number, y: number, z: number, scale: number) {
         if (grassIndex >= 1200) return;
-        matrix.compose(new THREE.Vector3(x, y + scale*0.3, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
+        matrix.compose(new THREE.Vector3(x, y + scale * 0.3, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
         instancedGrass.setMatrixAt(grassIndex, matrix);
         instancedGrass.setColorAt(grassIndex, new THREE.Color(0x7BAF5A).offsetHSL((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.05));
         grassIndex++;
@@ -303,11 +308,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         if (treeTrunkIndex >= 400 || treeCanopyIndex >= 798) return;
         matrix.compose(new THREE.Vector3(x, y + 1 * scale, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
         instancedTreeTrunks.setMatrixAt(treeTrunkIndex++, matrix);
-        
+
         matrix.compose(new THREE.Vector3(x, y + 2.5 * scale, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale, scale, scale));
         instancedTreeCanopies.setMatrixAt(treeCanopyIndex++, matrix);
         if (Math.random() > 0.5) {
-          matrix.compose(new THREE.Vector3(x + (Math.random()-0.5)*scale, y + 3.5 * scale, z + (Math.random()-0.5)*scale), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale*0.8, scale*0.8, scale*0.8));
+          matrix.compose(new THREE.Vector3(x + (Math.random() - 0.5) * scale, y + 3.5 * scale, z + (Math.random() - 0.5) * scale), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random(), Math.random(), Math.random())), new THREE.Vector3(scale * 0.8, scale * 0.8, scale * 0.8));
           instancedTreeCanopies.setMatrixAt(treeCanopyIndex++, matrix);
         }
       }
@@ -351,7 +356,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       function buildStoneLantern(x: number, z: number) {
         const g = new THREE.Group();
         g.position.set(x, 0, z);
-        
+
         const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), new THREE.MeshLambertMaterial({ color: 0x808080 }));
         base.position.y = 0.15;
         g.add(base);
@@ -367,7 +372,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const light = new THREE.PointLight(0xFFD580, 0.4, 4);
         light.position.y = 0.55;
         g.add(light);
-        
+
         worldDecor.add(g);
         colliders.push({ box: new THREE.Box3().setFromObject(g), mesh: g });
       }
@@ -419,7 +424,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       pondMesh.position.set(POND_X, 0.05, POND_Z);
       worldDecor.add(pondMesh);
 
-      for (let i=0; i<6; i++) {
+      for (let i = 0; i < 6; i++) {
         const angle = Math.random() * Math.PI * 2;
         const radius = 3.8 + Math.random() * 0.4;
         const rx = POND_X + Math.cos(angle) * radius;
@@ -464,31 +469,31 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       // ─── DECORATIVE FACTORY FUNCTIONS ───
       function createMushroom(x: number, z: number, seed: number) {
-        const h = 0.4 + seededRandom(seed)*0.3;
-        vox(x, h/2, z, 0xdcdcdc, 0.2, h, 0.2, false, false, false);
-        const top = vox(x, h+0.1, z, 0xcc3333, 0.6, 0.2, 0.6, true, false, false);
+        const h = 0.4 + seededRandom(seed) * 0.3;
+        vox(x, h / 2, z, 0xdcdcdc, 0.2, h, 0.2, false, false, false);
+        const top = vox(x, h + 0.1, z, 0xcc3333, 0.6, 0.2, 0.6, true, false, false);
         swayables.push({ mesh: top, speed: 1.2, offset: seed });
       }
 
       function createLilyPad(x: number, z: number, seed: number) {
-        const s = 0.5 + seededRandom(seed)*0.5;
+        const s = 0.5 + seededRandom(seed) * 0.5;
         const pad = vox(x, 0.12, z, 0x3d7a4d, s, 0.05, s, false, true, false);
         swayables.push({ mesh: pad, speed: 0.5, offset: seed });
       }
 
       function createIceSpire(x: number, z: number, seed: number) {
-        const h = 2 + seededRandom(seed)*4;
+        const h = 2 + seededRandom(seed) * 4;
         const mat = new THREE.MeshStandardMaterial({ color: 0xaeeeee, emissive: 0x2244aa, emissiveIntensity: 0.2, transparent: true, opacity: 0.8 });
-        const mesh = new THREE.Mesh(new THREE.ConeGeometry(h/3, h, 4), mat);
-        mesh.position.set(x, h/2, z);
+        const mesh = new THREE.Mesh(new THREE.ConeGeometry(h / 3, h, 4), mat);
+        mesh.position.set(x, h / 2, z);
         scene.add(mesh);
         colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh });
       }
 
       function createRuins(x: number, z: number, seed: number) {
-        const height = 1 + seededRandom(seed)*2;
-        vox(x, height/2, z, 0xd2b48c, 1.5, height, 0.5, true, true, true);
-        vox(x+1, height/4, z, 0xd2b48c, 0.5, height/2, 0.5, true, true, true);
+        const height = 1 + seededRandom(seed) * 2;
+        vox(x, height / 2, z, 0xd2b48c, 1.5, height, 0.5, true, true, true);
+        vox(x + 1, height / 4, z, 0xd2b48c, 0.5, height / 2, 0.5, true, true, true);
       }
 
       function createForestZone(offsetX: number, offsetZ: number) {
@@ -496,19 +501,19 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedTree(rx, gy, rz, 0.8 + Math.random()*0.5);
+          addInstancedTree(rx, gy, rz, 0.8 + Math.random() * 0.5);
         }
         for (let i = 0; i < 150; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedBush(rx, gy, rz, 0.5 + Math.random()*1.0);
+          addInstancedBush(rx, gy, rz, 0.5 + Math.random() * 1.0);
         }
         for (let i = 0; i < 80; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedRock(rx, gy, rz, 0.3 + Math.random()*0.5);
+          addInstancedRock(rx, gy, rz, 0.3 + Math.random() * 0.5);
         }
         for (let i = 0; i < 20; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
@@ -537,15 +542,15 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const base = getGroundHeight(x, z);
         const postMat = new THREE.MeshStandardMaterial({ color: 0x8B5E3C })
         const railMat = new THREE.MeshStandardMaterial({ color: 0xA0724A })
-        const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.15,1.0,0.15), postMat)
+        const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, 0.15), postMat)
         p1.position.set(-1, 0.5, 0)
-        const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.15,1.0,0.15), postMat)
+        const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.0, 0.15), postMat)
         p2.position.set(1, 0.5, 0)
-        const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.1,0.1), railMat)
+        const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.1), railMat)
         r1.position.set(0, 0.7, 0)
-        const r2 = new THREE.Mesh(new THREE.BoxGeometry(2.0,0.1,0.1), railMat)
+        const r2 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.1), railMat)
         r2.position.set(0, 0.35, 0)
-        g.add(p1,p2,r1,r2)
+        g.add(p1, p2, r1, r2)
         g.position.set(x, base, z)
         g.rotation.y = angle
         worldDecor.add(g)
@@ -556,16 +561,16 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       function createSunflower(x: number, z: number) {
         const g = new THREE.Group()
         const base = getGroundHeight(x, z);
-        const stem = new THREE.Mesh(new THREE.BoxGeometry(0.1,1.4,0.1), new THREE.MeshStandardMaterial({color:0x7BAF5A}))
+        const stem = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 0.1), new THREE.MeshStandardMaterial({ color: 0x7BAF5A }))
         stem.position.y = 0.7
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.1,0.5), new THREE.MeshStandardMaterial({color:0xFFD580}))
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.5), new THREE.MeshStandardMaterial({ color: 0xFFD580 }))
         head.position.y = 1.5
-        const petalGeo = new THREE.BoxGeometry(0.15,0.08,0.4)
-        const petalMat = new THREE.MeshStandardMaterial({color:0xEF9F27})
+        const petalGeo = new THREE.BoxGeometry(0.15, 0.08, 0.4)
+        const petalMat = new THREE.MeshStandardMaterial({ color: 0xEF9F27 })
         for (let i = 0; i < 4; i++) {
           const p = new THREE.Mesh(petalGeo, petalMat)
           p.rotation.y = (i / 4) * Math.PI * 2
-          p.position.set(Math.sin(p.rotation.y)*0.3, 1.5, Math.cos(p.rotation.y)*0.3)
+          p.position.set(Math.sin(p.rotation.y) * 0.3, 1.5, Math.cos(p.rotation.y) * 0.3)
           g.add(p)
         }
         g.add(stem, head)
@@ -605,7 +610,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedRock(rx, gy, rz, 0.2 + Math.random()*0.4);
+          addInstancedRock(rx, gy, rz, 0.2 + Math.random() * 0.4);
           if (Math.random() > 0.7) addInstancedCactus(rx + 2, gy, rz + 1, 0.8 + Math.random() * 1.5);
         }
       }
@@ -614,13 +619,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const group = new THREE.Group()
         const base = getGroundHeight(x, z);
         const brown = 0x8B5E3C
-        const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:brown}))
+        const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.8, 0.2), new THREE.MeshStandardMaterial({ color: brown }))
         trunk.position.y = 0.4
-        const t1 = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.5,1.2), new THREE.MeshStandardMaterial({color:0x3B6D11}))
+        const t1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: 0x3B6D11 }))
         t1.position.y = 1.1
-        const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.9,0.5,0.9), new THREE.MeshStandardMaterial({color:0x4A8A1A}))
+        const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.9), new THREE.MeshStandardMaterial({ color: 0x4A8A1A }))
         t2.position.y = 1.6
-        const t3 = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.4,0.5), new THREE.MeshStandardMaterial({color:0x5AA020}))
+        const t3 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), new THREE.MeshStandardMaterial({ color: 0x5AA020 }))
         t3.position.y = 2.05
         group.add(trunk, t1, t2, t3)
         group.position.set(x, base, z)
@@ -633,13 +638,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const rx = offsetX + (Math.random() - 0.5) * 130;
           const rz = offsetZ + (Math.random() - 0.5) * 130;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          
+
           const base = getGroundHeight(rx, rz);
           const h = (8 + Math.random() * 12) * 0.45, w = (6 + Math.random() * 6) * 0.45;
           for (let my = 0; my < h; my += 1.5 * 0.45) {
             const r = (h - my) * (w / h);
-            const m = new THREE.Mesh(new THREE.BoxGeometry(r*2, 1.5*0.45, r*2), new THREE.MeshLambertMaterial({ color: 0xF0EEF8, emissive: 0xE8E4F0, emissiveIntensity: 0.04 }));
-            m.position.set(rx, base + my + 0.75*0.45, rz);
+            const m = new THREE.Mesh(new THREE.BoxGeometry(r * 2, 1.5 * 0.45, r * 2), new THREE.MeshLambertMaterial({ color: 0xF0EEF8, emissive: 0xE8E4F0, emissiveIntensity: 0.04 }));
+            m.position.set(rx, base + my + 0.75 * 0.45, rz);
             if (my < 3 * 0.45) colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
             worldDecor.add(m);
           }
@@ -652,7 +657,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const rx = offsetX + (Math.random() - 0.5) * 120;
           const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
-          
+
           const tree = createPineTree(rx, rz);
           worldDecor.add(tree);
         }
@@ -661,7 +666,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedRock(rx, gy, rz, 1.0 + Math.random()*1.5);
+          addInstancedRock(rx, gy, rz, 1.0 + Math.random() * 1.5);
         }
       }
 
@@ -670,24 +675,24 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedGrass(rx, gy, rz, 0.8 + Math.random()*1.2);
+          addInstancedGrass(rx, gy, rz, 0.8 + Math.random() * 1.2);
         }
         for (let i = 0; i < 30; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedBush(rx, gy, rz, 0.3 + Math.random()*0.4);
+          addInstancedBush(rx, gy, rz, 0.3 + Math.random() * 0.4);
         }
         for (let i = 0; i < 5; i++) {
           const rx = offsetX + (Math.random() - 0.5) * 120; const rz = offsetZ + (Math.random() - 0.5) * 120;
           if (new THREE.Vector3(rx, 0, rz).length() < 35) continue;
           const gy = getGroundHeight(rx, rz);
-          addInstancedTree(rx, gy, rz, 0.8 + Math.random()*0.5);
+          addInstancedTree(rx, gy, rz, 0.8 + Math.random() * 0.5);
         }
       }
 
-      createForestZone(-150, 0); 
-      createDesertZone(150, 0); 
+      createForestZone(-150, 0);
+      createDesertZone(150, 0);
       createMountainZone(0, -150);
       createPlainsZone(0, 150);
 
@@ -707,17 +712,17 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
       createBoundaries();
 
-      for(let i=0; i<8; i++) {
-        createLilyPad(POND_X + (Math.random()-0.5)*5, POND_Z + (Math.random()-0.5)*4, i);
+      for (let i = 0; i < 8; i++) {
+        createLilyPad(POND_X + (Math.random() - 0.5) * 5, POND_Z + (Math.random() - 0.5) * 4, i);
       }
 
       const ambientParticles: any[] = [];
       const snowParticles: any[] = [];
-      for(let i=0; i<40; i++) {
+      for (let i = 0; i < 40; i++) {
         const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshBasicMaterial({ color: 0xA8D8EA, transparent: true, opacity: 0.6 }));
-        const ox = (Math.random()-0.5)*30;
-        const oy = 0.4 + Math.random()*2.1;
-        const oz = (Math.random()-0.5)*30;
+        const ox = (Math.random() - 0.5) * 30;
+        const oy = 0.4 + Math.random() * 2.1;
+        const oz = (Math.random() - 0.5) * 30;
         m.position.set(ox, oy, oz);
         worldDecor.add(m);
         ambientParticles.push({ mesh: m, offset: i });
@@ -756,6 +761,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       ];
 
       const peerMeshes = new Map<string, { bb: any, targetPos: any, targetRot: number, species: string }>();
+      const openInteractionMenu = (player: { id: string, mesh: any }) => {
+        console.log("open menu for", player.id);
+      };
 
       async function fetchSpeciesForUser(username: string) {
         if (speciesCache.current.has(username)) return speciesCache.current.get(username);
@@ -812,7 +820,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       for (let i = 0; i < fireflyCount; i++) {
         const fx = (Math.random() - 0.5) * 80;
-        const fy = 0.5 + Math.random() * 2.5; 
+        const fy = 0.5 + Math.random() * 2.5;
         const fz = (Math.random() - 0.5) * 80;
         fireflyPos[i * 3] = fx;
         fireflyPos[i * 3 + 1] = fy;
@@ -865,7 +873,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           // Smooth sliding collision
           const moveX = new THREE.Vector3(p.vel.x, 0, 0);
           const moveZ = new THREE.Vector3(0, 0, p.vel.z);
-          
+
           // Try X movement first
           const nextX = new THREE.Vector3(p.pos.x + p.vel.x, 0.5, p.pos.z);
           const pBoxX = new THREE.Box3().setFromCenterAndSize(nextX, new THREE.Vector3(1, 2, 1));
@@ -879,7 +887,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           if (!hitX) {
             p.pos.x += p.vel.x;
           }
-          
+
           // Try Z movement second
           const nextZ = new THREE.Vector3(p.pos.x, 0.5, p.pos.z + p.vel.z);
           const pBoxZ = new THREE.Box3().setFromCenterAndSize(nextZ, new THREE.Vector3(1, 2, 1));
@@ -911,11 +919,29 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         updateBillboard(pet.bb, frameCount, "front");
         pet.bb.group.position.set(pet.pos.x, 0.5 + Math.abs(Math.sin(frameCount * 0.15)) * 0.15, pet.pos.z);
 
-        // Update remote players
+        // Update remote players & Proximity
+        let closestRemote: { id: string, mesh: any } | null = null;
+        let minRemoteDist = 4;
+
         for (const id in remotePlayersRef.current) {
           const remote = remotePlayersRef.current[id];
           remote.bb.group.position.lerp(remote.targetPos, 0.1);
           updateBillboard(remote.bb, frameCount, "front");
+
+          if (playerRef.current) {
+            const d = playerRef.current.position.distanceTo(remote.bb.group.position);
+            if (d < minRemoteDist) {
+              minRemoteDist = d;
+              closestRemote = { id, mesh: remote.bb.group };
+            }
+          }
+        }
+
+        nearbyPlayer.current = closestRemote;
+        const currentId = nearbyPlayer.current?.id || null;
+        if (currentId !== prevNearbyId.current) {
+          setShowInteractHint(!!nearbyPlayer.current);
+          prevNearbyId.current = currentId;
         }
 
         const timeCycle = Math.sin(elapsed * 0.05); // Slow cycle
@@ -992,6 +1018,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         if (e.code === "KeyE") {
           const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius);
           if (near) { playInteract(); near.onInteract(); }
+
+          if (nearbyPlayer.current && !interactionOpen.current) {
+            interactionOpen.current = true;
+            openInteractionMenu(nearbyPlayer.current);
+          }
         }
       };
       const onKU = (e: any) => keysRef.current[e.code] = false;
@@ -1014,7 +1045,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           if (msg.type === "snapshot") {
             Object.entries(msg.pets).forEach(async ([username, pData]: [string, any]) => {
               if (username === petState.gitData.username) return;
-              
+
               const sp = (pData.species || pData.petType || await fetchSpeciesForUser(username) || "cat").toLowerCase();
               console.log("Incoming player:", username, sp);
 
@@ -1035,10 +1066,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           } else if (msg.type === "move" || msg.type === "pet_update") {
             const data = msg.pet || msg; const uid = data.username || msg.id;
             if (uid === petState.gitData.username) return;
-            
+
             const sp = (data.species || data.petType || "cat").toLowerCase();
             let peer = remotePlayersRef.current[uid];
-            
+
             if (peer) {
               if (peer.species !== sp && (data.species || data.petType)) {
                 scene.remove(peer.bb.group);
@@ -1047,8 +1078,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 peer.bb = bb;
                 peer.species = sp;
               }
-              peer.targetPos.set(data.x, 0.5, data.y); 
-              peer.targetRot = data.rot; 
+              peer.targetPos.set(data.x, 0.5, data.y);
+              peer.targetRot = data.rot;
             } else {
               // Create if move received before snapshot (rare but possible)
               const bb = createPetBillboard(uid, sp, data.petState || petState);
@@ -1057,10 +1088,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             }
           } else if (msg.type === "pet_left") {
             const uid = msg.username || msg.id;
-            const peer = remotePlayersRef.current[uid]; 
-            if (peer) { 
-              scene.remove(peer.bb.group); 
-              delete remotePlayersRef.current[uid]; 
+            const peer = remotePlayersRef.current[uid];
+            if (peer) {
+              scene.remove(peer.bb.group);
+              delete remotePlayersRef.current[uid];
             }
           }
           setOnlineCount(Object.keys(remotePlayersRef.current).length + 1);
@@ -1090,6 +1121,23 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.3)', fontSize: 10, letterSpacing: 3, zIndex: 10 }}>WASD · MOVE · E · INTERACT</div>
           <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 20, border: '1px solid rgba(240,200,140,0.2)' }}><canvas ref={minimapRef} width={120} height={120} style={{ display: 'block', opacity: 0.8 }} /></div>
           {promptLabel && (<div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(20,14,8,0.9)', border: '1px solid #ffd4a0', padding: '10px 24px', zIndex: 20, fontSize: 10, color: '#ffd4a0' }}>{promptLabel}</div>)}
+          <div style={{
+            position: 'fixed',
+            bottom: 80,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(0,0,0,0.6)',
+            color: 'white',
+            padding: '10px 20px',
+            borderRadius: '999px',
+            fontSize: '14px',
+            transition: 'opacity 150ms',
+            opacity: showInteractHint ? 1 : 0,
+            zIndex: 100,
+            pointerEvents: 'none',
+          }}>
+            Press E to interact
+          </div>
         </>
       )}
     </div>
