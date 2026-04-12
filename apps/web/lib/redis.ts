@@ -33,10 +33,26 @@ export function autoAssignSpecies(languages: string[]): Species {
   return "axolotl";
 }
 
+export function friendKey(username: string) {
+  return `friends:${username}`;
+}
+
 export async function getUserSpecies(username: string): Promise<Species | null> {
   return redis.get<Species>(speciesKey(username));
 }
 
 export async function setUserSpecies(username: string, species: Species): Promise<void> {
   await redis.set(speciesKey(username), species);
+}
+
+export async function getFriends(username: string): Promise<string[]> {
+  return redis.smembers(friendKey(username));
+}
+
+export async function addFriend(user1: string, user2: string): Promise<void> {
+  // Bi-directional friendship
+  await Promise.all([
+    redis.sadd(friendKey(user1), user2),
+    redis.sadd(friendKey(user2), user1)
+  ]);
 }

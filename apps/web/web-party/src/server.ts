@@ -28,17 +28,24 @@ type ServerMessage =
   | { type: "pet_update"; pet: PetPresence }
   | { type: "pet_left"; username: string }
   | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
-  | { type: "presence_update"; pet: PetPresence };
+  | { type: "presence_update"; pet: PetPresence }
+  | { type: "befriend_received"; fromId: string }
+  | { type: "fight_received"; fromId: string; damage: number }
+  | { type: "emoji_received"; fromId: string; emoji: string };
 
 type ClientMessage =
   | { type: "join"; pet: PetPresence }
   | { type: "move"; x: number; y: number; rot?: number; petType?: string }
   | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
-  | { type: "presence_update"; pet: PetPresence };
+  | { type: "presence_update"; pet: PetPresence }
+  | { type: "befriend"; fromId: string; toId: string }
+  | { type: "fight"; fromId: string; toId: string; damage: number }
+  | { type: "emoji"; fromId: string; toId: string; emoji: string };
 
 export default class WorldServer implements Party.Server {
   pets: Record<string, PetPresence> = {};
   connToUser = new Map<string, string>();
+  userToConns = new Map<string, Set<string>>();
 
   constructor(readonly room: Party.Room) {}
 
@@ -52,6 +59,9 @@ export default class WorldServer implements Party.Server {
 
     if (data.type === "join") {
       this.connToUser.set(sender.id, data.pet.username);
+      if (!this.userToConns.has(data.pet.username)) this.userToConns.set(data.pet.username, new Set());
+      this.userToConns.get(data.pet.username)!.add(sender.id);
+
       this.pets[data.pet.username] = { ...data.pet, lastSeen: Date.now() };
       const msg: ServerMessage = { type: "pet_update", pet: this.pets[data.pet.username] };
       this.room.broadcast(JSON.stringify(msg), [sender.id]);
@@ -67,6 +77,50 @@ export default class WorldServer implements Party.Server {
         this.pets[username].lastSeen = Date.now();
         const msg: ServerMessage = { type: "pet_update", pet: this.pets[username] };
         this.room.broadcast(JSON.stringify(msg), [sender.id]);
+      }
+    }
+
+    if (data.type === "befriend") {
+      const targetConns = this.userToConns.get(data.toId);
+      if (targetConns) {
+        const msg: ServerMessage = { type: "befriend_received", fromId: data.fromId };
+        targetConns.forEach(connId => {
+          const conn = this.room.getConnection(connId);
+          if (conn) conn.send(JSON.stringify(msg));
+        });
+      }
+      
+      // Persist to Redis via API proxy
+      fetch(`${this.room.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/friends`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          fromId: data.fromId, 
+          toId: data.toId, 
+          secret: this.room.env.INTERNAL_SECRET 
+        })
+      }).catch(err => console.error("Persistence failed", err));
+    }
+
+    if (data.type === "fight") {
+      const targetConns = this.userToConns.get(data.toId);
+      if (targetConns) {
+        const msg: ServerMessage = { type: "fight_received", fromId: data.fromId, damage: data.damage };
+        targetConns.forEach(connId => {
+          const conn = this.room.getConnection(connId);
+          if (conn) conn.send(JSON.stringify(msg));
+        });
+      }
+    }
+
+    if (data.type === "emoji") {
+      const targetConns = this.userToConns.get(data.toId);
+      if (targetConns) {
+        const msg: ServerMessage = { type: "emoji_received", fromId: data.fromId, emoji: data.emoji };
+        targetConns.forEach(connId => {
+          const conn = this.room.getConnection(connId);
+          if (conn) conn.send(JSON.stringify(msg));
+        });
       }
     }
 
@@ -90,7 +144,11 @@ export default class WorldServer implements Party.Server {
   onClose(conn: Party.Connection) {
     const username = this.connToUser.get(conn.id);
     if (username) {
-      delete this.pets[username];
+      this.userToConns.get(username)?.delete(conn.id);
+      if (this.userToConns.get(username)?.size === 0) {
+          delete this.pets[username];
+          this.userToConns.delete(username);
+      }
       this.connToUser.delete(conn.id);
       const msg: ServerMessage = { type: "pet_left", username };
       this.room.broadcast(JSON.stringify(msg));

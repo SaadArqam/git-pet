@@ -58,6 +58,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const [timeDisplay, setTimeDisplay] = useState('☀️ Morning');
   const [flashColor, setFlashColor] = useState<string | null>(null);
   const [narrativeText, setNarrativeText] = useState<string | null>(null);
+  const [localHP, setLocalHP] = useState(100);
   const [hasEntered, setHasEntered] = useState(false);
   const [selectedPet, setSelectedPet] = useState<any>({ type: initialSpecies, id: 'prop-fallback' });
   const [isHydrated, setIsHydrated] = useState(false);
@@ -115,6 +116,33 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     closeInteractionMenu();
   };
 
+  // Sync Hydration, LocalStorage & Friends
+  useEffect(() => {
+    setIsHydrated(true);
+    try {
+      const stored = localStorage.getItem("selectedPet");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setSelectedPet(parsed);
+      }
+    } catch (e) {
+      console.error("Failed to load pet from localStorage", e);
+    }
+    
+    // Fetch friends
+    fetch(`/api/friends?userId=${petState.gitData.username}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.friends) {
+          friendsRef.current = new Set(data.friends);
+          setFriendCount(data.friends.length);
+        }
+      })
+      .catch(err => console.error("Failed to fetch friends", err));
+
+    return () => { mounted.current = false; };
+  }, [initialSpecies, petState.gitData.username]);
+
   const handleEmojiSelect = (emoji: string, target: any) => {
     sendEmoji(emoji, target);
     setIsPickingEmoji(false);
@@ -123,21 +151,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   // --- Interaction Logic ---
 
-  const befriendPlayer = (target: any) => {
-    if (friendsRef.current.has(target.id)) {
-      showToast("Already friends! ❤️");
-      return;
-    }
-    friendsRef.current.add(target.id);
-    setFriendCount(c => c + 1);
-    showToast("You are now friends! 🎉");
-
-    if (socketRef.current) {
-      socketRef.current.send(JSON.stringify({ type: 'befriend', fromId: petState.gitData.username, toId: target.id }));
-    }
-
-    // Animation: Hearts
-    const myPos = playerRef.current.position;
+  const triggerHeartAnim = (mesh: any) => {
+    if (!mesh) return;
+    const pos = mesh.position;
     for (let i = 0; i < 8; i++) {
       const div = document.createElement('div');
       div.innerHTML = "♥";
@@ -146,7 +162,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       div.style.fontWeight = "bold";
       const THREE = (window as any).THREE;
       const heart = new THREE.CSS2DObject(div);
-      heart.position.set(myPos.x + (Math.random() - 0.5), 1.5 + i * 0.2, myPos.z);
+      heart.position.set(pos.x + (Math.random() - 0.5), 1.5 + i * 0.2, pos.z);
       sceneRef.current.add(heart);
 
       const startTime = Date.now();
@@ -160,7 +176,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     }
 
     // Pulse
-    const mesh = playerRef.current;
     const originalScale = mesh.scale.x;
     const startTime = Date.now();
     animationsRef.current.push(() => {
@@ -175,6 +190,52 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         mesh.scale.set(originalScale, originalScale, originalScale);
         return false;
       }
+      return true;
+    });
+  };
+
+  const befriendPlayer = (target: any) => {
+    if (friendsRef.current.has(target.id)) {
+      showToast("Already friends! ❤️");
+      return;
+    }
+    friendsRef.current.add(target.id);
+    setFriendCount(c => c + 1);
+    showToast("You are now friends! 🎉");
+
+    if (socketRef.current) {
+      socketRef.current.send(JSON.stringify({ type: 'befriend', fromId: petState.gitData.username, toId: target.id }));
+    }
+
+    triggerHeartAnim(playerRef.current);
+  };
+
+  const triggerDamageAnim = (mesh: any, damageAmount: number) => {
+    if (!mesh) return;
+    const THREE = (window as any).THREE;
+    
+    // Flash
+    const material = mesh.children[0].material;
+    const originalColor = material.color.clone();
+    material.color.set(0xFF0000);
+    setTimeout(() => material.color.copy(originalColor), 100);
+
+    // Damage Number
+    const div = document.createElement('div');
+    div.innerText = `-${damageAmount}`;
+    div.style.color = "#FF0000";
+    div.style.fontWeight = "bold";
+    div.style.fontSize = "24px";
+    const damageObj = new THREE.CSS2DObject(div);
+    damageObj.position.copy(mesh.position).add(new THREE.Vector3(0, 3.5, 0));
+    sceneRef.current.add(damageObj);
+
+    const startTime = Date.now();
+    animationsRef.current.push(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      damageObj.position.y += 0.02;
+      div.style.opacity = (1 - elapsed).toString();
+      if (elapsed >= 1) { sceneRef.current.remove(damageObj); return false; }
       return true;
     });
   };
@@ -213,30 +274,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     const dir = target.mesh.position.clone().sub(playerRef.current.position).normalize();
     target.mesh.position.add(dir.multiplyScalar(0.3));
 
-    // Flash
-    const material = target.mesh.children[0].material;
-    const originalColor = material.color.clone();
-    material.color.set(0xFF0000);
-    setTimeout(() => material.color.copy(originalColor), 100);
-
-    // Damage Number
-    const div = document.createElement('div');
-    div.innerText = "-20";
-    div.style.color = "#FF0000";
-    div.style.fontWeight = "bold";
-    div.style.fontSize = "24px";
-    const damage = new THREE.CSS2DObject(div);
-    damage.position.copy(target.mesh.position).add(new THREE.Vector3(0, 3.5, 0));
-    sceneRef.current.add(damage);
-
-    const startTime = Date.now();
-    animationsRef.current.push(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      damage.position.y += 0.02;
-      div.style.opacity = (1 - elapsed).toString();
-      if (elapsed >= 1) { sceneRef.current.remove(damage); return false; }
-      return true;
-    });
+    triggerDamageAnim(target.mesh, 20);
   };
 
   const sendEmoji = (emoji: string, target: any) => {
@@ -1341,6 +1379,54 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               scene.add(bb.group);
               remotePlayersRef.current[uid] = { bb, targetPos: new THREE.Vector3(data.x, 0.5, data.y), targetRot: data.rot || 0, species: sp };
             }
+          } else if (msg.type === "befriend_received") {
+            const peer = remotePlayersRef.current[msg.fromId];
+            if (peer) {
+              if (!friendsRef.current.has(msg.fromId)) {
+                friendsRef.current.add(msg.fromId);
+                setFriendCount(c => c + 1);
+              }
+              showToast(`${msg.fromId}'s pet wants to be friends! ❤️`);
+              triggerHeartAnim(peer.bb.group);
+            }
+          } else if (msg.type === "fight_received") {
+            const peer = remotePlayersRef.current[msg.fromId];
+            setLocalHP(hp => Math.max(0, hp - msg.damage));
+            shakeRef.current = 0.4;
+            triggerDamageAnim(playerRef.current, msg.damage);
+            showToast(`You were attacked by ${msg.fromId}! ⚔️`);
+          } else if (msg.type === "emoji_received") {
+            const peer = remotePlayersRef.current[msg.fromId];
+            if (peer) {
+              const THREE = (window as any).THREE;
+              const div = document.createElement('div');
+              div.innerText = msg.emoji;
+              div.style.fontSize = "28px";
+              const obj = new THREE.CSS2DObject(div);
+              const startPos = peer.bb.group.position.clone().add(new THREE.Vector3(0, 2, 0));
+              obj.position.copy(startPos);
+              scene.add(obj);
+
+              const startTime = Date.now();
+              const duration = 1500;
+              animationsRef.current.push(() => {
+                const now = Date.now();
+                const elapsed = now - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                
+                const targetPos = playerRef.current.position.clone().add(new THREE.Vector3(0, 2, 0));
+                const pos = startPos.clone().lerp(targetPos, t);
+                pos.y += Math.sin(t * Math.PI) * 2;
+                obj.position.copy(pos);
+
+                if (t > 0.66) {
+                  div.style.opacity = (1 - (t - 0.66) * 3).toString();
+                }
+
+                if (t >= 1) { scene.remove(obj); return false; }
+                return true;
+              });
+            }
           } else if (msg.type === "pet_left") {
             const uid = msg.username || msg.id;
             const peer = remotePlayersRef.current[uid];
@@ -1378,8 +1464,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       {cinematicDone && isHydrated && selectedPet && (
         <>
           <div style={{ position: 'fixed', top: 24, left: 24, background: 'rgba(10,8,4,0.8)', padding: '12px 20px', borderRadius: 4, color: '#ffd4a0', zIndex: 10 }}>
-            <div style={{ fontSize: 11, letterSpacing: 2 }}>@{petState.gitData.username.toUpperCase()}</div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>{onlineCount} PETS ONLINE</div>
+            <div style={{ fontSize: 11, letterSpacing: 2, marginBottom: 4 }}>@{petState.gitData.username.toUpperCase()}</div>
+            <div style={{ width: 100, height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ width: `${localHP}%`, height: '100%', background: localHP > 60 ? '#4CAF50' : localHP > 30 ? '#FF9800' : '#F44336', transition: 'width 300ms, background 300ms' }} />
+            </div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{onlineCount} PETS ONLINE</div>
           </div>
           <div style={{ position: 'fixed', top: 24, right: 24, background: 'rgba(74,175,80,0.8)', padding: '12px 20px', borderRadius: 4, color: '#fff', zIndex: 10, fontSize: 11, letterSpacing: 2 }}>
             FRIENDS: {friendCount}
