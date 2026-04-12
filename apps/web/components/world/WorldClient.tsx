@@ -62,6 +62,32 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const [selectedPet, setSelectedPet] = useState<any>({ type: initialSpecies, id: 'prop-fallback' });
   const [isHydrated, setIsHydrated] = useState(false);
 
+  // Interaction Menu State
+  const [interactionTarget, setInteractionTarget] = useState<{ id: string, mesh: any } | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const movementBlocked = useRef(false);
+
+  const INTERACTION_OPTIONS = [
+    { id: 'befriend', label: 'Befriend', icon: '♥', color: '#4CAF50' },
+    { id: 'fight',    label: 'Fight',    icon: '⚔', color: '#F44336' },
+    { id: 'emoji',    label: 'Send Emoji', icon: '✦', color: '#FF9800' },
+  ];
+
+  const handleInteraction = (optionId: string, target: any) => {
+    console.log(`Interacting with ${target?.id} using ${optionId}`);
+    closeInteractionMenu();
+  };
+
+  const closeInteractionMenu = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setInteractionTarget(null);
+      setIsClosing(false);
+      movementBlocked.current = false;
+      interactionOpen.current = false;
+    }, 180);
+  };
+
   // billboard species cache
   const speciesCache = useRef<Map<string, string>>(new Map());
 
@@ -762,7 +788,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       const peerMeshes = new Map<string, { bb: any, targetPos: any, targetRot: number, species: string }>();
       const openInteractionMenu = (player: { id: string, mesh: any }) => {
-        console.log("open menu for", player.id);
+        setInteractionTarget(player);
+        setIsClosing(false);
+        movementBlocked.current = true;
+        interactionOpen.current = true;
       };
 
       async function fetchSpeciesForUser(username: string) {
@@ -861,7 +890,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const now = performance.now(); const delta = Math.min((now - lastTime) / 1000, 0.05);
         lastTime = now; elapsed += delta; frameCount++;
 
-        if (p.controlEnabled) {
+        if (p.controlEnabled && !movementBlocked.current) {
           const spd = p.speed * (delta * 60); const damping = Math.pow(0.72, delta * 60);
           let moved = false;
           if (keysRef.current["KeyW"] || keysRef.current["ArrowUp"]) { p.vel.x -= Math.sin(p.rot) * spd; p.vel.z -= Math.cos(p.rot) * spd; moved = true; }
@@ -1015,12 +1044,14 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const onKD = (e: any) => {
         initAudio();
         keysRef.current[e.code] = true;
+        if (e.code === "Escape" && interactionOpen.current) {
+          closeInteractionMenu();
+        }
         if (e.code === "KeyE") {
           const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius);
           if (near) { playInteract(); near.onInteract(); }
 
           if (nearbyPlayer.current && !interactionOpen.current) {
-            interactionOpen.current = true;
             openInteractionMenu(nearbyPlayer.current);
           }
         }
@@ -1138,6 +1169,91 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           }}>
             Press E to interact
           </div>
+
+          {/* Interaction Menu Overlay */}
+          {interactionTarget && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              background: isClosing ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.4)',
+              transition: 'background 180ms ease-out',
+            }}>
+              <div style={{
+                pointerEvents: 'auto',
+                background: '#1a1d2e',
+                border: '1px solid rgba(255,255,255,0.1)',
+                padding: '40px',
+                borderRadius: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                opacity: isClosing ? 0 : 1,
+                transform: isClosing ? 'scale(0.9)' : 'scale(1)',
+                transition: 'all 180ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}>
+                <h2 style={{ color: 'white', marginBottom: 32, fontSize: 18, fontWeight: 500, letterSpacing: 1 }}>What do you want to do?</h2>
+                
+                <div style={{ display: 'flex', gap: 16 }}>
+                  {INTERACTION_OPTIONS.map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleInteraction(opt.id, interactionTarget)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '24px',
+                        background: 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${opt.color}33`,
+                        borderRadius: 16,
+                        cursor: 'pointer',
+                        transition: 'all 200ms',
+                        minWidth: 120,
+                        outline: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = `${opt.color}11`;
+                        e.currentTarget.style.borderColor = opt.color;
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                        e.currentTarget.style.borderColor = `${opt.color}33`;
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <span style={{ fontSize: 32, color: opt.color }}>{opt.icon}</span>
+                      <span style={{ fontSize: 13, color: 'white', fontWeight: 600, letterSpacing: 1 }}>{opt.label.toUpperCase()}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={closeInteractionMenu}
+                  style={{
+                    marginTop: 32,
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.3)',
+                    fontSize: 10,
+                    letterSpacing: 2,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '4px'
+                  }}
+                >
+                  CANCEL [ESC]
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
