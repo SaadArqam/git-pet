@@ -5,6 +5,18 @@ import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 
+const PROMPT_SUBTITLES: Record<string, string> = {
+  'What is Git-Pet?': 'NOTICE BOARD',
+  'Choose species': 'SPECIES BOARD',
+  'Meet the pets': 'PET PEN',
+  'Hall of Legends': 'LEADERBOARD',
+  'Feed the koi': 'POND',
+  'Enter the shrine': 'SHRINE',
+  'Forest Altar': 'ALTAR',
+  'Cross the bridge': 'BRIDGE',
+  'Spirit Stones': 'SPIRIT AREA',
+}
+
 const overlayBtnStyle: React.CSSProperties = {
   padding: '14px 28px',
   fontFamily: "'Syne', sans-serif",
@@ -40,6 +52,10 @@ export default function LandingPage() {
   >(null)
   const [cinematicDone, setCinematicDone] = useState(false)
   const [controlsHint, setControlsHint] = useState(true)
+  const [introStep, setIntroStep] = useState<0|1|2|3>(0)
+  const [questStep, setQuestStep] = useState<0|1|2|'done'|'hidden'>(0)
+  const [hasSeenAbout, setHasSeenAbout] = useState(false)
+  const [hintIndex, setHintIndex] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const [joystick, setJoystick] = useState({ active: false, dx: 0, dy: 0 })
 
@@ -56,6 +72,49 @@ export default function LandingPage() {
     const t = setTimeout(() => setTriggerWorldEnter(false), 0)
     return () => clearTimeout(t)
   }, [triggerWorldEnter, status, router])
+
+  // Intro sequence beats
+  useEffect(() => {
+    const t1 = setTimeout(() => setIntroStep(1), 2500)
+    const t2 = setTimeout(() => setIntroStep(2), 5000)
+    const t3 = setTimeout(() => setIntroStep(3), 6500)
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
+  }, [])
+
+  // Hint rotation
+  useEffect(() => {
+    if (!controlsHint) return
+    const interval = setInterval(() => {
+      setHintIndex(i => Math.min(i + 1, 2))
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [controlsHint])
+
+  // Quest advancement
+  useEffect(() => {
+    if (questStep === 0 && promptLabel?.includes('What is Git-Pet')) {
+      setQuestStep(1)
+    }
+  }, [promptLabel, questStep])
+
+  useEffect(() => {
+    if (activeOverlay === 'about' && !hasSeenAbout) {
+      setHasSeenAbout(true)
+    }
+    if (activeOverlay === 'about' && questStep === 1) {
+      setQuestStep(2)
+    }
+    if (activeOverlay === 'shrineChoice') {
+      setQuestStep('done')
+    }
+  }, [activeOverlay, hasSeenAbout, questStep])
+
+  useEffect(() => {
+    if (questStep === 'done') {
+      const t = setTimeout(() => setQuestStep('hidden'), 4000)
+      return () => clearTimeout(t)
+    }
+  }, [questStep])
 
   useEffect(() => { return () => { mounted.current = false } }, [])
 
@@ -727,6 +786,25 @@ export default function LandingPage() {
     <div style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', overflow: 'hidden', fontFamily: "'Syne', sans-serif", background: '#0d0f18' }}>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Syne:wght@400;700;800&family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
+      <style>{`
+        @keyframes slideUpFade {
+          from { opacity: 0; transform: translateY(16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes questFlash {
+          0%   { border-color: rgba(240,200,140,0.25); }
+          30%  { border-color: rgba(255,180,80,0.8); }
+          100% { border-color: rgba(240,200,140,0.25); }
+        }
+        @keyframes arrowPulse {
+          0%,100% { opacity: 0.4; transform: translateY(0); }
+          50%     { opacity: 1;   transform: translateY(-4px); }
+        }
+        @keyframes arrowPulseDown {
+          0%,100% { opacity: 0.4; transform: translateY(0); }
+          50%     { opacity: 1;   transform: translateY(4px); }
+        }
+      `}</style>
 
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
 
@@ -741,14 +819,39 @@ export default function LandingPage() {
 
       {!cinematicDone && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 91, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-          <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 'clamp(20px,3vw,36px)', color: 'rgba(240,235,224,0.85)', animation: 'fadeInOut 4s ease 2s both' }}>Your GitHub activity is waiting inside.</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 11, color: 'rgba(240,235,224,0.4)', letterSpacing: 3, textTransform: 'uppercase', animation: 'fadeInOut 3s ease 4s both' }}>WASD to move · E to interact</div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, opacity: introStep === 1 ? 1 : 0, transition: 'opacity 0.8s ease', position: 'absolute' }}>
+            <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 14, color: '#ffd4a0', letterSpacing: 6 }}>GIT PET</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10, color: 'rgba(240,235,224,0.4)' }}>Your GitHub commits · made alive</div>
+          </div>
+          <div style={{ opacity: introStep >= 2 ? 1 : 0, transition: 'opacity 0.8s ease', position: 'absolute' }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10, color: '#ffd4a0', letterSpacing: 3, textTransform: 'uppercase' }}>
+              WASD TO MOVE &nbsp;·&nbsp; E TO INTERACT &nbsp;·&nbsp; EXPLORE THE WORLD
+            </div>
+          </div>
         </div>
       )}
 
       <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 20, padding: '18px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,6,4,0.5)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,140,0.1)', width: '100%', overflow: 'hidden' }}>
         <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: '#f0ebe0', letterSpacing: 2, textShadow: '0 0 30px rgba(255,180,80,0.5)' }}>GIT-PET</div>
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <button
+            onClick={() => openOverlay('about')}
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontWeight: 300,
+              fontSize: 11,
+              letterSpacing: 1,
+              color: 'rgba(240,235,224,0.45)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '9px 12px',
+              textDecoration: 'underline',
+              textUnderlineOffset: '3px',
+            }}
+          >
+            what is this?
+          </button>
           {isLoggedIn ? (
             <a href="/dashboard" style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', color: '#ffd4a0', textDecoration: 'none', background: 'rgba(181,71,10,0.4)', border: '1px solid rgba(255,180,80,0.35)', padding: '9px 20px', backdropFilter: 'blur(8px)' }}>My Pet →</a>
           ) : (
@@ -758,11 +861,85 @@ export default function LandingPage() {
       </nav>
 
       {promptLabel && cinematicDone && (
-        <div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(20,14,8,0.88)', border: '1px solid rgba(240,200,140,0.3)', backdropFilter: 'blur(10px)', padding: '10px 22px', zIndex: 20, fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#ffd4a0', letterSpacing: 1, whiteSpace: 'nowrap', animation: 'floatBob 2s ease-in-out infinite' }}>{promptLabel}</div>
+        <div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(20,14,8,0.88)', border: '1px solid rgba(240,200,140,0.3)', backdropFilter: 'blur(10px)', padding: '10px 22px', zIndex: 20, fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#ffd4a0', letterSpacing: 1, whiteSpace: 'nowrap', animation: 'floatBob 2s ease-in-out infinite', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div>{promptLabel}</div>
+          {Object.entries(PROMPT_SUBTITLES).find(([k]) => promptLabel?.includes(k))?.[1] && (
+            <div style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 8,
+              color: 'rgba(240,200,140,0.4)',
+              letterSpacing: 3,
+              marginTop: 5,
+              textAlign: 'center',
+            }}>
+              {Object.entries(PROMPT_SUBTITLES).find(([k]) => promptLabel?.includes(k))?.[1]}
+            </div>
+          )}
+        </div>
       )}
 
       {controlsHint && cinematicDone && (
-        <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10, color: 'rgba(240,235,224,0.38)', letterSpacing: 3, textTransform: 'uppercase', zIndex: 15, pointerEvents: 'none', animation: 'fadeOut 1.5s ease 7s forwards' }}>WASD · MOVE &nbsp;·&nbsp; A/D · TURN &nbsp;·&nbsp; E · INTERACT</div>
+        <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10, color: 'rgba(240,235,224,0.38)', letterSpacing: 3, textTransform: 'uppercase', zIndex: 15, pointerEvents: 'none', transition: 'opacity 0.5s ease', opacity: controlsHint ? 1 : 0, animation: 'fadeOut 1.5s ease 7s forwards' }}>
+          {hintIndex === 0 && 'WASD · MOVE  ·  A/D · TURN'}
+          {hintIndex === 1 && 'E · INTERACT WITH OBJECTS'}
+          {hintIndex === 2 && 'EXPLORE · FIND THE SHRINE ⛩️'}
+        </div>
+      )}
+
+      {cinematicDone && questStep !== 'hidden' && (
+        <div
+          key={questStep}
+          style={{
+            position: 'fixed', bottom: 28, left: 24,
+            background: 'rgba(22,16,10,0.92)',
+            border: '1px solid rgba(240,200,140,0.25)',
+            padding: '16px 20px',
+            width: 220,
+            zIndex: 15,
+            pointerEvents: 'none',
+            animation: 'slideUpFade 0.5s ease forwards, questFlash 0.8s ease 0s',
+          }}
+        >
+          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: '#ffd4a0', marginBottom: 12 }}>QUEST</div>
+          
+          {questStep === 0 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#f0ebe0', marginBottom: 4 }}>Walk to the notice board</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>[ follow the path north ]</div>
+              </div>
+              <div style={{ color: '#ffd4a0', fontSize: 16, animation: 'arrowPulse 1.5s infinite' }}>↑</div>
+            </div>
+          )}
+
+          {questStep === 1 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#f0ebe0', marginBottom: 4 }}>Press E to learn more</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>[ or keep exploring ]</div>
+              </div>
+            </div>
+          )}
+
+          {questStep === 2 && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#f0ebe0', marginBottom: 4 }}>Find the shrine</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>[ walk south past the torii ]</div>
+              </div>
+              <div style={{ color: '#ffd4a0', fontSize: 16, animation: 'arrowPulseDown 1.5s infinite' }}>↓</div>
+            </div>
+          )}
+
+          {questStep === 'done' && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', animation: 'fadeOutToZero 1s ease 3s forwards' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: '#f0ebe0', marginBottom: 4 }}>You found it. ⛩️</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>[ enter the world or sign in ]</div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {cinematicDone && (
