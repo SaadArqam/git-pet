@@ -81,10 +81,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   // Interaction Menu State
   const [interactionTarget, setInteractionTarget] = useState<{ id: string, mesh: any } | null>(null);
+  const interactionTargetRef = useRef<{ id: string, mesh: any } | null>(null);
   const movementBlocked = useRef(false);
   const speciesCache = useRef<Map<string, string>>(new Map());
 
   const closeInteractionMenu = () => {
+    interactionTargetRef.current = null;
     setInteractionTarget(null);
     setIsPickingEmoji(false);
     setIsFighting(false);
@@ -1093,6 +1095,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       const peerMeshes = new Map<string, { bb: any, targetPos: any, targetRot: number, species: string }>();
       const openInteractionMenu = (player: { id: string, mesh: any }) => {
+        interactionTargetRef.current = player;
         setInteractionTarget(player);
         movementBlocked.current = true;
         interactionOpen.current = true;
@@ -1367,18 +1370,260 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         // When interaction is open, ONLY allow interaction keys, block everything else
         if (interactionOpen.current) {
           e.preventDefault();
-          if (e.code === 'Escape') { closeInteractionMenu(); return; }
-          if (e.code === 'KeyZ') { handleFightKey(); return; }
-          if (e.code === 'KeyF') { handleBefriendKey(); return; }
-          if (e.code === 'KeyX') { handleEmojiMenuKey(); return; }
-          if (isPickingEmoji) {
-            const emojiMap: Record<string, string> = {
-              Digit1: "\ud83d\ude02", Digit2: "\u2764\ufe0f", Digit3: "\ud83d\udc4a",
-              Digit4: "\ud83d\udd25", Digit5: "\ud83d\udc4b", Digit6: "\ud83d\ude24"
-            };
-            if (emojiMap[e.code]) { handleEmojiSelect(emojiMap[e.code], interactionTarget); return; }
+
+          const target = interactionTargetRef.current;
+
+          if (e.code === 'Escape') {
+            closeInteractionMenu();
+            return;
           }
-          return; // block ALL other keys
+
+          // ── Z : FIGHT ──
+          if (e.code === 'KeyZ' && target) {
+            const now = Date.now();
+            if (now - lastFightTime.current < 700) return;
+            lastFightTime.current = now;
+
+            const currentHP = remotePlayerHealth.current.get(target.id) ?? 100;
+            const newHP = Math.max(0, currentHP - 20);
+            remotePlayerHealth.current.set(target.id, newHP);
+            setTargetHP(newHP);
+            setIsFighting(true);
+
+            // WS broadcast
+            if (socketRef.current) {
+              socketRef.current.send(JSON.stringify({
+                type: 'fight',
+                fromId: petState.gitData.username,
+                toId: target.id,
+                damage: 20
+              }));
+            }
+
+            // Update in-world HP bar
+            const hpData = healthBarsRef.current.get(target.id);
+            if (hpData) {
+              const pct = newHP / 100;
+              hpData.bar.style.width = `${pct * 100}%`;
+              hpData.bar.style.background = pct > 0.6 ? '#4CAF50' : pct > 0.3 ? '#FF9800' : '#F44336';
+            }
+
+            if (newHP === 0) {
+              showToast("You won! 🏆");
+              setTimeout(() => {
+                remotePlayerHealth.current.set(target.id, 100);
+                setTargetHP(100);
+                if (hpData) {
+                  hpData.bar.style.width = '100%';
+                  hpData.bar.style.background = '#4CAF50';
+                }
+              }, 3000);
+            }
+
+            // Screen shake
+            shakeRef.current = 0.25;
+
+            // Knockback
+            if (target.mesh && playerRef.current) {
+              const dir = target.mesh.position.clone()
+                .sub(playerRef.current.position).normalize();
+              target.mesh.position.add(dir.multiplyScalar(0.4));
+            }
+
+            // Minecraft-style hit flash — white overlay sprite above target
+            if (target.mesh && sceneRef.current) {
+              const flashDiv = document.createElement('div');
+              flashDiv.style.width = '48px';
+              flashDiv.style.height = '48px';
+              flashDiv.style.background = 'rgba(255,255,255,0.85)';
+              flashDiv.style.borderRadius = '4px';
+              flashDiv.style.pointerEvents = 'none';
+              flashDiv.style.mixBlendMode = 'screen';
+              const flashObj = new THREE.CSS2DObject(flashDiv);
+              flashObj.position.copy(target.mesh.position);
+              flashObj.position.y += 1.2;
+              sceneRef.current.add(flashObj);
+              const ft = Date.now();
+              animationsRef.current.push(() => {
+                const el = (Date.now() - ft) / 180;
+                flashDiv.style.opacity = String(Math.max(0, 1 - el));
+                if (el >= 1) { sceneRef.current?.remove(flashObj); return false; }
+                return true;
+              });
+            }
+
+            // Floating damage number
+            if (target.mesh && sceneRef.current) {
+              const dmgDiv = document.createElement('div');
+              dmgDiv.innerText = `-20`;
+              dmgDiv.style.color = '#FF3333';
+              dmgDiv.style.fontWeight = 'bold';
+              dmgDiv.style.fontSize = '26px';
+              dmgDiv.style.textShadow = '0 0 8px rgba(255,0,0,0.9)';
+              dmgDiv.style.pointerEvents = 'none';
+              dmgDiv.style.userSelect = 'none';
+              const dmgObj = new THREE.CSS2DObject(dmgDiv);
+              dmgObj.position.copy(target.mesh.position);
+              dmgObj.position.y += 3;
+              sceneRef.current.add(dmgObj);
+              const dt = Date.now();
+              animationsRef.current.push(() => {
+                const el = (Date.now() - dt) / 900;
+                dmgObj.position.y += 0.025;
+                dmgDiv.style.opacity = String(Math.max(0, 1 - el));
+                if (el >= 1) { sceneRef.current?.remove(dmgObj); return false; }
+                return true;
+              });
+            }
+
+            // Target squish scale reaction
+            if (target.mesh) {
+              const ox = target.mesh.scale.x;
+              const oy = target.mesh.scale.y;
+              const oz = target.mesh.scale.z;
+              const st = Date.now();
+              animationsRef.current.push(() => {
+                const el = Date.now() - st;
+                if (el < 80) {
+                  target.mesh.scale.set(ox * 1.4, oy * 0.6, oz * 1.4);
+                } else if (el < 200) {
+                  target.mesh.scale.set(ox, oy, oz);
+                } else {
+                  target.mesh.scale.set(ox, oy, oz);
+                  return false;
+                }
+                return true;
+              });
+            }
+
+            return;
+          }
+
+          // ── F : BEFRIEND ──
+          if (e.code === 'KeyF' && target) {
+            if (friendsRef.current.has(target.id)) {
+              showToast("Already friends! ❤️");
+              closeInteractionMenu();
+              return;
+            }
+            friendsRef.current.add(target.id);
+            setFriendCount(c => c + 1);
+            showToast("You are now friends! 🎉");
+
+            if (socketRef.current) {
+              socketRef.current.send(JSON.stringify({
+                type: 'befriend',
+                fromId: petState.gitData.username,
+                toId: target.id
+              }));
+            }
+
+            // Heart animation on local player
+            if (playerRef.current && sceneRef.current) {
+              for (let i = 0; i < 8; i++) {
+                const hDiv = document.createElement('div');
+                hDiv.innerHTML = '♥';
+                hDiv.style.color = '#FF4466';
+                hDiv.style.fontSize = '22px';
+                hDiv.style.fontWeight = 'bold';
+                hDiv.style.pointerEvents = 'none';
+                hDiv.style.userSelect = 'none';
+                const heart = new THREE.CSS2DObject(hDiv);
+                const base = playerRef.current.position;
+                heart.position.set(
+                  base.x + (Math.random() - 0.5) * 1.5,
+                  base.y + 1.5 + i * 0.3,
+                  base.z + (Math.random() - 0.5) * 0.5
+                );
+                sceneRef.current.add(heart);
+                const ht = Date.now();
+                animationsRef.current.push(() => {
+                  const el = (Date.now() - ht) / 2000;
+                  heart.position.y += 0.018;
+                  hDiv.style.opacity = String(Math.max(0, 1 - el));
+                  if (el >= 1) { sceneRef.current?.remove(heart); return false; }
+                  return true;
+                });
+              }
+
+              // Scale pulse on local player
+              const mesh = playerRef.current;
+              const ox = mesh.scale.x, oy = mesh.scale.y, oz = mesh.scale.z;
+              const pt = Date.now();
+              animationsRef.current.push(() => {
+                const el = Date.now() - pt;
+                if (el < 200) {
+                  const s = 1 + 0.4 * (el / 200);
+                  mesh.scale.set(ox * s, oy * s, oz * s);
+                } else if (el < 400) {
+                  const s = 1 + 0.4 * (1 - (el - 200) / 200);
+                  mesh.scale.set(ox * s, oy * s, oz * s);
+                } else {
+                  mesh.scale.set(ox, oy, oz);
+                  return false;
+                }
+                return true;
+              });
+            }
+
+            closeInteractionMenu();
+            return;
+          }
+
+          // ── X : EMOJI PICKER ──
+          if (e.code === 'KeyX') {
+            setIsPickingEmoji(true);
+            return;
+          }
+
+          // ── 1-6 : SEND EMOJI (when picker is open) ──
+          const emojiMap: Record<string, string> = {
+            Digit1: "😂", Digit2: "❤️", Digit3: "👊",
+            Digit4: "🔥", Digit5: "👋", Digit6: "😤"
+          };
+          if (emojiMap[e.code] && target) {
+            const emoji = emojiMap[e.code];
+
+            if (socketRef.current) {
+              socketRef.current.send(JSON.stringify({
+                type: 'emoji',
+                fromId: petState.gitData.username,
+                toId: target.id,
+                emoji
+              }));
+            }
+
+            // Arc emoji animation from local player to target
+            if (playerRef.current && target.mesh && sceneRef.current) {
+              const eDiv = document.createElement('div');
+              eDiv.innerText = emoji;
+              eDiv.style.fontSize = '28px';
+              eDiv.style.pointerEvents = 'none';
+              const eObj = new THREE.CSS2DObject(eDiv);
+              const startPos = playerRef.current.position.clone().add(new THREE.Vector3(0, 2, 0));
+              eObj.position.copy(startPos);
+              sceneRef.current.add(eObj);
+              const et = Date.now();
+              const duration = 1500;
+              animationsRef.current.push(() => {
+                const elapsed = Date.now() - et;
+                const t = Math.min(elapsed / duration, 1);
+                const targetPos = target.mesh.position.clone().add(new THREE.Vector3(0, 2, 0));
+                const pos = startPos.clone().lerp(targetPos, t);
+                pos.y += Math.sin(t * Math.PI) * 2;
+                eObj.position.copy(pos);
+                if (t > 0.66) eDiv.style.opacity = String(1 - (t - 0.66) * 3);
+                if (t >= 1) { sceneRef.current?.remove(eObj); return false; }
+                return true;
+              });
+            }
+
+            setIsPickingEmoji(false);
+            closeInteractionMenu();
+            return;
+          }
+
+          return; // block all other keys
         }
 
         keysRef.current[e.code] = true;
@@ -1637,7 +1882,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               {/* Command pills */}
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 {[
-                  { key: 'Z', label: 'Fight',  color: '#FF4444' },
+                  { key: 'Z', label: 'Hold Z · Fight', color: '#FF4444' },
                   { key: 'F', label: 'Friend', color: '#4CAF50' },
                   { key: 'X', label: 'Emoji',  color: '#FF9800' },
                   { key: 'ESC', label: 'Leave', color: 'rgba(255,255,255,0.3)' },
