@@ -819,15 +819,65 @@ export default function LandingPage() {
 
       {!cinematicDone && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 91, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, opacity: introStep === 1 ? 1 : 0, transition: 'opacity 0.8s ease', position: 'absolute' }}>
-            <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 14, color: '#ffd4a0', letterSpacing: 6 }}>GIT PET</div>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10, color: 'rgba(240,235,224,0.4)' }}>Your GitHub commits · made alive</div>
-          </div>
-          <div style={{ opacity: introStep >= 2 ? 1 : 0, transition: 'opacity 0.8s ease', position: 'absolute' }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10, color: '#ffd4a0', letterSpacing: 3, textTransform: 'uppercase' }}>
-              WASD TO MOVE &nbsp;·&nbsp; E TO INTERACT &nbsp;·&nbsp; EXPLORE THE WORLD
+          {/* Beat 0 -> 1: Only the original serif line */}
+          {introStep < 2 && (
+            <div style={{
+              fontFamily: "'Instrument Serif', serif",
+              fontStyle: 'italic',
+              fontSize: 'clamp(20px,3vw,36px)',
+              color: 'rgba(240,235,224,0.85)',
+              animation: 'fadeInOut 4s ease 0.5s both',
+              textAlign: 'center',
+            }}>
+              Your GitHub activity is waiting inside.
             </div>
-          </div>
+          )}
+
+          {/* Beat 2: GIT PET title + subtitle */}
+          {introStep === 2 && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
+              animation: 'fadeInOut 2.5s ease 0s both',
+            }}>
+              <div style={{
+                fontFamily: "'Press Start 2P', monospace",
+                fontSize: 14,
+                color: '#ffd4a0',
+                letterSpacing: 6,
+                textShadow: '0 0 30px rgba(255,180,80,0.5)',
+              }}>
+                GIT PET
+              </div>
+              <div style={{
+                fontFamily: "'DM Mono', monospace",
+                fontWeight: 300,
+                fontSize: 11,
+                color: 'rgba(240,235,224,0.5)',
+                letterSpacing: 2,
+              }}>
+                Your GitHub commits · made alive
+              </div>
+            </div>
+          )}
+
+          {/* Beat 3: Controls hint */}
+          {introStep === 3 && (
+            <div style={{
+              fontFamily: "'DM Mono', monospace",
+              fontWeight: 300,
+              fontSize: 10,
+              color: '#ffd4a0',
+              letterSpacing: 3,
+              textTransform: 'uppercase',
+              animation: 'fadeInOut 2s ease 0s both',
+              textAlign: 'center',
+            }}>
+              WASD TO MOVE  ·  E TO INTERACT  ·  EXPLORE THE WORLD
+            </div>
+          )}
         </div>
       )}
 
