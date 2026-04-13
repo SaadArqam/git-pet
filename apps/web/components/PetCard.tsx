@@ -8,11 +8,11 @@ import Link from "next/link";
 import type { Species } from "@/lib/redis";
 
 const MOOD_COLOR: Record<string, string> = {
-  happy:   "#22c55e",
+  happy: "#22c55e",
   neutral: "#94a3b8",
-  tired:   "#f59e0b",
-  sad:     "#ef4444",
-  coma:    "#6366f1",
+  tired: "#f59e0b",
+  sad: "#ef4444",
+  coma: "#6366f1",
 };
 
 const STAGE_LABEL: Record<string, string> = {
@@ -44,14 +44,14 @@ export function PetCard({ petState, species }: Props) {
     <div style={{ background: "#0f172a", border: "2px solid #1e293b", borderRadius: 16, padding: 20, width: "100%", maxWidth: 380, fontFamily: "monospace" }}>
 
       <div style={{ background: "#020617", borderRadius: 8, border: "2px solid #1e293b", overflow: "hidden", marginBottom: 16 }}>
-        
+
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid #1e293b" }}>
           <span style={{ fontSize: 10, color: "#475569" }}>@{gitData.username}</span>
           <span style={{ fontSize: 10, color: moodColor }}>{mood.toUpperCase()}</span>
           <span style={{ fontSize: 10, color: "#334155" }}>{STAGE_LABEL[stage]}</span>
         </div>
 
-        <PetCanvas 
+        <PetCanvas
           petState={petState}
           species={species}
         />
@@ -67,10 +67,10 @@ export function PetCard({ petState, species }: Props) {
       </div>
 
       <div style={{ background: "#0a1628", borderRadius: 8, padding: "14px 16px", border: "1px solid #1e293b", marginBottom: 12 }}>
-        <StatBar label="HP"  value={stats.health}       color="#22c55e" />
-        <StatBar label="NRG" value={stats.energy}       color="#f59e0b" />
+        <StatBar label="HP" value={stats.health} color="#22c55e" />
+        <StatBar label="NRG" value={stats.energy} color="#f59e0b" />
         <StatBar label="INT" value={stats.intelligence} color="#3b82f6" />
-        <StatBar label="JOY" value={stats.happiness}    color="#ec4899" />
+        <StatBar label="JOY" value={stats.happiness} color="#ec4899" />
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>

@@ -64,6 +64,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [friendCount, setFriendCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [isFighting, setIsFighting] = useState(false);
+  const [targetHP, setTargetHP] = useState(100);
+  const lastFightTime = useRef<number>(0);
   const [isPickingEmoji, setIsPickingEmoji] = useState(false);
 
   // Interaction Data Refs
@@ -78,27 +81,21 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   // Interaction Menu State
   const [interactionTarget, setInteractionTarget] = useState<{ id: string, mesh: any } | null>(null);
-  const [isClosing, setIsClosing] = useState(false);
   const movementBlocked = useRef(false);
-
-  const INTERACTION_OPTIONS = [
-    { id: 'befriend', label: 'Befriend', icon: '♥', color: '#4CAF50' },
-    { id: 'fight',    label: 'Fight',    icon: '⚔', color: '#F44336' },
-    { id: 'emoji',    label: 'Send Emoji', icon: '✦', color: '#FF9800' },
-  ];
-
-  const EMOJI_OPTIONS = ["😂", "❤️", "👊", "🔥", "👋", "😤"];
-
   const speciesCache = useRef<Map<string, string>>(new Map());
 
   const closeInteractionMenu = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      setInteractionTarget(null);
-      setIsClosing(false);
-      movementBlocked.current = false;
-      interactionOpen.current = false;
-    }, 180);
+    setInteractionTarget(null);
+    setIsPickingEmoji(false);
+    setIsFighting(false);
+    setTargetHP(100);
+    movementBlocked.current = false;
+    interactionOpen.current = false;
+    // Hard-clear all keys and velocity so no drift/lurch on close
+    keysRef.current = {};
+    playerStateRef.current.vel.x = 0;
+    playerStateRef.current.vel.z = 0;
+    playerStateRef.current.isMoving = false;
   };
 
   const showToast = (msg: string) => {
@@ -106,13 +103,30 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     setTimeout(() => setToast(null), 2000);
   };
 
+  const handleFightKey = () => {
+    if (!interactionTarget) return;
+    const now = Date.now();
+    if (now - lastFightTime.current < 700) return;
+    lastFightTime.current = now;
+    setIsFighting(true);
+    fightPlayer(interactionTarget);
+  };
+
+  const handleBefriendKey = () => {
+    if (!interactionTarget) return;
+    befriendPlayer(interactionTarget);
+    closeInteractionMenu();
+  };
+
+  const handleEmojiMenuKey = () => {
+    setIsPickingEmoji(true);
+  };
+
+  // handleInteraction kept for compatibility but unused by new HUD
   const handleInteraction = (optionId: string, target: any) => {
-    if (optionId === 'emoji') {
-      setIsPickingEmoji(true);
-      return;
-    }
-    if (optionId === 'befriend') befriendPlayer(target);
-    if (optionId === 'fight') fightPlayer(target);
+    if (optionId === 'emoji') { setIsPickingEmoji(true); return; }
+    if (optionId === 'befriend') { befriendPlayer(target); closeInteractionMenu(); return; }
+    if (optionId === 'fight') { setIsFighting(true); fightPlayer(target); return; }
     closeInteractionMenu();
   };
 
@@ -152,42 +166,59 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   // --- Interaction Logic ---
 
   const triggerHeartAnim = (mesh: any) => {
-    if (!mesh) return;
-    const pos = mesh.position;
+    if (!mesh || !sceneRef.current) return;
+    const THREE = (window as any).THREE;
+    if (!THREE || !THREE.CSS2DObject) return;
+
     for (let i = 0; i < 8; i++) {
       const div = document.createElement('div');
       div.innerHTML = "♥";
-      div.style.color = "#FF0000";
-      div.style.fontSize = "20px";
+      div.style.color = "#FF4466";
+      div.style.fontSize = "22px";
       div.style.fontWeight = "bold";
-      const THREE = (window as any).THREE;
+      div.style.userSelect = "none";
+      div.style.pointerEvents = "none";
       const heart = new THREE.CSS2DObject(div);
-      heart.position.set(pos.x + (Math.random() - 0.5), 1.5 + i * 0.2, pos.z);
+      // Position relative to mesh position
+      heart.position.set(
+        mesh.position.x + (Math.random() - 0.5) * 1.5,
+        mesh.position.y + 1.5 + i * 0.25,
+        mesh.position.z + (Math.random() - 0.5) * 0.5
+      );
       sceneRef.current.add(heart);
-
-      const startTime = Date.now();
+      const heartStart = Date.now();
       animationsRef.current.push(() => {
-        const elapsed = (Date.now() - startTime) / 2000;
-        heart.position.y += 0.015;
-        div.style.opacity = (1 - elapsed).toString();
-        if (elapsed >= 1) { sceneRef.current.remove(heart); return false; }
+        const el = (Date.now() - heartStart) / 2000;
+        heart.position.y += 0.018;
+        heart.position.x += Math.sin(Date.now() * 0.005) * 0.005;
+        div.style.opacity = String(Math.max(0, 1 - el));
+        if (el >= 1) {
+          if (sceneRef.current) sceneRef.current.remove(heart);
+          return false;
+        }
         return true;
       });
     }
 
-    // Pulse
-    const originalScale = mesh.scale.x;
-    const startTime = Date.now();
+    // Scale-only pulse — safe on any mesh type including billboard
+    const originalScale = { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z };
+    const pulseStart = Date.now();
     animationsRef.current.push(() => {
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 200) {
-        const s = originalScale + (0.3 * (elapsed / 200));
-        mesh.scale.set(s, s, s);
-      } else if (elapsed < 400) {
-        const s = (originalScale + 0.3) - (0.3 * ((elapsed - 200) / 200));
-        mesh.scale.set(s, s, s);
+      const el = Date.now() - pulseStart;
+      if (el < 200) {
+        const s = 1 + (0.35 * (el / 200));
+        mesh.scale.set(originalScale.x * s, originalScale.y * s, originalScale.z * s);
+      } else if (el < 400) {
+        const s = 1 + (0.35 * (1 - (el - 200) / 200));
+        mesh.scale.set(originalScale.x * s, originalScale.y * s, originalScale.z * s);
+      } else if (el < 600) {
+        const s = 1 + (0.2 * ((el - 400) / 200));
+        mesh.scale.set(originalScale.x * s, originalScale.y * s, originalScale.z * s);
+      } else if (el < 800) {
+        const s = 1 + (0.2 * (1 - (el - 600) / 200));
+        mesh.scale.set(originalScale.x * s, originalScale.y * s, originalScale.z * s);
       } else {
-        mesh.scale.set(originalScale, originalScale, originalScale);
+        mesh.scale.set(originalScale.x, originalScale.y, originalScale.z);
         return false;
       }
       return true;
@@ -211,45 +242,65 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   };
 
   const triggerDamageAnim = (mesh: any, damageAmount: number) => {
-    if (!mesh) return;
+    if (!mesh || !sceneRef.current) return;
     const THREE = (window as any).THREE;
-    
-    // Flash
-    const material = mesh.children[0].material;
-    const originalColor = material.color.clone();
-    material.color.set(0xFF0000);
-    setTimeout(() => material.color.copy(originalColor), 100);
+    if (!THREE?.CSS2DObject) return;
 
-    // Damage Number
-    const div = document.createElement('div');
-    div.innerText = `-${damageAmount}`;
-    div.style.color = "#FF0000";
-    div.style.fontWeight = "bold";
-    div.style.fontSize = "24px";
-    const damageObj = new THREE.CSS2DObject(div);
-    damageObj.position.copy(mesh.position).add(new THREE.Vector3(0, 3.5, 0));
-    sceneRef.current.add(damageObj);
-
-    const startTime = Date.now();
+    // Floating damage number
+    const dmgDiv = document.createElement('div');
+    dmgDiv.innerText = `-${damageAmount}`;
+    dmgDiv.style.color = "#FF3333";
+    dmgDiv.style.fontWeight = "bold";
+    dmgDiv.style.fontSize = "28px";
+    dmgDiv.style.textShadow = "0 0 10px rgba(255,0,0,0.9)";
+    dmgDiv.style.pointerEvents = "none";
+    dmgDiv.style.userSelect = "none";
+    const dmgObj = new THREE.CSS2DObject(dmgDiv);
+    dmgObj.position.set(mesh.position.x, mesh.position.y + 2.5, mesh.position.z);
+    sceneRef.current.add(dmgObj);
+    const t0 = Date.now();
     animationsRef.current.push(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      damageObj.position.y += 0.02;
-      div.style.opacity = (1 - elapsed).toString();
-      if (elapsed >= 1) { sceneRef.current.remove(damageObj); return false; }
+      const el = (Date.now() - t0) / 1000;
+      dmgObj.position.y += 0.022;
+      dmgDiv.style.opacity = String(Math.max(0, 1 - el));
+      if (el >= 1) { sceneRef.current?.remove(dmgObj); return false; }
+      return true;
+    });
+
+    // Scale hit reaction on target mesh
+    const ox = mesh.scale.x, oy = mesh.scale.y, oz = mesh.scale.z;
+    const t1 = Date.now();
+    animationsRef.current.push(() => {
+      const el = Date.now() - t1;
+      if (el < 100) {
+        mesh.scale.set(ox * 1.3, oy * 0.8, oz * 1.3);
+      } else if (el < 250) {
+        mesh.scale.set(ox, oy, oz);
+      } else {
+        mesh.scale.set(ox, oy, oz);
+        return false;
+      }
       return true;
     });
   };
 
   const fightPlayer = (target: any) => {
+    // 800ms cooldown to prevent spam damage
+    const now = Date.now();
+    if (now - lastFightTime.current < 800) return;
+    lastFightTime.current = now;
+
     const currentHP = remotePlayerHealth.current.get(target.id) ?? 100;
     const newHP = Math.max(0, currentHP - 20);
     remotePlayerHealth.current.set(target.id, newHP);
+    setTargetHP(newHP);
 
     if (socketRef.current) {
       socketRef.current.send(JSON.stringify({ type: 'fight', fromId: petState.gitData.username, toId: target.id, damage: 20 }));
     }
 
-    // Update HP Bar
+    // Update in-world HP Bar (keyed by username = target.id)
+    console.log('[fight] target.id:', target.id, 'healthBars keys:', [...healthBarsRef.current.keys()]);
     const hpData = healthBarsRef.current.get(target.id);
     if (hpData) {
       const p = newHP / 100;
@@ -261,6 +312,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       showToast("You won! 🏆");
       setTimeout(() => {
         remotePlayerHealth.current.set(target.id, 100);
+        setTargetHP(100);
         if (hpData) {
           hpData.bar.style.width = '100%';
           hpData.bar.style.background = '#4CAF50';
@@ -268,11 +320,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }, 3000);
     }
 
-    // Animation: Shake & Knockback
+    // Screen shake & knockback
     shakeRef.current = 0.3;
     const THREE = (window as any).THREE;
-    const dir = target.mesh.position.clone().sub(playerRef.current.position).normalize();
-    target.mesh.position.add(dir.multiplyScalar(0.3));
+    if (THREE && target.mesh && playerRef.current) {
+      const dir = target.mesh.position.clone().sub(playerRef.current.position).normalize();
+      target.mesh.position.add(dir.multiplyScalar(0.3));
+    }
 
     triggerDamageAnim(target.mesh, 20);
   };
@@ -1040,9 +1094,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const peerMeshes = new Map<string, { bb: any, targetPos: any, targetRot: number, species: string }>();
       const openInteractionMenu = (player: { id: string, mesh: any }) => {
         setInteractionTarget(player);
-        setIsClosing(false);
         movementBlocked.current = true;
         interactionOpen.current = true;
+        // Freeze velocity and clear all keys immediately
+        keysRef.current = {};
+        playerStateRef.current.vel.x = 0;
+        playerStateRef.current.vel.z = 0;
+        playerStateRef.current.isMoving = false;
       };
 
       async function fetchSpeciesForUser(username: string) {
@@ -1182,7 +1240,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             p.pos.z += p.vel.z;
           }
           if (moved && now - lastFootstep > 320) { lastFootstep = now; playFootstep(); }
-        } else {
+        } else if (!movementBlocked.current) {
           p.pos.z -= 0.14 * (delta * 60); p.isMoving = true;
           if (p.pos.z < 15 && !cinematicDone) setCinematicDone(true);
           if (p.pos.z < -8) p.controlEnabled = true;
@@ -1305,14 +1363,32 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       const onKD = (e: any) => {
         initAudio();
-        keysRef.current[e.code] = true;
-        if (e.code === "Escape" && interactionOpen.current) {
-          closeInteractionMenu();
-        }
-        if (e.code === "KeyE") {
-          const near = interactables.find(obj => new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius);
-          if (near) { playInteract(); near.onInteract(); }
 
+        // When interaction is open, ONLY allow interaction keys, block everything else
+        if (interactionOpen.current) {
+          e.preventDefault();
+          if (e.code === 'Escape') { closeInteractionMenu(); return; }
+          if (e.code === 'KeyZ') { handleFightKey(); return; }
+          if (e.code === 'KeyF') { handleBefriendKey(); return; }
+          if (e.code === 'KeyX') { handleEmojiMenuKey(); return; }
+          if (isPickingEmoji) {
+            const emojiMap: Record<string, string> = {
+              Digit1: "\ud83d\ude02", Digit2: "\u2764\ufe0f", Digit3: "\ud83d\udc4a",
+              Digit4: "\ud83d\udd25", Digit5: "\ud83d\udc4b", Digit6: "\ud83d\ude24"
+            };
+            if (emojiMap[e.code]) { handleEmojiSelect(emojiMap[e.code], interactionTarget); return; }
+          }
+          return; // block ALL other keys
+        }
+
+        keysRef.current[e.code] = true;
+
+        if (e.code === 'Escape' && interactionOpen.current) closeInteractionMenu();
+        if (e.code === 'KeyE') {
+          const near = interactables.find(obj =>
+            new THREE.Vector3(p.pos.x, 0, p.pos.z).distanceTo(obj.pos) < obj.radius
+          );
+          if (near) { playInteract(); near.onInteract(); return; }
           if (nearbyPlayer.current && !interactionOpen.current) {
             openInteractionMenu(nearbyPlayer.current);
           }
@@ -1455,7 +1531,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', background: '#0d0f18', overflow: 'hidden' }}>
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', position: 'relative', zIndex: 1 }} />
       {(!cinematicDone || !isHydrated || !selectedPet) && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 91, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
           <div style={{ fontSize: 13, color: '#ffd4a0', letterSpacing: 4, textTransform: 'uppercase' }}>Entering the Garden...</div>
@@ -1500,120 +1576,145 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             </div>
           )}
 
-          <div ref={cssContainerRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 5 }} />
+          <div ref={cssContainerRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }} />
 
-          {/* Interaction Menu Overlay */}
-          {interactionTarget && (
+          {/* ── GAME-STYLE INTERACTION HUD ── */}
+          {interactionTarget && !isPickingEmoji && (
             <div style={{
               position: 'fixed',
-              inset: 0,
-              zIndex: 1000,
+              bottom: 60,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 500,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: 12,
               pointerEvents: 'none',
-              background: isClosing ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.4)',
-              transition: 'background 180ms ease-out',
             }}>
+              {/* Target name plate */}
               <div style={{
-                pointerEvents: 'auto',
-                background: '#1a1d2e',
-                border: '1px solid rgba(255,255,255,0.1)',
-                padding: '40px',
-                borderRadius: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                opacity: isClosing ? 0 : 1,
-                transform: isClosing ? 'scale(0.9)' : 'scale(1)',
-                transition: 'all 180ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                fontSize: 11,
+                letterSpacing: 3,
+                color: 'rgba(255,255,255,0.5)',
+                textTransform: 'uppercase',
+                marginBottom: 4,
               }}>
-                <h2 style={{ color: 'white', marginBottom: 32, fontSize: 18, fontWeight: 500, letterSpacing: 1 }}>
-                  {isPickingEmoji ? "Choose an Emoji" : "What do you want to do?"}
-                </h2>
-                
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {isPickingEmoji ? (
-                    EMOJI_OPTIONS.map(emoji => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleEmojiSelect(emoji, interactionTarget)}
-                        style={{
-                          fontSize: 32,
-                          background: 'rgba(255,255,255,0.03)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '12px',
-                          padding: '20px',
-                          cursor: 'pointer',
-                          transition: 'all 200ms',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                      >
-                        {emoji}
-                      </button>
-                    ))
-                  ) : (
-                    INTERACTION_OPTIONS.map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => handleInteraction(opt.id, interactionTarget)}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: '24px',
-                          background: 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${opt.color}33`,
-                          borderRadius: 16,
-                          cursor: 'pointer',
-                          transition: 'all 200ms',
-                          minWidth: 120,
-                          outline: 'none',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = `${opt.color}11`;
-                          e.currentTarget.style.borderColor = opt.color;
-                          e.currentTarget.style.transform = 'translateY(-4px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                          e.currentTarget.style.borderColor = `${opt.color}33`;
-                          e.currentTarget.style.transform = 'translateY(0)';
-                        }}
-                      >
-                        <span style={{ fontSize: 32, color: opt.color }}>{opt.icon}</span>
-                        <span style={{ fontSize: 13, color: 'white', fontWeight: 600, letterSpacing: 1 }}>{opt.label.toUpperCase()}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (isPickingEmoji) {
-                      setIsPickingEmoji(false);
-                    } else {
-                      closeInteractionMenu();
-                    }
-                  }}
-                  style={{
-                    marginTop: 32,
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.3)',
-                    fontSize: 10,
-                    letterSpacing: 2,
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                    textUnderlineOffset: '4px'
-                  }}
-                >
-                  {isPickingEmoji ? "BACK" : "CANCEL [ESC]"}
-                </button>
+                {interactionTarget.id}
               </div>
+
+              {/* Fight HP bar — only visible when isFighting */}
+              {isFighting && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginBottom: 4,
+                }}>
+                  <span style={{ fontSize: 10, color: '#FF4444', letterSpacing: 2 }}>ENEMY HP</span>
+                  <div style={{
+                    width: 160,
+                    height: 8,
+                    background: 'rgba(255,255,255,0.1)',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,68,68,0.3)',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${targetHP}%`,
+                      background: targetHP > 60 ? '#4CAF50' : targetHP > 30 ? '#FF9800' : '#FF3333',
+                      transition: 'width 200ms ease-out, background 200ms',
+                      borderRadius: 4,
+                    }} />
+                  </div>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', minWidth: 28 }}>
+                    {targetHP}
+                  </span>
+                </div>
+              )}
+
+              {/* Command pills */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {[
+                  { key: 'Z', label: 'Fight',  color: '#FF4444' },
+                  { key: 'F', label: 'Friend', color: '#4CAF50' },
+                  { key: 'X', label: 'Emoji',  color: '#FF9800' },
+                  { key: 'ESC', label: 'Leave', color: 'rgba(255,255,255,0.3)' },
+                ].map(cmd => (
+                  <div key={cmd.key} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    background: 'rgba(10,8,4,0.75)',
+                    border: `1px solid ${cmd.color}44`,
+                    borderRadius: 8,
+                    padding: '8px 14px',
+                  }}>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: cmd.color,
+                      background: `${cmd.color}22`,
+                      border: `1px solid ${cmd.color}55`,
+                      borderRadius: 4,
+                      padding: '2px 7px',
+                      letterSpacing: 1,
+                      fontFamily: 'monospace',
+                    }}>
+                      {cmd.key}
+                    </span>
+                    <span style={{
+                      fontSize: 10,
+                      color: 'rgba(255,255,255,0.6)',
+                      letterSpacing: 2,
+                      textTransform: 'uppercase',
+                    }}>
+                      {cmd.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── EMOJI PICKER HUD ── */}
+          {interactionTarget && isPickingEmoji && (
+            <div style={{
+              position: 'fixed',
+              bottom: 60,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 500,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
+              pointerEvents: 'none',
+            }}>
+              <div style={{ fontSize: 10, letterSpacing: 3, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>
+                Press 1–6 to send
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {["\ud83d\ude02","\u2764\ufe0f","\ud83d\udc4a","\ud83d\udd25","\ud83d\udc4b","\ud83d\ude24"].map((emoji, i) => (
+                  <div key={emoji} style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: 'rgba(10,8,4,0.75)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 10,
+                    padding: '10px 14px',
+                  }}>
+                    <span style={{ fontSize: 24 }}>{emoji}</span>
+                    <span style={{ fontSize: 10, color: '#FF9800', fontFamily: 'monospace', fontWeight: 700 }}>
+                      {i + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: 2 }}>ESC · BACK</div>
             </div>
           )}
         </>

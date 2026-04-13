@@ -16,11 +16,11 @@ const MOOD_COLOR: Record<string, string> = {
 };
 
 const SPECIES_PRIMARY: Record<string, string> = {
-  wolf:       "#94a3b8",
+  wolf: "#94a3b8",
   sabertooth: "#f8fafc",
-  capybara:   "#a16207",
-  dragon:     "#7c3aed",
-  axolotl:    "#db2777",
+  capybara: "#a16207",
+  dragon: "#7c3aed",
+  axolotl: "#db2777",
 };
 
 // -- INLINE SPECIES DRAW FUNCTIONS --
@@ -129,11 +129,11 @@ function axolotlSVG(x0: number, y0: number, color: string): string[] {
 }
 
 const SPECIES_SVG: Record<string, PixelFn> = {
-  wolf:       wolfSVG,
+  wolf: wolfSVG,
   sabertooth: sabertoothSVG,
-  capybara:   capybaraSVG,
-  dragon:     dragonSVG,
-  axolotl:    axolotlSVG,
+  capybara: capybaraSVG,
+  dragon: dragonSVG,
+  axolotl: axolotlSVG,
 };
 
 function fallbackDefaultRects(color: string, stage: string, mood: string): string[] {
@@ -143,14 +143,14 @@ function fallbackDefaultRects(color: string, stage: string, mood: string): strin
   const SPRITE_H = 11 * PS;
   const spriteOffX = 18 + Math.floor((152 - SPRITE_W) / 2);
   const spriteOffY = 36 + Math.floor((118 - SPRITE_H) / 2) - 2;
-  return pixels.map(([px, py, c]) => 
+  return pixels.map(([px, py, c]) =>
     `<rect x="${spriteOffX + px * PS}" y="${spriteOffY + py * PS}" width="${PS}" height="${PS}" fill="${c}"/>`
   );
 }
 
 // Read species directly from Upstash Redis REST API — fully edge-safe
 async function getSpeciesEdge(username: string): Promise<string | null> {
-  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
@@ -179,14 +179,14 @@ export async function GET(
   if (!token) return new Response("GITHUB_CARD_TOKEN not set", { status: 500 });
 
   // Get species directly from Redis (edge-safe)
-  const species      = await getSpeciesEdge(username);
-  const petColor     = (species && SPECIES_PRIMARY[species]) ? SPECIES_PRIMARY[species]! : "";
+  const species = await getSpeciesEdge(username);
+  const petColor = (species && SPECIES_PRIMARY[species]) ? SPECIES_PRIMARY[species]! : "";
 
   let petState: PetState;
   try {
-    const client  = new GitHubClient(token);
+    const client = new GitHubClient(token);
     const gitData = await client.fetchUserStats(username);
-    petState      = derivePetState(gitData);
+    petState = derivePetState(gitData);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "unknown";
     return new Response(`Failed: ${msg}`, { status: 500 });
@@ -194,7 +194,7 @@ export async function GET(
 
   const { stats, mood, stage, gitData, primaryColor } = petState;
   const finalColor = petColor || primaryColor;
-  const moodColor  = MOOD_COLOR[mood]   ?? "#94a3b8";
+  const moodColor = MOOD_COLOR[mood] ?? "#94a3b8";
   const stageLabel = STAGE_LABEL[stage] ?? stage.toUpperCase();
 
   const x0 = 18 + 20;
@@ -208,16 +208,16 @@ export async function GET(
   // Stat bars
   const BAR_W = 150;
   const bars = [
-    { label: "HP",  value: stats.health,       color: "#22c55e" },
-    { label: "NRG", value: stats.energy,       color: "#f59e0b" },
+    { label: "HP", value: stats.health, color: "#22c55e" },
+    { label: "NRG", value: stats.energy, color: "#f59e0b" },
     { label: "INT", value: stats.intelligence, color: "#3b82f6" },
-    { label: "JOY", value: stats.happiness,    color: "#ec4899" },
+    { label: "JOY", value: stats.happiness, color: "#ec4899" },
   ];
 
   const barSvg = bars.map(({ label, value, color }, i) => {
-    const by     = 64 + i * 26;
+    const by = 64 + i * 26;
     const filledW = Math.round((value / 100) * BAR_W);
-    const delay   = (i * 0.12).toFixed(2);
+    const delay = (i * 0.12).toFixed(2);
     return `
       <text x="200" y="${by + 12}" font-family="'Courier New',monospace" font-size="11" fill="#64748b">${label}</text>
       <rect x="236" y="${by + 4}" width="${BAR_W}" height="7" rx="3" fill="#1e293b"/>
@@ -229,7 +229,7 @@ export async function GET(
 
   // Mood particles
   const showParticles = mood === "happy";
-  const showZs        = mood === "tired" || mood === "coma";
+  const showZs = mood === "tired" || mood === "coma";
   const pCx = x0 + 20; // approximation of center
   const pCy = y0 - 10;
 
@@ -342,10 +342,44 @@ export async function GET(
 
   return new Response(svg, {
     headers: {
-      "Content-Type":  "image/svg+xml",
+      "Content-Type": "image/svg+xml",
       "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Pragma":        "no-cache",
-      "Expires":       "0"
+      "Pragma": "no-cache",
+      "Expires": "0"
     },
   });
+}               <div style={{ display: 'flex', fontSize: '16px', color: '#64748b', marginBottom: '4px' }}>
+                    <span style={{ width: '80px' }}>Commits</span>
+                    <span style={{ color: 'white' }}>{totalCommits}</span>
+                </div>
+                <div style={{ display: 'flex', fontSize: '16px', color: '#64748b', marginBottom: '4px' }}>
+                    <span style={{ width: '80px' }}>Streak</span>
+                    <span style={{ color: 'white' }}>{streak}d</span>
+                </div>
+                <div style={{ display: 'flex', fontSize: '16px', color: '#64748b' }}>
+                    <span style={{ width: '80px' }}>Friends</span>
+                    <span style={{ color: 'white' }}>{friends}</span>
+                </div>
+            </div >
+          </div >
+
+  <div style={{ position: 'absolute', bottom: '24px', left: '32px', right: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', fontFamily: 'monospace' }}>git-pet-beta.vercel.app</div>
+    <div style={{ color: '#ffd4a0', fontSize: '16px' }}>✦</div>
+  </div>
+        </div >
+      ),
+{
+  width: 500,
+    height: 280,
+      headers: {
+    'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+        },
+}
+    );
+  } catch (err) {
+  console.error("Error generating card:", err);
+  return new Response("Error generating card", { status: 500 });
+}
 }
