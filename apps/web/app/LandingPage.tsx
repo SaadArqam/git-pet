@@ -48,6 +48,8 @@ export default function LandingPage() {
 
     if (status === 'authenticated') {
       router.push('/world')
+    } else {
+      signIn('github', { callbackUrl: '/world' })
     }
     
     // Reset trigger after a tick to avoid cascading render warning
