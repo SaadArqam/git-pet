@@ -30,8 +30,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   // Movement & State
   const keysRef = useRef<Record<string, boolean>>({});
   const playerStateRef = useRef({
-    pos: { x: 0, y: 0.5, z: 35 },
-    rot: 0,
+    pos: { x: 0, y: 0.5, z: -21.5 },
+    rot: Math.PI,
     vel: { x: 0, y: 0, z: 0 },
     isMoving: false,
     controlEnabled: false,
@@ -39,8 +39,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   });
 
   const petStateRef = useRef({
-    pos: { x: 0, y: 0.5, z: 38 },
-    rot: 0,
+    pos: { x: 0, y: 0.5, z: -22.5 },
+    rot: Math.PI,
     mesh: null as any,
     bb: null as any
   });
@@ -144,7 +144,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     } catch (e) {
       console.error("Failed to load pet from localStorage", e);
     }
-    
+
     // Fetch friends
     fetch(`/api/friends?userId=${petState.gitData.username}`)
       .then(res => res.json())
@@ -349,7 +349,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const now = Date.now();
       const elapsed = now - startTime;
       const t = Math.min(elapsed / duration, 1);
-      
+
       const targetPos = target.mesh.position.clone().add(new THREE.Vector3(0, 2, 0));
       const pos = startPos.clone().lerp(targetPos, t);
       pos.y += Math.sin(t * Math.PI) * 2;
@@ -411,12 +411,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.outputEncoding = THREE.sRGBEncoding;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2;
       rendererRef.current = renderer;
 
       const scene = new THREE.Scene();
       sceneRef.current = scene;
-      scene.fog = new THREE.Fog(0xf5e6d3, 50, 200);
-      scene.background = new THREE.Color(0xf5e6d3);
+      scene.fog = new THREE.FogExp2(0xb8cce0, 0.018);
+      scene.background = new THREE.Color(0x87b4d0);
 
       const labelRenderer = new THREE.CSS2DRenderer();
       labelRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -434,7 +435,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const sunLink = new THREE.DirectionalLight(0xffd4a0, 2.4);
       sunLink.position.set(20, 40, 10); sunLink.castShadow = true;
       sunLink.shadow.mapSize.width = 2048; sunLink.shadow.mapSize.height = 2048;
+      sunLink.shadow.camera.near = 1; sunLink.shadow.camera.far = 140;
+      sunLink.shadow.camera.left = -60; sunLink.shadow.camera.right = 60;
+      sunLink.shadow.camera.top = 60; sunLink.shadow.camera.bottom = -60;
+      sunLink.shadow.bias = -0.001;
       scene.add(sunLink);
+      const fillLight = new THREE.DirectionalLight(0x9bb8d4, 0.7);
+      fillLight.position.set(-20, 15, -10); scene.add(fillLight);
       const ambientLight = new THREE.AmbientLight(0xffe8c0, 0.55); scene.add(ambientLight);
       const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.45); scene.add(hemiLight);
 
@@ -518,7 +525,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }));
         mesh.position.set(x, y, z); mesh.castShadow = castShadow; mesh.receiveShadow = receiveShadow;
         scene.add(mesh);
-        if (isSolid) colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh });
+        if (isSolid) { mesh.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh }); }
         return mesh;
       }
 
@@ -571,6 +578,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       function buildPath(startX: number, startZ: number, endX: number, endZ: number, count: number) {
+        const stoneColors = [0x9a9a9a, 0x8a8a8a, 0xaaaaaa, 0x888888];
         for (let i = 0; i < count; i++) {
           const t = i / count;
           const x = startX + (endX - startX) * t;
@@ -578,7 +586,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const y = getGroundHeight(x, z);
           const pathPiece = new THREE.Mesh(
             new THREE.BoxGeometry(1.0, 0.06, 0.7),
-            new THREE.MeshLambertMaterial({ color: 0xFFF5E4 })
+            new THREE.MeshLambertMaterial({ color: stoneColors[Math.floor(Math.random() * 4)] })
           );
           pathPiece.position.set(x + (Math.random() - 0.5) * 0.5, y + 0.03, z + (Math.random() - 0.5) * 0.5);
           pathPiece.rotation.y = Math.atan2(endX - startX, endZ - startZ) + (Math.random() - 0.5) * 0.6;
@@ -600,10 +608,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const instancedGrass = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), new THREE.MeshLambertMaterial({ color: 0x7BAF5A }), 1200);
       let grassIndex = 0;
 
-      const instancedTreeTrunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.5, 2, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a1a }), 400);
+      const instancedTreeTrunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.5, 2, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a1a }), 800);
       let treeTrunkIndex = 0;
 
-      const instancedTreeCanopies = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2, 0), new THREE.MeshLambertMaterial({ color: 0x3a5a28 }), 800);
+      const instancedTreeCanopies = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(2, 0), new THREE.MeshLambertMaterial({ color: 0x3a5a28 }), 1600);
       let treeCanopyIndex = 0;
 
       const instancedCacti = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 1, 0.3), new THREE.MeshLambertMaterial({ color: 0x2d5a27 }), 200);
@@ -638,7 +646,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       function addInstancedTree(x: number, y: number, z: number, scale: number) {
-        if (treeTrunkIndex >= 400 || treeCanopyIndex >= 798) return;
+        if (treeTrunkIndex >= 800 || treeCanopyIndex >= 1598) return;
         matrix.compose(new THREE.Vector3(x, y + 1 * scale, z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, scale));
         instancedTreeTrunks.setMatrixAt(treeTrunkIndex++, matrix);
 
@@ -680,34 +688,49 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
 
       function buildTorii(x: number, z: number) {
-        const red = 0xcc3300;
+        const red = 0xcc3300, darkRed = 0x992200;
         for (let py = 0; py < 5; py++) { vox(x - 1.8, py + 0.5, z, red, 1, 1, 0.35, true, false, true); vox(x + 1.8, py + 0.5, z, red, 1, 1, 0.35, true, false, true); }
-        vox(x, 5.3, z, 0x992200, 6, 0.45, 0.5, true, false, true); vox(x, 4.6, z, red, 5, 0.35, 0.45, true);
+        vox(x, 5.3, z, darkRed, 6, 0.45, 0.5, true, false, true);
+        vox(x, 4.6, z, red, 5, 0.35, 0.45, true);
+        vox(x - 1.8, 4.6, z, darkRed, 0.25, 0.8, 0.35);
+        vox(x + 1.8, 4.6, z, darkRed, 0.25, 0.8, 0.35);
       }
       buildTorii(0, -7); buildTorii(0, -18);
-
+      const lanternMats: any[] = [];
       function buildStoneLantern(x: number, z: number) {
         const g = new THREE.Group();
         g.position.set(x, 0, z);
 
-        const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), new THREE.MeshLambertMaterial({ color: 0x808080 }));
-        base.position.y = 0.15;
+        const stone = 0x888880;
+
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.45, 0.85), new THREE.MeshLambertMaterial({ color: stone }));
+        base.position.y = 0.2;
         g.add(base);
 
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.5, 0.35), new THREE.MeshLambertMaterial({ color: 0xFFF5E4 }));
-        body.position.y = 0.55;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 0.45), new THREE.MeshLambertMaterial({ color: stone }));
+        body.position.y = 0.65;
         g.add(body);
 
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.15, 0.5), new THREE.MeshLambertMaterial({ color: 0x404040 }));
-        cap.position.y = 0.875;
+        const neck = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.45), new THREE.MeshLambertMaterial({ color: stone }));
+        neck.position.y = 1.1;
+        g.add(neck);
+
+        const lMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(0xffcc66), emissive: new THREE.Color(0xffaa22), emissiveIntensity: 1.0 });
+        const lMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.7), lMat);
+        lMesh.position.set(0, 1.75, 0); lMesh.castShadow = true; g.add(lMesh);
+        lanternMats.push(lMat);
+
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.2, 0.95), new THREE.MeshLambertMaterial({ color: stone }));
+        cap.position.y = 2.15;
         g.add(cap);
 
-        const light = new THREE.PointLight(0xFFD580, 0.4, 4);
-        light.position.y = 0.55;
+        const light = new THREE.PointLight(0xffaa22, 1.4, 8);
+        light.position.y = 1.8;
         g.add(light);
 
         worldDecor.add(g);
-        colliders.push({ box: new THREE.Box3().setFromObject(g), mesh: g });
+        g.updateMatrixWorld(true);
+        colliders.push({ box: new THREE.Box3().setFromObject(base), mesh: base });
       }
       buildStoneLantern(-2, -7);
       buildStoneLantern(2, -7);
@@ -748,11 +771,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           scene.add(petal);
         }
       }
-      buildCherryTree(-11, -5, 6); buildCherryTree(-15, -13, 5); buildCherryTree(12, -8, 4); buildCherryTree(-9, 8, 4);
+      buildCherryTree(-11, -5, 6); buildCherryTree(-17, -13, 5); buildCherryTree(14, -8, 4); buildCherryTree(-9, 8, 4);
 
       const POND_X = 9, POND_Z = -4;
       const pondGeo = new THREE.CylinderGeometry(4, 4, 0.1, 16);
-      const pondMat = new THREE.MeshLambertMaterial({ color: 0xA8D8EA, transparent: true, opacity: 0.9 });
+      const pondMat = new THREE.MeshLambertMaterial({ color: 0x3d8fa8, transparent: true, opacity: 0.82 });
       pondMesh = new THREE.Mesh(pondGeo, pondMat);
       pondMesh.position.set(POND_X, 0.05, POND_Z);
       worldDecor.add(pondMesh);
@@ -776,16 +799,202 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           m.position.set(x + sx, s * 0.45, z + sz + 3); g.add(m);
         }
         for (let wx = -3; wx <= 3; wx++) for (let wy = 0; wy < 4; wy++) for (let wz = -2; wz <= 2; wz++) {
-          if (Math.abs(wx) === 3 || Math.abs(wz) === 2 || wy === 0) {
-            if (wx === 0 && wz === -2 && wy < 2) continue;
-            const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: wood }));
-            m.position.set(x + wx, 1.4 + wy, z + wz); g.add(m);
-            colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
+          const isWall = Math.abs(wx) === 3 || Math.abs(wz) === 2 || wy === 0;
+          if (!isWall) continue;
+          if (wx === 0 && wz === -2 && wy < 2) continue;
+          const isWindow = Math.abs(wx) === 2 && wz === -2 && wy === 1;
+          const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: isWindow ? 0xffcc66 : wood }));
+          if (isWindow) { (m.material as any).emissive = new THREE.Color(0xffaa22); (m.material as any).emissiveIntensity = 1.2; }
+          m.position.set(x + wx, 1.4 + wy, z + wz); g.add(m);
+          m.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
+        }
+        for (let ry = 0; ry < 3; ry++) {
+          const ext = ry;
+          for (let rx = -(3 + ext); rx <= (3 + ext); rx++) for (let rz = -(2 + ext); rz <= (2 + ext); rz++) {
+            const isEdge = Math.abs(rx) === 3 + ext || Math.abs(rz) === 2 + ext;
+            if (!isEdge && ry > 0) continue;
+            const m = new THREE.Mesh(new THREE.BoxGeometry(1, 0.4, 1), new THREE.MeshLambertMaterial({ color: ry === 0 ? 0x3a2f1e : roof }));
+            m.position.set(x + rx, 5.4 + ry * 0.5, z + rz); g.add(m);
           }
         }
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.6, 0.4), new THREE.MeshLambertMaterial({ color: 0x886600 }));
+        trim.position.set(x, 5.2, z - 2.5); g.add(trim);
         return g;
       }
       const shrineGroup = buildShrine(0, -22);
+
+      // ─── SACRED REFLECTION POND (far west, off path) ─────────────────────────
+      const SACRED_X = -14, SACRED_Z = -18;
+      const sacredPondGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.12, 20);
+      const sacredPondMat = new THREE.MeshLambertMaterial({ color: 0x3d8fa8, transparent: true, opacity: 0.86 });
+      const sacredPond = new THREE.Mesh(sacredPondGeo, sacredPondMat);
+      sacredPond.position.set(SACRED_X, 0.06, SACRED_Z);
+      worldDecor.add(sacredPond);
+
+      // Lily pads on sacred pond
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const r = 1.5 + Math.random() * 2.2;
+        createLilyPad(SACRED_X + Math.cos(a) * r, SACRED_Z + Math.sin(a) * r, i * 77);
+      }
+
+      // Stone rim around sacred pond
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2;
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.2, 0.65), new THREE.MeshLambertMaterial({ color: 0x888880 }));
+        rim.position.set(SACRED_X + Math.cos(a) * 4.8, 0.1, SACRED_Z + Math.sin(a) * 4.8);
+        rim.rotation.y = a;
+        worldDecor.add(rim);
+      }
+
+      // Wooden bridge across the sacred pond (north-south)
+      const bridgeMat = new THREE.MeshLambertMaterial({ color: 0x6b4423 });
+      for (let bi = 0; bi < 10; bi++) {
+        const bz = SACRED_Z - 4.5 + bi * 1.0;
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, 0.85), bridgeMat);
+        plank.position.set(SACRED_X, 0.2, bz);
+        worldDecor.add(plank);
+      }
+      // Bridge railings
+      [{x: SACRED_X - 1.2, z: SACRED_Z - 4.5}, {x: SACRED_X + 1.2, z: SACRED_Z - 4.5},
+       {x: SACRED_X - 1.2, z: SACRED_Z + 4.0}, {x: SACRED_X + 1.2, z: SACRED_Z + 4.0}].forEach(({x, z}) => {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), bridgeMat);
+        post.position.set(x, 0.5, z);
+        worldDecor.add(post);
+      });
+      for (let side of [-1.2, 1.2]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 8.6), bridgeMat);
+        rail.position.set(SACRED_X + side, 0.82, SACRED_Z - 0.25); worldDecor.add(rail);
+      }
+
+      // Reed grasses around sacred pond
+      for (let i = 0; i < 12; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 4.7 + Math.random() * 0.6;
+        const rx2 = SACRED_X + Math.cos(angle) * radius;
+        const rz2 = SACRED_Z + Math.sin(angle) * radius;
+        const reed2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2 + Math.random() * 0.8), new THREE.MeshLambertMaterial({ color: 0x7BAF5A }));
+        reed2.position.set(rx2, 0.75, rz2);
+        worldDecor.add(reed2);
+        swayables.push({ mesh: reed2, speed: 1.3, offset: Math.random() * Math.PI * 2 });
+      }
+      // Cherry trees flanking the pond
+      buildCherryTree(SACRED_X - 6, SACRED_Z - 2, 5);
+      buildCherryTree(SACRED_X + 4, SACRED_Z + 2, 4);
+
+      // ─── CHERRY BLOSSOM AVENUE along shrine path, generously spaced ──────────
+      buildCherryTree(-8, -10, 5);
+      buildCherryTree(8, -10, 4);
+      buildCherryTree(-9, -18, 6);
+      buildCherryTree(9, -18, 5);
+      buildCherryTree(-7, -26, 4);
+      buildCherryTree(8, -26, 5);
+      buildCherryTree(-16, -12, 5);
+      buildCherryTree(15, -9, 4);
+
+      // ─── EXTRA FALLING PETALS across the whole shrine corridor ───────────────
+      const petalGeoExtra = new THREE.PlaneGeometry(0.2, 0.2);
+      const petalMatExtra = new THREE.MeshStandardMaterial({ color: 0xFFB7C5, side: THREE.DoubleSide });
+      for (let i = 0; i < 70; i++) {
+        const pMesh2 = new THREE.Mesh(petalGeoExtra, petalMatExtra);
+        pMesh2.position.set(
+          (Math.random() - 0.5) * 32,
+          3 + Math.random() * 8,
+          -5 + (Math.random() - 0.5) * 28
+        );
+        pMesh2.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        worldDecor.add(pMesh2);
+        fallingPetals.push({ mesh: pMesh2, offset: Math.random() * Math.PI * 2 });
+      }
+
+      // ─── STONE LANTERNS: one pair between each torii, generously spaced ──────
+      buildStoneLantern(-3.5, -12.5);
+      buildStoneLantern(3.5, -12.5);
+
+      // ─── STEPPING STONES winding toward sacred pond ───────────────────────────
+      const stepColors = [0x7a807a, 0x8a8a80, 0x6a7068];
+      for (let i = 0; i < 10; i++) {
+        const t = i / 9;
+        const sx = -1.5 - t * 10;
+        const sz = -13 - t * 4;
+        const ss = new THREE.Mesh(new THREE.CylinderGeometry(0.28 + Math.random() * 0.12, 0.28 + Math.random() * 0.12, 0.09 + Math.random() * 0.05, 7),
+          new THREE.MeshLambertMaterial({ color: stepColors[i % 3] }));
+        ss.position.set(sx + (Math.random() - 0.5) * 0.8, 0.05, sz + (Math.random() - 0.5) * 0.5);
+        ss.rotation.y = Math.random() * Math.PI;
+        worldDecor.add(ss);
+      }
+
+      // ─── STONE MONUMENT PILLARS flanking shrine entrance, wide ───────────────
+      [{x: -8, z: -20}, {x: 8, z: -20}].forEach(({x, z}) => {
+        const mBase = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.6), new THREE.MeshLambertMaterial({ color: 0x888878 }));
+        mBase.position.set(x, 0.15, z); worldDecor.add(mBase);
+        const mPillar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 2.2, 0.35), new THREE.MeshLambertMaterial({ color: 0x9a9a8a }));
+        mPillar.position.set(x, 1.25, z); worldDecor.add(mPillar);
+        mPillar.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(mPillar), mesh: mPillar });
+        const mCap = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.55), new THREE.MeshLambertMaterial({ color: 0x6a6a5a }));
+        mCap.position.set(x, 2.4, z); worldDecor.add(mCap);
+      });
+
+      // ─── MOSS-COVERED WELL: far east near the shrine ──────────────────────────
+      const WELL_X = 8, WELL_Z = -18;
+      const wellBase = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.6, 10), new THREE.MeshLambertMaterial({ color: 0x888870 }));
+      wellBase.position.set(WELL_X, 0.3, WELL_Z); worldDecor.add(wellBase);
+      wellBase.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(wellBase), mesh: wellBase });
+      const wellRim = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.1, 8, 16), new THREE.MeshLambertMaterial({ color: 0x6a6a58 }));
+      wellRim.position.set(WELL_X, 0.65, WELL_Z); wellRim.rotation.x = Math.PI / 2; worldDecor.add(wellRim);
+      const wellP1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.12), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+      wellP1.position.set(WELL_X - 0.7, 1.2, WELL_Z); worldDecor.add(wellP1);
+      const wellP2 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.12), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+      wellP2.position.set(WELL_X + 0.7, 1.2, WELL_Z); worldDecor.add(wellP2);
+      const wellCross = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.12), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+      wellCross.position.set(WELL_X, 1.85, WELL_Z); worldDecor.add(wellCross);
+      const wellLight = new THREE.PointLight(0xffcc66, 0.9, 6);
+      wellLight.position.set(WELL_X, 1.5, WELL_Z); scene.add(wellLight);
+
+      // ─── PRAYER ROPE (shimenawa) at torii entrance ────────────────────────────
+      [{x: -2.5, z: -6.5}, {x: 2.5, z: -6.5}].forEach(({x, z}) => {
+        const pp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.5, 8), new THREE.MeshLambertMaterial({ color: 0x9a8a7a }));
+        pp.position.set(x, 1.25, z); worldDecor.add(pp);
+      });
+      const shimeRope = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 5.2, 6), new THREE.MeshLambertMaterial({ color: 0xd4b86a }));
+      shimeRope.position.set(0, 2.1, -6.5); shimeRope.rotation.z = Math.PI / 2; worldDecor.add(shimeRope);
+      for (let i = -2; i <= 2; i++) {
+        const shide = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.5), new THREE.MeshLambertMaterial({ color: 0xfaf5e4, side: THREE.DoubleSide }));
+        shide.position.set(i * 1.0, 1.72, -6.5);
+        worldDecor.add(shide);
+        swayables.push({ mesh: shide, speed: 0.8, offset: i * 0.6 });
+      }
+
+      // ─── MEDITATION PLATFORM (far south of shrine, open area) ────────────────
+      const MED_X = 12, MED_Z = -22;
+      for (let mx = -2; mx <= 2; mx++) for (let mz = -2; mz <= 2; mz++) {
+        const tile = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 1), new THREE.MeshLambertMaterial({ color: (mx + mz) % 2 === 0 ? 0xd8c8a8 : 0xc8b898 }));
+        tile.position.set(MED_X + mx, 0.04, MED_Z + mz); worldDecor.add(tile);
+      }
+      // Cushion in center
+      const cushion = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.45, 0.15, 10), new THREE.MeshLambertMaterial({ color: 0x8B3A62 }));
+      cushion.position.set(MED_X, 0.15, MED_Z); worldDecor.add(cushion);
+      // Incense holder
+      const incenseBase = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.3), new THREE.MeshLambertMaterial({ color: 0x7a6a4a }));
+      incenseBase.position.set(MED_X + 0.8, 0.1, MED_Z); worldDecor.add(incenseBase);
+      const incenseStick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), new THREE.MeshLambertMaterial({ color: 0x8B5A2B }));
+      incenseStick.position.set(MED_X + 0.8, 0.43, MED_Z); worldDecor.add(incenseStick);
+      const incenseLight = new THREE.PointLight(0xff8822, 0.4, 3);
+      incenseLight.position.set(MED_X + 0.8, 0.9, MED_Z); scene.add(incenseLight);
+      // Stone lanterns flanking the platform
+      buildStoneLantern(MED_X - 3, MED_Z - 2);
+      buildStoneLantern(MED_X - 3, MED_Z + 2);
+      buildCherryTree(MED_X + 3, MED_Z - 3, 5);
+
+      // ─── FORTUNE BOARD (west side near path) ─────────────────────────────────
+      const FB_X = -5, FB_Z = -10;
+      const fbPost = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.5, 0.15), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+      fbPost.position.set(FB_X, 1.25, FB_Z); worldDecor.add(fbPost);
+      fbPost.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(fbPost), mesh: fbPost });
+      const fbBoard = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0x8B6914 }));
+      fbBoard.position.set(FB_X, 2.2, FB_Z - 0.1); worldDecor.add(fbBoard);
+      const fbFace = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 0.08), new THREE.MeshLambertMaterial({ color: 0xf5e8c0, emissive: new THREE.Color(0xffaa22), emissiveIntensity: 0.08 }));
+      fbFace.position.set(FB_X, 2.2, FB_Z - 0.16); worldDecor.add(fbFace);
 
       function buildForestTree(x: number, z: number, h: number) {
         const lc = [0x2d4a1e, 0x1e3014, 0x3a5a28, 0x4a6a38];
@@ -820,7 +1029,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const mesh = new THREE.Mesh(new THREE.ConeGeometry(h / 3, h, 4), mat);
         mesh.position.set(x, h / 2, z);
         scene.add(mesh);
-        colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh });
+        mesh.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh });
       }
 
       function createRuins(x: number, z: number, seed: number) {
@@ -864,10 +1073,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           const top = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), mat)
           top.position.set(x, base + 1.2, z)
           worldDecor.add(top)
-          colliders.push({ box: new THREE.Box3().setFromObject(top), mesh: top })
+          top.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(top), mesh: top })
         }
         worldDecor.add(bale)
-        colliders.push({ box: new THREE.Box3().setFromObject(bale), mesh: bale })
+        bale.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(bale), mesh: bale })
       }
 
       function createFenceSection(x: number, z: number, angle = 0) {
@@ -887,6 +1096,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         g.position.set(x, base, z)
         g.rotation.y = angle
         worldDecor.add(g)
+        g.updateMatrixWorld(true);
         colliders.push({ box: new THREE.Box3().setFromObject(p1), mesh: p1 });
         colliders.push({ box: new THREE.Box3().setFromObject(p2), mesh: p2 });
       }
@@ -962,6 +1172,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         t3.position.y = 2.05
         group.add(trunk, t1, t2, t3)
         group.position.set(x, base, z)
+        group.updateMatrixWorld(true);
         colliders.push({ box: new THREE.Box3().setFromObject(trunk), mesh: trunk })
         return group
       }
@@ -978,7 +1189,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             const r = (h - my) * (w / h);
             const m = new THREE.Mesh(new THREE.BoxGeometry(r * 2, 1.5 * 0.45, r * 2), new THREE.MeshLambertMaterial({ color: 0xF0EEF8, emissive: 0xE8E4F0, emissiveIntensity: 0.04 }));
             m.position.set(rx, base + my + 0.75 * 0.45, rz);
-            if (my < 3 * 0.45) colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
+            if (my < 3 * 0.45) { m.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m }); }
             worldDecor.add(m);
           }
           const cap = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 0.8), new THREE.MeshLambertMaterial({ color: 0xFFFFFF }));
@@ -1029,6 +1240,182 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       createMountainZone(0, -150);
       createPlainsZone(0, 150);
 
+      // ─── CAMPFIRES (Plains zone south) ───────────────────────────────────────
+      function buildCampfire(x: number, z: number) {
+        const base = getGroundHeight(x, z);
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const stone = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), new THREE.MeshLambertMaterial({ color: 0x7a7a6a }));
+          stone.position.set(x + Math.cos(a) * 0.55, base + 0.1, z + Math.sin(a) * 0.55);
+          worldDecor.add(stone);
+        }
+        for (let i = 0; i < 3; i++) {
+          const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.9, 6), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+          log.rotation.z = Math.PI / 2; log.rotation.y = (i / 3) * Math.PI;
+          log.position.set(x, base + 0.1, z); worldDecor.add(log);
+        }
+        const fireMat = new THREE.MeshLambertMaterial({ color: 0xff6600, emissive: new THREE.Color(0xff3300), emissiveIntensity: 1.5 });
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 6), fireMat);
+        flame.position.set(x, base + 0.45, z); worldDecor.add(flame);
+        swayables.push({ mesh: flame, speed: 3.5, offset: Math.random() * Math.PI * 2 });
+        const fireLight = new THREE.PointLight(0xff6600, 2.5, 10);
+        fireLight.position.set(x, base + 0.8, z); scene.add(fireLight);
+      }
+      buildCampfire(18, 45); buildCampfire(-22, 55); buildCampfire(35, 70);
+
+      // ─── ANCIENT RUINS with treasure chests (Forest zone west) ───────────────
+      function buildAncientRuin(x: number, z: number) {
+        const base = getGroundHeight(x, z);
+        const stoneMat = new THREE.MeshLambertMaterial({ color: 0xa0978a });
+        for (let i = 0; i < 4; i++) {
+          const block = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7 + Math.random() * 1.2, 0.9), stoneMat);
+          block.position.set(x + (i % 2) * 2.5, base + 0.5 + Math.random() * 0.4, z + Math.floor(i / 2) * 2.8);
+          block.rotation.y = Math.random() * 0.4;
+          worldDecor.add(block);
+          block.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(block), mesh: block });
+        }
+        const arch = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x8a8070 }));
+        arch.position.set(x + 1.25, base + 2.8, z); worldDecor.add(arch);
+        const chestBody = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.45), new THREE.MeshLambertMaterial({ color: 0x8B5A2B }));
+        chestBody.position.set(x + 1, base + 0.2, z + 1.5); worldDecor.add(chestBody);
+        chestBody.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(chestBody), mesh: chestBody });
+        const chestLid = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.45), new THREE.MeshLambertMaterial({ color: 0x7a4a1a }));
+        chestLid.position.set(x + 1, base + 0.49, z + 1.5); worldDecor.add(chestLid);
+        const goldTrim = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.47), new THREE.MeshLambertMaterial({ color: 0xffd700, emissive: new THREE.Color(0xffaa00), emissiveIntensity: 0.4 }));
+        goldTrim.position.set(x + 1, base + 0.38, z + 1.5); worldDecor.add(goldTrim);
+        const glowLight = new THREE.PointLight(0xffdd44, 0.8, 5);
+        glowLight.position.set(x + 1, base + 1.2, z + 1.5); scene.add(glowLight);
+      }
+      buildAncientRuin(-55, -20); buildAncientRuin(-70, 18); buildAncientRuin(-42, 35);
+
+      // ─── GIANT MUSHROOMS (Forest zone) ───────────────────────────────────────
+      function buildGiantMushroom(x: number, z: number, scale = 1.0) {
+        const base = getGroundHeight(x, z);
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.22 * scale, 0.3 * scale, 1.8 * scale, 8), new THREE.MeshLambertMaterial({ color: 0xddd0c0 }));
+        stem.position.set(x, base + 0.9 * scale, z); worldDecor.add(stem);
+        stem.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(stem), mesh: stem });
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.85 * scale, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xcc3344, emissive: new THREE.Color(0x881122), emissiveIntensity: 0.15 }));
+        cap.position.set(x, base + 1.8 * scale, z); worldDecor.add(cap);
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          const spot = new THREE.Mesh(new THREE.SphereGeometry(0.1 * scale, 6, 6), new THREE.MeshLambertMaterial({ color: 0xfaf5f0 }));
+          spot.position.set(x + Math.cos(a) * 0.45 * scale, base + 2.0 * scale + 0.1, z + Math.sin(a) * 0.45 * scale);
+          worldDecor.add(spot);
+        }
+        const glow = new THREE.PointLight(0xff2244, 0.3 * scale, 4 * scale);
+        glow.position.set(x, base + 2.2 * scale, z); scene.add(glow);
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        buildGiantMushroom(-80 + Math.cos(a) * 8, 10 + Math.sin(a) * 8, 0.7 + (i % 3) * 0.25);
+      }
+      buildGiantMushroom(-65, -5, 1.4); buildGiantMushroom(-90, 22, 1.1);
+
+      // ─── CRYSTAL CLUSTERS (Mountain zone north) ───────────────────────────────
+      function buildCrystalCluster(x: number, z: number, count = 5) {
+        const base = getGroundHeight(x, z);
+        const colors = [0x88ccff, 0xaaffee, 0xccaaff, 0xffaacc];
+        for (let i = 0; i < count; i++) {
+          const h = 0.8 + Math.random() * 1.8;
+          const crystalMat = new THREE.MeshStandardMaterial({ color: colors[i % 4], emissive: new THREE.Color(colors[i % 4]), emissiveIntensity: 0.3, transparent: true, opacity: 0.85 });
+          const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.15 + Math.random() * 0.12, h, 5), crystalMat);
+          const ox = (Math.random() - 0.5) * 2.5, oz = (Math.random() - 0.5) * 2.5;
+          crystal.position.set(x + ox, base + h / 2, z + oz);
+          crystal.rotation.z = (Math.random() - 0.5) * 0.5;
+          worldDecor.add(crystal);
+          crystal.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(crystal), mesh: crystal });
+        }
+        const glow = new THREE.PointLight(0x88ccff, 1.2, 8);
+        glow.position.set(x, base + 2, z); scene.add(glow);
+      }
+      buildCrystalCluster(8, -65, 7); buildCrystalCluster(-15, -72, 5);
+      buildCrystalCluster(20, -80, 6); buildCrystalCluster(-5, -55, 4);
+
+      // ─── STANDING STONE CIRCLES (Plains zone south) ───────────────────────────
+      function buildStoneCircle(cx: number, cz: number, r: number, count: number) {
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2;
+          const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+          const base = getGroundHeight(x, z);
+          const h = 1.5 + Math.random() * 1.2, w = 0.4 + Math.random() * 0.25;
+          const stone = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 0.7), new THREE.MeshLambertMaterial({ color: 0x8a8070 }));
+          stone.position.set(x, base + h / 2, z);
+          stone.rotation.y = Math.random() * 0.4;
+          worldDecor.add(stone);
+          stone.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(stone), mesh: stone });
+        }
+      }
+      buildStoneCircle(40, 70, 8, 8); buildStoneCircle(-30, 80, 6, 7); buildStoneCircle(60, 45, 5, 6);
+
+      // ─── TOTEM POLES (Desert zone east) ───────────────────────────────────────
+      function buildTotemPole(x: number, z: number) {
+        const base = getGroundHeight(x, z);
+        const segColors = [0x8B4513, 0x6b3a1e, 0xa05020, 0x7a4015];
+        const faceColors = [0xff8822, 0x22aaff, 0xee3344, 0x22cc44];
+        let y = base;
+        for (let seg = 0; seg < 4; seg++) {
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.6), new THREE.MeshLambertMaterial({ color: segColors[seg] }));
+          body.position.set(x, y + 0.4, z); worldDecor.add(body);
+          body.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(body), mesh: body });
+          const face = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.36, 0.1), new THREE.MeshLambertMaterial({ color: faceColors[seg], emissive: new THREE.Color(faceColors[seg]), emissiveIntensity: 0.3 }));
+          face.position.set(x, y + 0.4, z - 0.35); worldDecor.add(face);
+          if (seg % 2 === 0) {
+            for (const sx of [-0.6, 0.6]) {
+              const wing = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.35), new THREE.MeshLambertMaterial({ color: segColors[(seg + 2) % 4] }));
+              wing.position.set(x + sx, y + 0.5, z); worldDecor.add(wing);
+            }
+          }
+          y += 0.85;
+        }
+        const top = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.6, 6), new THREE.MeshLambertMaterial({ color: 0xff4422, emissive: new THREE.Color(0xff2200), emissiveIntensity: 0.25 }));
+        top.position.set(x, y + 0.3, z); worldDecor.add(top);
+      }
+      buildTotemPole(75, -15); buildTotemPole(82, 5); buildTotemPole(68, 28);
+
+      // ─── WATERFALLS (Mountain zone north) ────────────────────────────────────
+      function buildWaterfall(x: number, z: number) {
+        const base = getGroundHeight(x, z);
+        const cliffMat = new THREE.MeshLambertMaterial({ color: 0x6a6a6a });
+        const waterMat = new THREE.MeshLambertMaterial({ color: 0x4488cc, transparent: true, opacity: 0.78 });
+        for (let cy = 0; cy < 5; cy++) {
+          for (let cx2 = -2; cx2 <= 2; cx2++) {
+            if (cx2 === 0 && cy < 3) continue;
+            const block = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.6), cliffMat);
+            block.position.set(x + cx2, base + cy + 0.5, z); worldDecor.add(block);
+            if (cy < 2) { block.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(block), mesh: block }); }
+          }
+        }
+        for (let wy = 0; wy < 3; wy++) {
+          const water = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1, 0.15), waterMat);
+          water.position.set(x, base + wy + 0.5, z - 0.2); worldDecor.add(water);
+          swayables.push({ mesh: water, speed: 2.0, offset: wy * 0.4 });
+        }
+        const pool = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.1, 12), new THREE.MeshLambertMaterial({ color: 0x3399cc, transparent: true, opacity: 0.85 }));
+        pool.position.set(x, base + 0.05, z - 2.5); worldDecor.add(pool);
+        const mist = new THREE.PointLight(0x88ccff, 1.0, 8);
+        mist.position.set(x, base + 1.5, z - 1.5); scene.add(mist);
+        for (let i = 0; i < 4; i++) createLilyPad(x + (Math.random() - 0.5) * 3.5, z - 2 + (Math.random() - 0.5) * 3, i + 99);
+      }
+      buildWaterfall(-10, -60); buildWaterfall(18, -70);
+
+      // ─── NOTICE BOARDS across the world ───────────────────────────────────────
+      function buildNoticeBoard(x: number, z: number) {
+        const base = getGroundHeight(x, z);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.2, 0.12), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+        post.position.set(x, base + 1.1, z); worldDecor.add(post);
+        post.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(post), mesh: post });
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.08), new THREE.MeshLambertMaterial({ color: 0x8B6914 }));
+        board.position.set(x, base + 2.0, z - 0.05); worldDecor.add(board);
+        const face = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.95, 0.06), new THREE.MeshLambertMaterial({ color: 0xf5e8c0, emissive: new THREE.Color(0xffaa22), emissiveIntensity: 0.06 }));
+        face.position.set(x, base + 2.0, z - 0.10); worldDecor.add(face);
+        return { x, z };
+      }
+      const nb1 = buildNoticeBoard(25, 30);
+      const nb2 = buildNoticeBoard(-40, -10);
+      const nb3 = buildNoticeBoard(55, -20);
+      const nb4 = buildNoticeBoard(5, -40);
+
+
       function createBoundaries() {
         for (let i = 0; i < 200; i++) {
           const angle = (i / 200) * Math.PI * 2;
@@ -1044,6 +1431,73 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
       }
       createBoundaries();
+
+      // ─── WORLD-WIDE TREE FILL ─────────────────────────────────────────────────
+      // Sparse grid scatter across the full world, avoiding center path & key spots
+      const TREE_EXCLUSIONS: [number, number, number][] = [
+        // [cx, cz, radius] — keep these areas clear
+        [0, 0, 18],        // Central hub
+        [0, -22, 10],      // Shrine area
+        [0, -7, 5],        // First Torii
+        [0, -18, 5],       // Second Torii
+        [-14, -18, 7],     // Sacred pond
+        [POND_X, POND_Z, 6], // Original pond
+        [18, 45, 6], [-22, 55, 6], [35, 70, 6], // Campfires
+        [40, 70, 12], [-30, 80, 10], [60, 45, 8], // Stone circles
+        [75, -15, 6], [82, 5, 6], [68, 28, 6],   // Totems
+        [-10, -60, 8], [18, -70, 8],              // Waterfalls
+        [12, -22, 6],                             // Meditation platform
+      ];
+
+      function isClearZone(x: number, z: number): boolean {
+        // Keep main cardinal paths clear (±4 units wide)
+        if (Math.abs(x) < 4 && z > -35 && z < 35) return true;  // N-S path
+        if (Math.abs(z) < 4 && x > -35 && x < 35) return true;  // E-W path
+        return TREE_EXCLUSIONS.some(([cx, cz, r]) => {
+          const dx = x - cx, dz = z - cz;
+          return dx * dx + dz * dz < r * r;
+        });
+      }
+
+      // Fill mid-range (35–130 units) with sparse trees — one attempt per grid cell
+      const GRID_STEP = 12; // spacing between tree attempts
+      for (let gx = -130; gx <= 130; gx += GRID_STEP) {
+        for (let gz = -130; gz <= 130; gz += GRID_STEP) {
+          // Add jitter so it doesn't look like a grid
+          const jx = gx + (Math.random() - 0.5) * GRID_STEP * 0.9;
+          const jz = gz + (Math.random() - 0.5) * GRID_STEP * 0.9;
+          const dist = Math.sqrt(jx * jx + jz * jz);
+          // Skip center, skip exclusion zones, 70% chance of placing
+          if (dist < 35 || dist > 125) continue;
+          if (isClearZone(jx, jz)) continue;
+          if (Math.random() > 0.7) continue;
+          const gy = getGroundHeight(jx, jz);
+          const scale = 0.7 + Math.random() * 0.6;
+          addInstancedTree(jx, gy, jz, scale);
+          // Occasionally pair with a bush for variety
+          if (Math.random() > 0.6) {
+            addInstancedBush(jx + (Math.random() - 0.5) * 3, gy, jz + (Math.random() - 0.5) * 3, 0.3 + Math.random() * 0.4);
+          }
+        }
+      }
+
+      // Outer ring fill (130–220) — denser forest boundary
+      for (let gx = -220; gx <= 220; gx += 10) {
+        for (let gz = -220; gz <= 220; gz += 10) {
+          const jx = gx + (Math.random() - 0.5) * 8;
+          const jz = gz + (Math.random() - 0.5) * 8;
+          const dist = Math.sqrt(jx * jx + jz * jz);
+          if (dist < 128 || dist > 220) continue;
+          if (Math.random() > 0.55) continue;
+          const gy = getGroundHeight(jx, jz);
+          addInstancedTree(jx, gy, jz, 0.8 + Math.random() * 0.7);
+        }
+      }
+
+      // Commit needsUpdate so all new instances render
+      instancedTreeTrunks.instanceMatrix.needsUpdate = true;
+      instancedTreeCanopies.instanceMatrix.needsUpdate = true;
+      instancedBushes.instanceMatrix.needsUpdate = true;
 
       for (let i = 0; i < 8; i++) {
         createLilyPad(POND_X + (Math.random() - 0.5) * 5, POND_Z + (Math.random() - 0.5) * 4, i);
@@ -1082,15 +1536,38 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const playerBB = createPetBillboard(petState.gitData.username, localSpecies, petState);
       scene.add(playerBB.group); playerRef.current = playerBB.group;
 
-      const followingPetBB = createPetBillboard(`${petState.gitData.username}-pet`, localSpecies, petState);
-      scene.add(followingPetBB.group);
       const p = playerStateRef.current; const pet = petStateRef.current;
-      pet.bb = followingPetBB;
+      // Removed following pet logic completely
 
       // Interaction
+      const wFortunes = ['Your pet grows stronger with each commit.', "Great pull requests await in tomorrow's dawn.", 'The one who merges wisely, flourishes greatly.', 'Your repository holds secrets yet undiscovered.', 'Push often. Pull wisely. Review with kindness.', 'A watched branch never deploys.', 'Many forks, one true path.'];
       const interactables = [
-        { pos: new THREE.Vector3(-7, 0, 3), radius: 3, label: '[ E ] Readme', onInteract: () => navigator.clipboard.writeText(`![Pet](https://git-pet.vercel.app/api/card/${petState.gitData.username})`) },
-        { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ] Settings', onInteract: () => window.location.href = "/settings" }
+        { pos: new THREE.Vector3(-7, 0, 3), radius: 3, label: '[ E ] Copy Pet Card', onInteract: () => { navigator.clipboard.writeText(`![Pet](https://git-pet.vercel.app/api/card/${petState.gitData.username})`); setNarrativeText('📋 Pet card URL copied!'); setTimeout(() => setNarrativeText(null), 2500); } },
+        { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ] ⛩ Pray at Shrine', onInteract: () => { setNarrativeText('🙏 You kneel and offer a silent prayer...'); setTimeout(() => setNarrativeText(null), 3500); shakeRef.current = 0.05; } },
+        { pos: new THREE.Vector3(8, 0, -18), radius: 3.5, label: '[ E ] 🪣 Look into Well', onInteract: () => { setNarrativeText('🪣 You peer into the mossy well... the water reflects your pet\'s face.'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(-14, 0, -18), radius: 5, label: '[ E ] 🌸 Sit by the Pond', onInteract: () => { setNarrativeText('🌸 Cherry blossoms drift across the still water...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(12, 0, -22), radius: 4, label: '[ E ] 🧘 Meditate', onInteract: () => { setNarrativeText('🧘 You settle onto the cushion. The world grows quiet...'); setTimeout(() => setNarrativeText(null), 4000); } },
+        { pos: new THREE.Vector3(-5, 0, -10), radius: 3, label: '[ E ] 📜 Read Fortune Board', onInteract: () => { const fortunes = ['Your pet grows stronger with each commit. 🌟', 'Great pull requests await in tomorrow\'s dawn. 🌅', 'The one who merges wisely, flourishes greatly. 🌸', 'Your repository holds secrets yet undiscovered. 🔮', 'Push often. Pull wisely. Review with kindness. 💫']; setNarrativeText(`📜 ${fortunes[Math.floor(Math.random() * fortunes.length)]}`); setTimeout(() => setNarrativeText(null), 4500); } },
+        { pos: new THREE.Vector3(0, 0, -22), radius: 5, label: '[ E ] Settings', onInteract: () => window.location.href = "/settings" },
+        { pos: new THREE.Vector3(18, 0, 45), radius: 4, label: '[ E ] Warm Up', onInteract: () => { setNarrativeText('You sit by the crackling fire. The warmth soothes your pet...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(-22, 0, 55), radius: 4, label: '[ E ] Warm Up', onInteract: () => { setNarrativeText('Sparks float upward into the night sky as your pet watches...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(35, 0, 70), radius: 4, label: '[ E ] Warm Up', onInteract: () => { setNarrativeText('The campfire crackles. Someone was here recently...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(-55, 0, -20), radius: 5, label: '[ E ] Open Chest', onInteract: () => { const loot = ['a rusty key', 'an old scroll', '3 gold coins', 'a glowing gem', 'a strange feather']; setNarrativeText('You open the ancient chest and find ' + loot[Math.floor(Math.random() * loot.length)] + '!'); setTimeout(() => setNarrativeText(null), 4000); shakeRef.current = 0.06; } },
+        { pos: new THREE.Vector3(-70, 0, 18), radius: 5, label: '[ E ] Open Chest', onInteract: () => { const loot = ['a crumbled map', 'ancient bones', 'a shiny coin', 'a jade amulet', 'dust and cobwebs']; setNarrativeText('You open the ruins chest and find ' + loot[Math.floor(Math.random() * loot.length)] + '!'); setTimeout(() => setNarrativeText(null), 4000); shakeRef.current = 0.06; } },
+        { pos: new THREE.Vector3(-42, 0, 35), radius: 5, label: '[ E ] Open Chest', onInteract: () => { const loot = ['a forgotten letter', 'forest herbs', 'a smooth stone', 'glowing mushroom spores', 'an old compass']; setNarrativeText('You open the chest and find ' + loot[Math.floor(Math.random() * loot.length)] + '!'); setTimeout(() => setNarrativeText(null), 4000); shakeRef.current = 0.06; } },
+        { pos: new THREE.Vector3(8, 0, -65), radius: 6, label: '[ E ] Touch Crystals', onInteract: () => { setNarrativeText('The crystals hum with a faint resonance. Your pet glows briefly...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(-15, 0, -72), radius: 5, label: '[ E ] Touch Crystals', onInteract: () => { setNarrativeText('Ice-blue light pulses through the crystal formation...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(40, 0, 70), radius: 10, label: '[ E ] Ancient Circle', onInteract: () => { setNarrativeText('Standing inside the stone circle, you feel a strange stillness...'); setTimeout(() => setNarrativeText(null), 4000); } },
+        { pos: new THREE.Vector3(-30, 0, 80), radius: 8, label: '[ E ] Ancient Circle', onInteract: () => { setNarrativeText('These stones have stood for centuries. Your pet sniffs one curiously.'); setTimeout(() => setNarrativeText(null), 4000); } },
+        { pos: new THREE.Vector3(75, 0, -15), radius: 4, label: '[ E ] Inspect Totem', onInteract: () => { setNarrativeText('The totem pole depicts beasts of legend. Your pet poses next to it.'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(82, 0, 5), radius: 4, label: '[ E ] Inspect Totem', onInteract: () => { setNarrativeText('Vivid painted faces stare down from the carved wood...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(68, 0, 28), radius: 4, label: '[ E ] Inspect Totem', onInteract: () => { setNarrativeText('The desert winds carry whispers around this ancient totem...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(-10, 0, -60), radius: 6, label: '[ E ] Listen to Falls', onInteract: () => { setNarrativeText("The waterfall roars softly. Mist settles on your pet's fur..."); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(18, 0, -70), radius: 6, label: '[ E ] Listen to Falls', onInteract: () => { setNarrativeText('Clear mountain water cascades into the crystal pool below...'); setTimeout(() => setNarrativeText(null), 3500); } },
+        { pos: new THREE.Vector3(25, 0, 30), radius: 3.5, label: '[ E ] Notice Board', onInteract: () => { setNarrativeText('Notice: ' + wFortunes[Math.floor(Math.random() * wFortunes.length)]); setTimeout(() => setNarrativeText(null), 4500); } },
+        { pos: new THREE.Vector3(-40, 0, -10), radius: 3.5, label: '[ E ] Notice Board', onInteract: () => { setNarrativeText('Deep in the forest, ancient ruins hold forgotten treasure. Explore carefully.'); setTimeout(() => setNarrativeText(null), 4500); } },
+        { pos: new THREE.Vector3(55, 0, -20), radius: 3.5, label: '[ E ] Notice Board', onInteract: () => { setNarrativeText('The desert totems mark the territory of the wind spirits. Show respect.'); setTimeout(() => setNarrativeText(null), 4500); } },
+        { pos: new THREE.Vector3(5, 0, -40), radius: 3.5, label: '[ E ] Notice Board', onInteract: () => { setNarrativeText('Crystal caves glow brighter under the full moon. The magic runs deep.'); setTimeout(() => setNarrativeText(null), 4500); } },
       ];
 
       const peerMeshes = new Map<string, { bb: any, targetPos: any, targetRot: number, species: string }>();
@@ -1136,6 +1613,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       bellGroup.add(shrineBellMesh);
 
       worldDecor.add(bellGroup);
+      bellGroup.updateMatrixWorld(true);
       shrineBellHitbox = bellGroup;
       colliders.push({ box: new THREE.Box3().setFromObject(post1), mesh: post1 });
       colliders.push({ box: new THREE.Box3().setFromObject(post2), mesh: post2 });
@@ -1195,6 +1673,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       let lastTime = performance.now(); let elapsed = 0; let lastFootstep = 0;
       let frameCount = 0;
+      let dayNightT = 0.15;
+      const DAY_DURATION = 75;
 
       const tick = () => {
         if (!mounted.current) return;
@@ -1244,9 +1724,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           }
           if (moved && now - lastFootstep > 320) { lastFootstep = now; playFootstep(); }
         } else if (!movementBlocked.current) {
-          p.pos.z -= 0.14 * (delta * 60); p.isMoving = true;
-          if (p.pos.z < 15 && !cinematicDone) setCinematicDone(true);
-          if (p.pos.z < -8) p.controlEnabled = true;
+          p.pos.z += 0.07 * (delta * 60); p.isMoving = true;
+          if (p.pos.z > -14 && !cinematicDone) setCinematicDone(true);
+          if (p.pos.z > -6) p.controlEnabled = true;
         }
 
         const targetPetPos = new THREE.Vector3(p.pos.x, 0.5, p.pos.z).add(new THREE.Vector3(2, 0, 2).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot));
@@ -1256,9 +1736,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         // billboard updates
         updateBillboard(playerBB, frameCount, "front");
         playerBB.group.position.set(p.pos.x, 0.5 + Math.sin(frameCount * 0.1) * 0.05, p.pos.z);
-
-        updateBillboard(pet.bb, frameCount, "front");
-        pet.bb.group.position.set(pet.pos.x, 0.5 + Math.abs(Math.sin(frameCount * 0.15)) * 0.15, pet.pos.z);
 
         // Update remote players & Proximity
         let closestRemote: { id: string, mesh: any } | null = null;
@@ -1285,11 +1762,29 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           prevNearbyId.current = currentId;
         }
 
-        const timeCycle = Math.sin(elapsed * 0.05); // Slow cycle
-        const skyDay = new THREE.Color(0xf5e6d3);
-        const skyNight = new THREE.Color(0x0a1128);
-        scene.background.copy(skyDay).lerp(skyNight, (timeCycle + 1) / 2);
-        sunLink.intensity = 2.4 - ((timeCycle + 1) / 2) * 2.0;
+        // ─── Day / Night Cycle ───────────────────────────────────────────────
+        dayNightT = (dayNightT + delta / DAY_DURATION) % 1;
+        const dnAngle = dayNightT * Math.PI * 2;
+        const sunHeight = Math.sin(dnAngle - Math.PI / 2);          // -1=night  1=noon
+        const dayBright = Math.max(0, Math.min(1, (sunHeight + 0.3) / 1.3));
+        sunLink.intensity = 0.35 + dayBright * 2.1;
+        sunLink.color.setHSL(0.10, dayBright > 0.4 ? 0.45 : 0.1, 0.5 + dayBright * 0.5);
+        sunLink.position.set(Math.cos(dnAngle) * 30, Math.sin(dnAngle) * 40, 10);
+        ambientLight.intensity = 0.1 + dayBright * 0.45;
+        hemiLight.intensity = 0.1 + dayBright * 0.35;
+        const skyL = 0.18 + dayBright * 0.62;
+        (scene.background as any).setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.32, skyL);
+        if (scene.fog && (scene.fog as any).color) {
+          (scene.fog as any).color.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.22, skyL);
+        }
+        const nightBoost = 1.0 - dayBright * 0.55;
+        lanternMats.forEach((mat: any, i: number) => { 
+          mat.emissiveIntensity = (0.65 + Math.sin(elapsed * 1.8 + i * 1.3) * 0.45) * (0.75 + nightBoost * 1.3);
+        });
+
+        if (pondMesh && pondMesh.material) {
+          (pondMesh.material as any).color.setHSL(0.55, 0.5, 0.35 + Math.sin(elapsed * 0.9) * 0.025);
+        }
 
         const positions = fireflies.geometry.attributes.position.array as Float32Array;
         for (let i = 0; i < fireflyCount; i++) {
@@ -1734,7 +2229,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 const now = Date.now();
                 const elapsed = now - startTime;
                 const t = Math.min(elapsed / duration, 1);
-                
+
                 const targetPos = playerRef.current.position.clone().add(new THREE.Vector3(0, 2, 0));
                 const pos = startPos.clone().lerp(targetPos, t);
                 pos.y += Math.sin(t * Math.PI) * 2;
@@ -1763,11 +2258,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
     };
     init();
-    return () => { 
-      cancelAnimationFrame(rafRef.current); 
-      if (rendererRef.current) rendererRef.current.dispose(); 
-      cleanupFns.current.forEach(f => f()); 
-      if (socketRef.current) socketRef.current.close(); 
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (rendererRef.current) rendererRef.current.dispose();
+      cleanupFns.current.forEach(f => f());
+      if (socketRef.current) socketRef.current.close();
       if (labelRendererRef.current && labelRendererRef.current.domElement.parentNode) {
         labelRendererRef.current.domElement.parentNode.removeChild(labelRendererRef.current.domElement);
       }
@@ -1884,7 +2379,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 {[
                   { key: 'Z', label: 'Hold Z · Fight', color: '#FF4444' },
                   { key: 'F', label: 'Friend', color: '#4CAF50' },
-                  { key: 'X', label: 'Emoji',  color: '#FF9800' },
+                  { key: 'X', label: 'Emoji', color: '#FF9800' },
                   { key: 'ESC', label: 'Leave', color: 'rgba(255,255,255,0.3)' },
                 ].map(cmd => (
                   <div key={cmd.key} style={{
@@ -1941,7 +2436,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 Press 1–6 to send
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {["\ud83d\ude02","\u2764\ufe0f","\ud83d\udc4a","\ud83d\udd25","\ud83d\udc4b","\ud83d\ude24"].map((emoji, i) => (
+                {["\ud83d\ude02", "\u2764\ufe0f", "\ud83d\udc4a", "\ud83d\udd25", "\ud83d\udc4b", "\ud83d\ude24"].map((emoji, i) => (
                   <div key={emoji} style={{
                     display: 'flex',
                     flexDirection: 'column',
