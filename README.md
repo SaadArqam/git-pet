@@ -1,7 +1,5 @@
 <div align="center">
 
-[![My Git-Pet](https://git-pet-beta.vercel.app/api/card/SaadArqam)](https://git-pet-beta.vercel.app)
-
 ```
  ██████╗ ██╗████████╗    ██████╗ ███████╗████████╗
 ██╔════╝ ██║╚══██╔══╝    ██╔══██╗██╔════╝╚══██╔══╝
@@ -11,7 +9,243 @@
  ╚═════╝ ╚═╝   ╚═╝       ╚═╝     ╚══════╝   ╚═╝   
 ```
 
-**Your GitHub activity, alive.**
+**Your GitHub activity, alive — in a multiplayer 3D world.**
+
+🌍 Walk into a world where developers are pets.
+💻 Your commits shape your identity.
+🤝 Interact, explore, and build together.
+
+🔗 **Live Demo:** https://git-pet-beta.vercel.app/
+
+</div>
+
+---
+
+## 🚀 What is Git-Pet?
+
+Git-Pet transforms your GitHub activity into a **living, interactive pet** inside a **real-time multiplayer 3D world**.
+
+Instead of static contribution graphs, your developer identity becomes:
+
+* a **pet**
+* a **presence in a shared world**
+* something you can **interact with and explore**
+
+---
+
+## 🎮 Features
+
+### 🌐 Multiplayer World
+
+* See other developers in real-time
+* Each player is represented by their unique pet
+* Smooth interpolation-based movement
+
+---
+
+### 🐾 Dynamic Pet Identity
+
+* Pet type linked to your profile
+* Visual identity tied to developer data
+* Persistent across sessions
+
+---
+
+### 🤝 Interaction System
+
+* Proximity-based interactions
+* Actions:
+
+  * 😊 Emojis
+  * ⚔️ Fight (WIP animations)
+  * 🤝 Befriend
+  * 🎁 Gift
+* Real-time feedback between players
+
+---
+
+### 🌍 Expanding Game World
+
+* Multiple zones (forest, desert, mountains, plains)
+* Connected paths for exploration
+* Environmental elements (trees, rocks, terrain variation)
+* Fog + depth for immersion
+
+---
+
+### 🎮 Gameplay Systems
+
+* Smooth player movement + collision system
+* Third-person camera
+* Zone-based world design
+
+---
+
+## 🧠 AI Angle
+
+Git-Pet uses AI-assisted workflows and data interpretation to:
+
+* Map GitHub activity → pet identity
+* Design interaction systems faster
+* Rapidly prototype and debug complex systems
+
+The goal is to turn **developer data into behavior**, not just visuals.
+
+---
+
+## ⚙️ Tech Stack
+
+**Frontend & 3D**
+
+* Next.js (App Router)
+* React
+* Three.js (custom world engine inside RAF loop)
+
+**Backend**
+
+* Node.js + Express
+* WebSockets (real-time multiplayer)
+
+**Auth & Data**
+
+* NextAuth (GitHub OAuth)
+* GitHub APIs
+
+**Database**
+
+* MongoDB
+* SQL
+
+**Deployment**
+
+* Vercel
+
+---
+
+## 🧱 Architecture
+
+* Custom lightweight 3D engine (no external game engine)
+* Single RAF loop controlling:
+
+  * movement
+  * rendering
+  * multiplayer updates
+* Ref-based state for performance
+* Instanced meshes for optimization
+
+---
+
+## 🛠️ Running Locally
+
+### 1. Clone
+
+```bash
+git clone https://github.com/SaadArqam/git-pet.git
+cd git-pet
+npm install
+```
+
+---
+
+### 2. Setup Environment
+
+Create:
+
+```bash
+apps/web/.env.local
+```
+
+```env
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your_secret
+
+GITHUB_CLIENT_ID=your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+```
+
+---
+
+### 3. Run
+
+```bash
+npm run dev
+```
+
+Open:
+
+```
+http://localhost:3000
+```
+
+---
+
+## 🧪 Current Focus
+
+* Improving movement feel (more responsive + smooth)
+* Richer player interactions (animations, feedback)
+* Smarter pet behavior
+* World expansion & immersion
+
+---
+
+## 🗺️ Roadmap
+
+* [x] Multiplayer 3D world
+
+* [x] Pet identity system
+
+* [x] Interaction system (basic)
+
+* [x] Zone-based world
+
+* [ ] Fight animations + UI
+
+* [ ] Friend system persistence
+
+* [ ] Name tags / player UI
+
+* [ ] Sound + ambient effects
+
+* [ ] AI-driven pet evolution
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome!
+
+Good first issues:
+
+* Improve movement feel
+* Add interaction animations
+* Add UI polish (health bars, effects)
+* Add environment assets
+
+---
+
+## 💡 Vision
+
+Git-Pet is an experiment in turning:
+
+> developer tools → into interactive social systems
+
+Instead of dashboards, we build **worlds**.
+
+---
+
+## 👋 Connect
+
+* GitHub: https://github.com/SaadArqam
+* LinkedIn: https://www.linkedin.com/in/avgchillguy/
+
+---
+
+<div align="center">
+
+Built with 💻 + 🎮 + ☕
+
+</div>
+
 
 A Tamagotchi-style virtual pet that lives and dies by your commit history.
 
