@@ -15,7 +15,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Git Pet",
-  description: "Your GitHub-powered desktop pet",
+  description: "Your GitHub activity, alive.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.png"
+  }
 };
 
 export default function RootLayout({

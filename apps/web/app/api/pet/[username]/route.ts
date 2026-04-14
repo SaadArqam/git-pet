@@ -19,7 +19,7 @@ export async function GET(
 
   try {
     const client = new GitHubClient(token);
-    const gitData = await client.fetchUserStats(username); 
+    const gitData = await client.fetchUserStats(username);
     const petState = derivePetState(gitData);
     return NextResponse.json(petState);
   } catch (err: any) {
