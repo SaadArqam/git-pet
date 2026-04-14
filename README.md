@@ -9,149 +9,61 @@
  ╚═════╝ ╚═╝   ╚═╝       ╚═╝     ╚══════╝   ╚═╝   
 ```
 
-### Your GitHub activity, alive — inside a multiplayer 3D world.
+**Your GitHub activity, alive — inside a multiplayer 3D world.**
 
-🧩 Open Source • Contributions Welcome
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![Three.js](https://img.shields.io/badge/Three.js-r128-049ef4?logo=three.js)](https://threejs.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Live Demo](https://img.shields.io/badge/demo-live-orange)](https://git-pet-beta.vercel.app/)
 
-🌍 Walk into a world where developers are pets.  
-💻 Your commits shape your identity.  
-🤝 Interact, explore, and build together.
-
-🔗 **Live Demo:** https://git-pet-beta.vercel.app/
-
-<img src="./public/demo/landing-world.gif" width="800" />
-
-<p><strong>Live multiplayer. Real developers. Real-time interactions.</strong></p>
+[**Live Demo →**](https://git-pet-beta.vercel.app/) · [Report Bug](https://github.com/SaadArqam/git-pet/issues) · [Request Feature](https://github.com/SaadArqam/git-pet/issues)
 
 </div>
 
 ---
 
-## 🚀 What is Git-Pet?
+## What is Git-Pet?
 
-Git-Pet turns your GitHub activity into a **living presence inside a shared 3D world**.
+Git-Pet turns your GitHub commit history into a **living pixel creature** inside a shared 3D world. Walk through the world, meet other developers represented as their pets, fight them, befriend them, and send emojis — all in real-time.
 
-Instead of:
-> commit → graph → forget
-
-You get:
 > commit → identity → interaction → world
 
+---
 
+## Features
+
+- 🌐 **Real-time multiplayer** — see other developers live via WebSockets
+- 🐾 **Pet identity system** — your pet species, name, and stats tied to your GitHub profile
+- ⚔️ **Interaction system** — fight, befriend, and send emojis to nearby players
+- 🌍 **Zoned world** — forest, desert, mountains, plains with collision and camera system
+- 🎮 **No game engine** — custom Three.js RAF loop, lightweight and deterministic
+- 🔐 **GitHub OAuth** — sign in with GitHub, your activity feeds your pet
 
 ---
 
-## 🎮 Features
+## Tech Stack
 
-### 🌐 Multiplayer World
-
-* See other developers in real-time
-* Each player is represented by their unique pet
-* Smooth interpolation-based movement
-
-<img src="./public/demo/multiplayer.gif" width="700" />
-
----
-
-### 🐾 Dynamic Pet Identity
-
-* Pet type linked to your profile
-* Visual identity tied to developer data
-* Persistent across sessions
+| Layer | Tech |
+|---|---|
+| Frontend | Next.js 15 (App Router), React, Three.js |
+| Realtime | PartyKit (WebSockets) |
+| Auth | NextAuth.js (GitHub OAuth) |
+| Database | Upstash (Redis) |
+| Deployment | Vercel |
 
 ---
 
-### 🤝 Interaction System
+## Getting Started
 
-* Proximity-based interactions
-* Actions:
+### Prerequisites
 
-  * 😊 Emojis
-  * ⚔️ Fight (WIP animations)
-  * 🤝 Befriend
-  * 🎁 Gift
-* Real-time feedback between players
+- Node.js 18+
+- A GitHub OAuth App ([create one here](https://github.com/settings/developers))
+- An Upstash Redis database ([free tier](https://upstash.com/))
+- A PartyKit account ([free tier](https://partykit.io/))
 
----
-
-### 🌍 Expanding Game World
-
-* Multiple zones (forest, desert, mountains, plains)
-* Connected paths for exploration
-* Environmental elements (trees, rocks, terrain variation)
-* Fog + depth for immersion
-
----
-
-### 🎮 Gameplay Systems
-
-* Smooth player movement + collision system
-* Third-person camera
-* Zone-based world design
-
----
-
-## 🧠 Built with AI-assisted workflows
-
-Git-Pet is built using AI-assisted development workflows:
-
-* Rapid prototyping of complex systems  
-* Debugging real-time multiplayer issues  
-* Designing interaction systems faster  
-* Iterating from idea → working feature in hours  
-
-The focus is not just using AI, but using it to **shorten the build loop** and ship faster.
-
-Goal:
-> Turn developer data → into behavior → into experience
-
----
-
-## ⚙️ Tech Stack
-
-**Frontend & 3D**
-
-* Next.js (App Router)
-* React
-* Three.js (custom world engine inside RAF loop)
-
-**Backend**
-
-* Node.js + Express
-* WebSockets (real-time multiplayer)
-
-**Auth & Data**
-
-* NextAuth (GitHub OAuth)
-* GitHub APIs
-
-**Database**
-
-* Upstash
-* Redis
-
-**Deployment**  
-
-* Vercel
-
----
-
-## 🧱 Architecture
-
-* Custom lightweight 3D engine (no external game engine)
-* Single RAF loop controlling:
-
-  * movement
-  * rendering
-  * multiplayer updates
-* Ref-based state for performance
-* Instanced meshes for optimization
-
----
-
-## 🛠️ Running Locally
-
-### 1. Clone
+### 1. Clone & Install
 
 ```bash
 git clone https://github.com/SaadArqam/git-pet.git
@@ -159,25 +71,26 @@ cd git-pet
 npm install
 ```
 
----
+### 2. Environment Variables
 
-### 2. Setup Environment
-
-Create:
-
-```bash
-apps/web/.env.local
-```
+Create `apps/web/.env.local`:
 
 ```env
+# Auth
 NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your_secret
+NEXTAUTH_SECRET=your_secret_here
 
-GITHUB_CLIENT_ID=your_client_id
-GITHUB_CLIENT_SECRET=your_client_secret
+# GitHub OAuth
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+
+# Upstash
+UPSTASH_REDIS_REST_URL=your_upstash_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_token
+
+# PartyKit
+NEXT_PUBLIC_PARTYKIT_HOST=your_partykit_host
 ```
-
----
 
 ### 3. Run
 
@@ -185,80 +98,82 @@ GITHUB_CLIENT_SECRET=your_client_secret
 npm run dev
 ```
 
-Open:
+Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Project Structure
 
 ```
-http://localhost:3000
+git-pet/
+├── apps/
+│   └── web/                  # Next.js app
+│       ├── app/
+│       │   ├── api/          # API routes (card, friends, species)
+│       │   ├── world/        # Multiplayer world page
+│       │   └── dashboard/    # Pet dashboard
+│       └── components/
+├── packages/
+│   ├── core/                 # Shared types (PetState, etc.)
+│   ├── renderer/             # drawPet() canvas renderer
+│   └── github/               # GitHub data fetching
 ```
 
 ---
 
-## 🧪 Current Focus
+## Roadmap
 
-* Improving movement feel (more responsive + smooth)
-* Richer player interactions (animations, feedback)
-* Smarter pet behavior
-* World expansion & immersion
-
----
-
-## 🗺️ Roadmap
-
-* [x] Multiplayer 3D world
-
-* [x] Pet identity system
-
-* [x] Interaction system (basic)
-
-* [x] Zone-based world
-
-* [ ] Fight animations + UI
-
-* [ ] Friend system persistence
-
-* [ ] Name tags / player UI
-
-* [ ] Sound + ambient effects
-
-* [ ] AI-driven pet evolution
+- [x] Multiplayer 3D world
+- [x] Pet identity system
+- [x] Interaction system (fight, befriend, emoji)
+- [x] Zone-based world with collision
+- [x] Shareable pet card (GitHub README embed)
+- [ ] Fight animations + health persistence
+- [ ] Friend system with DB persistence
+- [ ] Pet evolution based on commit streaks
+- [ ] Sound + ambient effects
+- [ ] Mobile touch controls
+- [ ] AI-driven pet behavior
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome!
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
-Good first issues:
+**Good first issues:**
 
-* Improve movement feel
-* Add interaction animations
-* Add UI polish (health bars, effects)
-* Add environment assets
+- Improve movement feel (acceleration/deceleration tuning)
+- Add interaction animations (hearts, hit effects)
+- Add new world zones or environment assets
+- Improve mobile experience
+- Fix open issues tagged [`good first issue`](https://github.com/SaadArqam/git-pet/issues?q=label%3A%22good+first+issue%22)
+
+```bash
+# Fork → clone → create branch
+git checkout -b feat/your-feature
+
+# Make changes → commit
+git commit -m "feat: your feature description"
+
+# Push → open PR
+git push origin feat/your-feature
+```
 
 ---
 
-## 💡 Vision
+## License
 
-Git-Pet is an experiment in turning:
-
-> developer tools → into interactive social systems
-
-Instead of dashboards, we build **worlds**.
+MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
-## 👋 Connect
+## Author
 
-* GitHub: https://github.com/SaadArqam
-* LinkedIn: https://www.linkedin.com/in/avgchillguy/
+**Saad Arqam** — [@SaadArqam](https://github.com/SaadArqam) · [LinkedIn](https://www.linkedin.com/in/avgchillguy/)
 
 ---
 
 <div align="center">
-
-Built with 💻 + 🎮 + ☕
-
+Built with Three.js, too many late nights, and genuine curiosity about what developer tools could feel like.
 </div>
-
-
-
