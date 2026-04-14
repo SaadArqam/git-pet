@@ -45,10 +45,10 @@ async function getSpeciesEdge(username: string): Promise<string | null> {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ username: string }> }
+  { params }: { params: { username: string } }
 ) {
   try {
-    const { username } = await params;
+    const { username } = params;
     const token = process.env.GITHUB_CARD_TOKEN;
     if (!token) return new Response("GITHUB_CARD_TOKEN not set", { status: 500 });
 
