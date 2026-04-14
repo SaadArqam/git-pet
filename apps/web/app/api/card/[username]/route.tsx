@@ -447,7 +447,8 @@ export async function GET(
         width:   W,
         height:  H,
         headers: {
-          "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=31536000"
         },
       }
     );
