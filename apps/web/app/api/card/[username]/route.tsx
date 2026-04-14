@@ -7,20 +7,36 @@ export const runtime = "edge";
 
 // ── Species config ──────────────────────────────────────────────────────────
 
-const SPECIES_EMOJI: Record<string, string> = {
-  wolf:       "🐺",
-  sabertooth: "🐯",
-  capybara:   "🐹",
-  dragon:     "🐉",
-  axolotl:    "🦎",
-};
-
-const SPECIES_COLOR: Record<string, string> = {
-  wolf:       "#94a3b8",
-  sabertooth: "#cbd5e1",
-  capybara:   "#d97706",
-  dragon:     "#7c3aed",
-  axolotl:    "#db2777",
+const SPECIES_META: Record<string, {
+  label: string;
+  color: string;
+  accentColor: string;
+}> = {
+  wolf: {
+    label: "Wolf",
+    color: "#94a3b8",
+    accentColor: "#e2e8f0",
+  },
+  sabertooth: {
+    label: "White Sabertooth",
+    color: "#f8fafc",
+    accentColor: "#cbd5e1",
+  },
+  capybara: {
+    label: "Capybara",
+    color: "#a16207",
+    accentColor: "#fbbf24",
+  },
+  dragon: {
+    label: "Dragon",
+    color: "#7c3aed",
+    accentColor: "#a78bfa",
+  },
+  axolotl: {
+    label: "Axolotl",
+    color: "#db2777",
+    accentColor: "#f472b6",
+  },
 };
 
 // ── Redis / species helper ───────────────────────────────────────────────────
@@ -53,6 +69,124 @@ function healthColor(v: number): string {
 
 // ── Route ────────────────────────────────────────────────────────────────────
 
+const SPECIES_ART: Record<string, string[]> = {
+  wolf: [
+    "   D   D     ",
+    "  LCL LCL    ",
+    "  CCCwCCC    ",
+    "  CCeCeCC    ",
+    "  CCCCCCC    ",
+    "   CDDDC     ",
+    "   DDDDD     ",
+    "  CCCCCCC    ",
+    "  D     D    ",
+  ],
+  sabertooth: [
+    "   D   D     ",
+    "  CDC CDC    ",
+    "  CCCwCCC    ",
+    "  CCbCbCC    ",
+    "  CCCCCCC    ",
+    "   CDDDC     ",
+    "   ww ww     ",
+    "  CCCCCCC    ",
+    "  D  D  D    ",
+  ],
+  capybara: [
+    "             ",
+    "   D   D     ",
+    "  CCCCCCC    ",
+    "  CeCCCeC    ",
+    "  CCCCCCC    ",
+    "   CDDDC     ",
+    "  CCCCCCC    ",
+    "  CCCCCCC    ",
+    "  D     D    ",
+  ],
+  dragon: [
+    "   D   D     ",
+    "   C   C     ",
+    "  DCCwCCD    ",
+    "  oCeCeCo    ",
+    "  CCCCCCC    ",
+    " p CDDDC p   ",
+    "p CCCCCCC p  ",
+    " pCCCCCCCp   ",
+    "  D  D  D    ",
+  ],
+  axolotl: [
+    " s     s     ",
+    "  CCCCC      ",
+    "sCwCCCwCs    ",
+    " CeeCeCC     ",
+    "sCCCCCCCs    ",
+    "  CDDDC      ",
+    "  CCCCC      ",
+    "  CCCCC      ",
+    "  D   D      ",
+  ]
+};
+
+function RenderPet({ species, primaryColor }: { species: string; primaryColor: string }) {
+  const art = SPECIES_ART[species] || SPECIES_ART["capybara"]!;
+  const PIXEL_SIZE = 6;
+  const WIDTH = 13 * PIXEL_SIZE;
+  const HEIGHT = art.length * PIXEL_SIZE;
+
+  return (
+    <div style={{
+      display: "flex",
+      position: "relative",
+      width: `${WIDTH}px`,
+      height: `${HEIGHT}px`,
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      {art.map((row, y) => 
+        row.split("").map((ch, x) => {
+          if (ch === " ") return null;
+
+          let color = primaryColor;
+          let overlay = null;
+
+          switch (ch) {
+            case "C": color = primaryColor; break;
+            case "D": color = primaryColor; overlay = "rgba(0,0,0,0.3)"; break;
+            case "L": color = primaryColor; overlay = "rgba(255,255,255,0.3)"; break;
+            case "e": color = "#1e293b"; break;
+            case "w": color = "#ffffff"; break;
+            case "b": color = "#0ea5e9"; break;
+            case "o": color = "#f97316"; break;
+            case "p": color = "#db2777"; break;
+            case "s": color = "#f472b6"; break;
+          }
+
+          return (
+            <div key={`${x}-${y}`} style={{
+               position: "absolute",
+               left: x * PIXEL_SIZE,
+               top: y * PIXEL_SIZE,
+               width: PIXEL_SIZE,
+               height: PIXEL_SIZE,
+               backgroundColor: color,
+               display: "flex"
+            }}>
+              {overlay && (
+                 <div style={{
+                    width: "100%",
+                    height: "100%",
+                    backgroundColor: overlay,
+                    display: "flex"
+                 }} />
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ username: string }> }
@@ -62,7 +196,7 @@ export async function GET(
     const ghToken = process.env.GITHUB_CARD_TOKEN;
     if (!ghToken) return new Response("GITHUB_CARD_TOKEN not set", { status: 500 });
 
-    const [species, gitData] = await Promise.all([
+    const [storedSpecies, gitData] = await Promise.all([
       getSpeciesEdge(username),
       new GitHubClient(ghToken).fetchUserStats(username),
     ]);
@@ -71,10 +205,10 @@ export async function GET(
     const { health, energy } = petState.stats;
     const activity       = Math.min(100, Math.round(energy));
 
-    const speciesKey  = species && SPECIES_EMOJI[species] ? species : "dragon";
-    const emoji       = SPECIES_EMOJI[speciesKey]!;
-    const glow        = SPECIES_COLOR[speciesKey] ?? "#7c3aed";
-    const speciesName = speciesKey.charAt(0).toUpperCase() + speciesKey.slice(1);
+    const species = storedSpecies || "capybara";
+    const meta = SPECIES_META[species] || SPECIES_META["capybara"]!;
+    const glow = meta.accentColor; // Using accentColor for glows instead of dark primary
+    const speciesName = meta.label;
 
     const hColor = healthColor(health);
     const aColor = "#818cf8";
@@ -129,14 +263,12 @@ export async function GET(
               display:         "flex",
             }} />
 
-            {/* emoji */}
+            {/* pet image */}
             <div style={{
-              fontSize:    "68px",
-              lineHeight:  "1",
               display:     "flex",
               position:    "relative",
             }}>
-              {emoji}
+              <RenderPet species={species} primaryColor={meta.color} />
             </div>
 
             {/* species badge */}
