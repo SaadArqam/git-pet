@@ -167,9 +167,9 @@ export async function GET(
   const petType = typeof petTypeString === 'string' ? petTypeString.toLowerCase() : 'capybara';
   const role = ROLE_MAP[petType] || ROLE_MAP["default"]!;
   
-  const streak = gitData?.streak ?? gitData?.currentStreak ?? gitData?.streakDays ?? 0;
-  const totalCommits = data?.totalCommits ?? data?.commits ?? 0;
-  const stars = data?.stars ?? data?.totalStars ?? 0;
+  const streak = gitData?.streak ?? 0;
+  const totalCommits = data?.totalCommits ?? 0;
+  const stars = data?.stars ?? 0;
   
   const hpRawNum = data?.hp ?? 100;
   const activityRawNum = data?.activity ?? 100;
