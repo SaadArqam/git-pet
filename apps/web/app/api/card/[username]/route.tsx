@@ -16,53 +16,59 @@ const ROLE_MAP: Record<string, string> = {
   default: "PET",
 };
 
-function renderSpriteJSX(species: string, frame: number): any {
+function renderSprite(species: string, frame: number): any {
   const CANON_COLORS: Record<string, string> = {
-    wolf:       '#94a3b8',
-    sabertooth: '#f8fafc',
-    capybara:   '#a16207',
-    dragon:     '#7c3aed',
-    axolotl:    '#db2777',
-  }
-  const baseColor = CANON_COLORS[species] ?? '#94a3b8'
-  const rects = getSpeciesRects(species, frame, baseColor, 'front')
-  
+    wolf: "#94a3b8",
+    sabertooth: "#f8fafc",
+    capybara: "#a16207",
+    dragon: "#7c3aed",
+    axolotl: "#db2777",
+  };
+  const baseColor = CANON_COLORS[species] ?? "#94a3b8";
+  const rects = getSpeciesRects(species, frame, baseColor, "front");
+
   if (!rects || rects.length === 0) {
-    // fallback: colored circle if species not found
     return (
-      <div style={{
-        width: 64, height: 64,
-        borderRadius: 32,
-        background: baseColor,
-      }} />
-    )
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "42px",
+        }}
+      >
+        🐾
+      </div>
+    );
   }
 
-  // getSpeciesRects uses pixel coordinates ~0–40 range
-  // Find bounding box to normalize
-  const xs = rects.map(r => r[0] + r[2])
-  const ys = rects.map(r => r[1] + r[3])
-  const maxX = Math.max(...xs, 1)
-  const maxY = Math.max(...ys, 1)
+  let maxX = 0;
+  let maxY = 0;
+  for (const [x, y, w, h] of rects) {
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+  }
 
-  // Scale to fit inside 80x80 container
-  const SPRITE_SIZE = 80
-  const scaleX = SPRITE_SIZE / maxX
-  const scaleY = SPRITE_SIZE / maxY
-  const scale = Math.min(scaleX, scaleY)
+  const SIZE = 80;
+  const scale = Math.min(SIZE / Math.max(maxX, 1), SIZE / Math.max(maxY, 1));
 
   return (
-    <div style={{
-      width: SPRITE_SIZE,
-      height: SPRITE_SIZE,
-      position: 'relative',
-      display: 'flex',
-    }}>
-      {rects.map(([x, y, w, h, color], i) => (
+    <div
+      style={{
+        width: SIZE,
+        height: SIZE,
+        position: "relative",
+        display: "flex",
+        flexShrink: 0,
+      }}
+    >
+      {rects.map(([x, y, w, h, color]: any, i: number) => (
         <div
           key={String(i)}
           style={{
-            position: 'absolute',
+            position: "absolute",
             left: Math.round(x * scale),
             top: Math.round(y * scale),
             width: Math.max(1, Math.round(w * scale)),
@@ -72,8 +78,18 @@ function renderSpriteJSX(species: string, frame: number): any {
         />
       ))}
     </div>
-  )
+  );
 }
+
+const QR_PATTERN = [
+  [1, 1, 1, 1, 1],
+  [1, 0, 0, 0, 1],
+  [1, 0, 1, 0, 1],
+  [1, 0, 0, 0, 1],
+  [1, 1, 1, 1, 1],
+];
+
+const BAR_WIDTHS = [2,1,3,1,2,1,3,2,1,2,3,1,2,1,3,2,1,1,3,2,1,2,1,3];
 
 export async function GET(
   _req: NextRequest,
@@ -82,7 +98,7 @@ export async function GET(
   const { username } = await params;
 
   const ghToken = process.env.GITHUB_CARD_TOKEN ?? process.env.GITHUB_TOKEN;
-  
+
   let gitData: any = null;
   let petState: any = null;
   let speciesRaw: string | null = null;
@@ -90,7 +106,9 @@ export async function GET(
   try {
     const [storedSpecies, stats] = await Promise.all([
       redis.get<string>(`species:${username}`),
-      ghToken ? new GitHubClient(ghToken).fetchUserStats(username).catch(() => null) : Promise.resolve(null)
+      ghToken
+        ? new GitHubClient(ghToken).fetchUserStats(username).catch(() => null)
+        : Promise.resolve(null),
     ]);
     speciesRaw = storedSpecies;
     gitData = stats;
@@ -98,62 +116,59 @@ export async function GET(
       petState = derivePetState(gitData);
     }
   } catch (err) {
-    console.error('[card] Error fetching data:', err);
+    console.error("[card] Error fetching data:", err);
   }
 
-  const rawData = {
-    streak: gitData?.streak,
-    totalCommits: gitData?.totalCommits ?? gitData?.commits,
-    stars: gitData?.stars ?? gitData?.totalStars,
-    hp: petState?.stats?.health,
-    activity: petState?.stats?.energy,
-    level: petState?.level,
-    petType: speciesRaw ?? petState?.primaryColor
-  };
+  console.error("[card] raw data:", JSON.stringify({ speciesRaw, streak: gitData?.streak, totalCommits: gitData?.totalCommits }));
 
-  console.error('[card] raw data:', JSON.stringify(rawData));
-
+  // NULL GUARD — no pet found
   if (!speciesRaw) {
     return new ImageResponse(
       (
         <div
           style={{
-            width: 640,
-            height: 300,
-            background: "#0d1117",
-            border: "1.5px solid #30363d",
-            borderRadius: 12,
+            width: 660,
+            height: 280,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            position: "relative",
+            background: "#f5f0e8",
+            borderRadius: 16,
             overflow: "hidden",
-            color: "#e6edf3",
+            fontFamily: "monospace",
           }}
         >
+          <div style={{ fontSize: 12, color: "#1a1a1a", letterSpacing: 3, display: "flex" }}>
+            NO PET FOUND
+          </div>
           <div
             style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: 640,
-              height: 3,
-              background: "linear-gradient(to right, #f0a84e, #c77c2a, transparent)",
+              fontSize: 20,
+              fontWeight: 900,
+              color: "#1a1a1a",
+              marginTop: 8,
               display: "flex",
             }}
-          />
-          <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "system-ui", display: "flex", marginBottom: 12 }}>
-            No pet found for @{username}
+          >
+            @{username}
           </div>
-          <div style={{ fontSize: 16, color: "#6e7681", fontFamily: "monospace", display: "flex" }}>
+          <div
+            style={{
+              fontSize: 9,
+              color: "#999",
+              marginTop: 12,
+              fontFamily: "monospace",
+              display: "flex",
+            }}
+          >
             git-pet-beta.vercel.app
           </div>
         </div>
       ),
       {
-        width: 640,
-        height: 300,
+        width: 660,
+        height: 280,
         headers: {
           "Content-Type": "image/png",
           "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
@@ -162,77 +177,123 @@ export async function GET(
     );
   }
 
-  const data = rawData;
-  const petTypeString = data?.petType ?? speciesRaw ?? 'capybara';
-  const petType = typeof petTypeString === 'string' ? petTypeString.toLowerCase() : 'capybara';
-  const role = ROLE_MAP[petType] || ROLE_MAP["default"]!;
-  
-  const streak = gitData?.streak ?? 0;
-  const totalCommits = data?.totalCommits ?? 0;
-  const stars = data?.stars ?? 0;
-  
-  const hpRawNum = data?.hp ?? 100;
-  const activityRawNum = data?.activity ?? 100;
-  const hp = Math.max(0, Math.min(100, hpRawNum));
-  const activity = Math.max(0, Math.min(100, activityRawNum));
-  const level = data?.level ?? 1;
+  // Derive fields
+  const petType = (speciesRaw ?? "capybara").toLowerCase();
+  const role = ROLE_MAP[petType] ?? ROLE_MAP["default"]!;
+  const streak: number = gitData?.streak ?? 0;
+  const longestStreak: number = gitData?.longestStreak ?? 0;
+  const totalCommits: number = gitData?.totalCommits ?? 0;
+  const hp: number = Math.max(0, Math.min(100, petState?.stats?.health ?? 100));
+  const activity: number = Math.max(0, Math.min(100, petState?.stats?.energy ?? 100));
+  const level: number = petState?.level ?? 1;
 
-  const formattedCommits = totalCommits.toLocaleString("en-US");
-  const formattedStars = stars.toLocaleString("en-US");
-  
-  const trackFillHp = `${Math.round((hp / 100) * 100)}%`;
-  const trackFillActivity = `${Math.round((activity / 100) * 100)}%`;
+  const displayStreak = streak > 0 ? streak : longestStreak;
+  const streakUnit = streak > 0 ? "DAYS" : "BEST";
+  const commitsDisplay =
+    totalCommits >= 1000
+      ? (totalCommits / 1000).toFixed(1) + "k"
+      : String(totalCommits);
 
-  const frame = 12; // static frame for card — no animation needed
-  const spriteJSX = renderSpriteJSX(petType, frame);
+  const year = new Date().getFullYear();
+  const barcodeText = `GP${level}${year}${username.toUpperCase()}`;
 
-  return new ImageResponse(
-    (
+  const frame = 8;
+  const spriteJSX = renderSprite(petType, frame);
+
+  const card = (
+    <div
+      style={{
+        width: 660,
+        height: 280,
+        display: "flex",
+        flexDirection: "column",
+        background: "#f5f0e8",
+        borderRadius: 16,
+        overflow: "hidden",
+        fontFamily: "monospace",
+      }}
+    >
+      {/* LAYER 1 — Top strip */}
       <div
         style={{
-          width: 640,
-          height: 300,
-          background: "#0d1117",
-          border: "1.5px solid #30363d",
-          borderRadius: 12,
+          height: 24,
+          background: "#1a1a1a",
           display: "flex",
-          flexDirection: "row",
-          position: "relative",
-          overflow: "hidden",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0 20px",
         }}
       >
         <div
           style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: 640,
-            height: 3,
-            background: "linear-gradient(to right, #f0a84e, #c77c2a, transparent)",
+            fontSize: 8,
+            color: "#f0a84e",
+            letterSpacing: 4,
+            fontFamily: "monospace",
             display: "flex",
           }}
-        />
-
+        >
+          GIT — PET
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              background: "#4ade80",
+              display: "flex",
+            }}
+          />
+          <div
+            style={{
+              fontSize: 7,
+              color: "#555",
+              letterSpacing: 2,
+              fontFamily: "monospace",
+              display: "flex",
+            }}
+          >
+            ACTIVE · 2025
+          </div>
+        </div>
         <div
           style={{
-            width: 160,
+            fontSize: 8,
+            color: "#444",
+            letterSpacing: 2,
+            fontFamily: "monospace",
+            display: "flex",
+          }}
+        >
+          DEV-ID
+        </div>
+      </div>
+
+      {/* LAYER 2 — Middle row */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "row" }}>
+        {/* LEFT PANEL */}
+        <div
+          style={{
+            width: 170,
             flexShrink: 0,
-            background: "#0a0e13",
-            borderRight: "1px solid #30363d",
+            background: "#1a1a1a",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
+            padding: "16px 14px",
             gap: 10,
           }}
         >
+          {/* Sprite container */}
           <div
             style={{
-              width: 96,
-              height: 96,
-              borderRadius: 48,
-              background: "#1a2030",
-              border: "1.5px solid #30363d",
+              width: 90,
+              height: 90,
+              borderRadius: 6,
+              background: "#111",
+              border: "2px solid #f0a84e",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -241,162 +302,506 @@ export async function GET(
           >
             {spriteJSX}
           </div>
+
+          {/* Species pill */}
           <div
             style={{
-              background: "#1e2940",
-              border: "1px solid #f0a84e44",
-              borderRadius: 10,
+              background: "#f0a84e",
+              borderRadius: 3,
               padding: "4px 12px",
               fontSize: 9,
+              color: "#1a1a1a",
+              letterSpacing: 3,
+              fontWeight: 700,
               fontFamily: "monospace",
-              color: "#f0a84e",
-              letterSpacing: 2,
               display: "flex",
             }}
           >
             {petType.toUpperCase()}
           </div>
+
+          {/* Active dot + class label */}
           <div
             style={{
-              fontSize: 9,
-              fontFamily: "monospace",
-              color: "#6e7681",
+              display: "flex",
+              gap: 6,
+              alignItems: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                background: "#4ade80",
+                display: "flex",
+              }}
+            />
+            <div
+              style={{
+                fontSize: 7,
+                color: "#666",
+                letterSpacing: 1,
+                fontFamily: "monospace",
+                display: "flex",
+              }}
+            >
+              {role} CLASS
+            </div>
+          </div>
+
+          {/* Thin divider */}
+          <div
+            style={{
+              width: "100%",
+              height: 1,
+              background: "#2a2a2a",
+              display: "flex",
+            }}
+          />
+
+          {/* ID number */}
+          <div
+            style={{
+              fontSize: 7,
+              color: "#333",
               letterSpacing: 1,
+              fontFamily: "monospace",
               display: "flex",
             }}
           >
-            LVL {level} · {role}
+            ID: GP-{level}-2025
           </div>
         </div>
 
+        {/* RIGHT PANEL */}
         <div
           style={{
             flex: 1,
-            padding: "24px 28px",
+            background: "#f5f0e8",
+            padding: "18px 22px",
             display: "flex",
             flexDirection: "column",
             gap: 0,
           }}
         >
+          {/* Header row */}
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 12,
             }}
           >
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#f0a84e", letterSpacing: 3, display: "flex" }}>
-              GIT PET
+            {/* Left side */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#bbb",
+                  letterSpacing: 4,
+                  marginBottom: 4,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                DEVELOPER PASS
+              </div>
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  color: "#1a1a1a",
+                  letterSpacing: -1,
+                  lineHeight: 1,
+                  display: "flex",
+                }}
+              >
+                @{username}
+              </div>
             </div>
-            <div style={{ fontSize: 9, color: "#30363d", display: "flex" }}>·</div>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, display: "flex" }}>
-              DEVELOPER CARD
+
+            {/* Faded stamp circle */}
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                border: "2px solid #1a1a1a",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: 0.12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 6,
+                  color: "#1a1a1a",
+                  textAlign: "center",
+                  lineHeight: 1.4,
+                  fontFamily: "monospace",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ display: "flex" }}>GIT</div>
+                <div style={{ display: "flex" }}>PET</div>
+                <div style={{ display: "flex" }}>2025</div>
+              </div>
             </div>
           </div>
 
+          {/* Stats row */}
           <div
             style={{
-              fontSize: 26,
-              fontWeight: 700,
-              color: "#e6edf3",
-              fontFamily: "system-ui",
+              borderTop: "1.5px solid #1a1a1a",
+              borderBottom: "1.5px solid #1a1a1a",
+              padding: "10px 0",
               marginBottom: 12,
               display: "flex",
             }}
           >
-            @{username}
-          </div>
-
-          <div style={{ height: 1, background: "#21262d", marginBottom: 12, display: "flex" }} />
-
-          <div style={{ display: "flex", flexDirection: "row", gap: 0 }}>
-            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, marginBottom: 4, display: "flex" }}>
+            {/* STREAK */}
+            <div
+              style={{
+                flex: 1,
+                borderRight: "1px solid #ddd",
+                paddingRight: 14,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#999",
+                  letterSpacing: 2,
+                  marginBottom: 2,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
                 STREAK
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                <div style={{ fontFamily: "system-ui", fontSize: 20, fontWeight: 700, color: "#e6edf3", display: "flex" }}>
-                  {streak}
-                </div>
-                <div style={{ fontFamily: "system-ui", fontSize: 12, color: "#6e7681", display: "flex", paddingBottom: 2 }}>
-                  days
-                </div>
+              <div
+                style={{
+                  fontSize: 30,
+                  fontWeight: 900,
+                  color: "#1a1a1a",
+                  letterSpacing: -1,
+                  lineHeight: 1,
+                  display: "flex",
+                }}
+              >
+                {displayStreak}
+              </div>
+              <div
+                style={{
+                  fontSize: 8,
+                  color: "#aaa",
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                {streakUnit}
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, marginBottom: 4, display: "flex" }}>
+            {/* COMMITS */}
+            <div
+              style={{
+                flex: 1,
+                borderRight: "1px solid #ddd",
+                padding: "0 14px",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#999",
+                  letterSpacing: 2,
+                  marginBottom: 2,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
                 COMMITS
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 0 }}>
-                <div style={{ fontFamily: "system-ui", fontSize: 20, fontWeight: 700, color: "#e6edf3", display: "flex" }}>
-                  {formattedCommits}
-                </div>
+              <div
+                style={{
+                  fontSize: 30,
+                  fontWeight: 900,
+                  color: "#1a1a1a",
+                  letterSpacing: -1,
+                  lineHeight: 1,
+                  display: "flex",
+                }}
+              >
+                {commitsDisplay}
+              </div>
+              <div
+                style={{
+                  fontSize: 8,
+                  color: "#aaa",
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                TOTAL
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, marginBottom: 4, display: "flex" }}>
-                STARS
+            {/* HEALTH */}
+            <div
+              style={{
+                flex: 1,
+                paddingLeft: 14,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#999",
+                  letterSpacing: 2,
+                  marginBottom: 2,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                HEALTH
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                <div style={{ fontFamily: "system-ui", fontSize: 20, fontWeight: 700, color: "#e6edf3", display: "flex" }}>
-                  {formattedStars}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 2,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 30,
+                    fontWeight: 900,
+                    color: "#1a1a1a",
+                    letterSpacing: -1,
+                    lineHeight: 1,
+                    display: "flex",
+                  }}
+                >
+                  {hp}
                 </div>
-                <div style={{ fontFamily: "system-ui", fontSize: 12, color: "#6e7681", display: "flex", paddingBottom: 3 }}>
-                  ★
+                <div style={{ fontSize: 14, color: "#aaa", display: "flex" }}>
+                  %
                 </div>
+              </div>
+              <div
+                style={{
+                  fontSize: 8,
+                  color: "#aaa",
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                HP
               </div>
             </div>
           </div>
 
-          <div style={{ height: 1, background: "#21262d", marginTop: 12, marginBottom: 12, display: "flex" }} />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, flex: 1, display: "flex" }}>
-              HEALTH
+          {/* Activity bar */}
+          <div style={{ display: "flex", flexDirection: "column", marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 4,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#999",
+                  letterSpacing: 2,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                ACTIVITY SCORE
+              </div>
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#1a1a1a",
+                  fontWeight: 700,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                {activity} / 100
+              </div>
             </div>
-            <div style={{ flex: 1, height: 6, background: "#21262d", borderRadius: 3, display: "flex" }}>
-              <div style={{ height: 6, width: trackFillHp, background: "#4ade80", borderRadius: 3, display: "flex" }} />
-            </div>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#4ade80", display: "flex" }}>
-              {hp}/100
+            <div
+              style={{
+                height: 5,
+                background: "#ddd",
+                borderRadius: 0,
+                display: "flex",
+              }}
+            >
+              <div
+                style={{
+                  width: `${activity}%`,
+                  height: "100%",
+                  background: "#1a1a1a",
+                  borderRadius: 0,
+                  display: "flex",
+                }}
+              />
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, flex: 1, display: "flex" }}>
-              ACTIVITY
+          {/* Footer row */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              marginTop: "auto",
+            }}
+          >
+            {/* Issued by */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#bbb",
+                  letterSpacing: 2,
+                  marginBottom: 2,
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                ISSUED BY
+              </div>
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#999",
+                  fontFamily: "monospace",
+                  display: "flex",
+                }}
+              >
+                git-pet-beta.vercel.app
+              </div>
             </div>
-            <div style={{ flex: 1, height: 6, background: "#21262d", borderRadius: 3, display: "flex" }}>
-              <div style={{ height: 6, width: trackFillActivity, background: "#818cf8", borderRadius: 3, display: "flex" }} />
-            </div>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#818cf8", display: "flex" }}>
-              {activity}/100
-            </div>
-          </div>
 
-          <div style={{ height: 1, background: "#21262d", marginTop: 12, marginBottom: 12, display: "flex" }} />
-
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#30363d", letterSpacing: 2, display: "flex" }}>
-              GIT-PET-BETA.VERCEL.APP
-            </div>
-            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#30363d", display: "flex" }}>
-              2025
+            {/* Mini QR decoration */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, opacity: 0.18 }}>
+              {QR_PATTERN.map((row, ri) => (
+                <div key={String(ri)} style={{ display: "flex", gap: 1 }}>
+                  {row.map((cell, ci) => (
+                    <div
+                      key={String(ci)}
+                      style={{
+                        width: 5,
+                        height: 5,
+                        background: cell === 1 ? "#1a1a1a" : "#f5f0e8",
+                        display: "flex",
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
-    ),
-    {
-      width: 640,
-      height: 300,
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
-      },
-    }
+
+      {/* LAYER 3 — Bottom barcode strip */}
+      <div
+        style={{
+          height: 28,
+          background: "#1a1a1a",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 20px",
+          gap: 12,
+        }}
+      >
+        {/* Barcode bars */}
+        <div style={{ display: "flex", gap: 1, alignItems: "center" }}>
+          {BAR_WIDTHS.map((w, i) => (
+            <div
+              key={String(i)}
+              style={{
+                width: w,
+                height: 14,
+                background: "#f5f0e8",
+                borderRadius: 0,
+                display: "flex",
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Encoded text */}
+        <div
+          style={{
+            fontSize: 7,
+            color: "#444",
+            letterSpacing: 1,
+            fontFamily: "monospace",
+            display: "flex",
+          }}
+        >
+          {barcodeText}
+        </div>
+
+        {/* Right side valid badge */}
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 20,
+              height: 13,
+              background: "#f0a84e",
+              borderRadius: 2,
+              display: "flex",
+            }}
+          />
+          <div
+            style={{
+              fontSize: 7,
+              color: "#444",
+              letterSpacing: 2,
+              fontFamily: "monospace",
+              display: "flex",
+            }}
+          >
+            VALID
+          </div>
+        </div>
+      </div>
+    </div>
   );
+
+  return new ImageResponse(card, {
+    width: 660,
+    height: 280,
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+    },
+  });
 }
