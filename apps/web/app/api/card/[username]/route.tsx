@@ -1,19 +1,11 @@
 import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
+import { getSpeciesRects } from "@git-pet/renderer";
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
 import { redis } from "@/lib/redis";
 
 export const runtime = "edge";
-
-const EMOJI_MAP: Record<string, string> = {
-  wolf: "🐺",
-  sabertooth: "🦁",
-  capybara: "🦫",
-  dragon: "🐲",
-  axolotl: "🦎",
-  default: "🐾",
-};
 
 const ROLE_MAP: Record<string, string> = {
   wolf: "AGGRO",
@@ -23,6 +15,65 @@ const ROLE_MAP: Record<string, string> = {
   axolotl: "REGEN",
   default: "PET",
 };
+
+function renderSpriteJSX(species: string, frame: number): any {
+  const CANON_COLORS: Record<string, string> = {
+    wolf:       '#94a3b8',
+    sabertooth: '#f8fafc',
+    capybara:   '#a16207',
+    dragon:     '#7c3aed',
+    axolotl:    '#db2777',
+  }
+  const baseColor = CANON_COLORS[species] ?? '#94a3b8'
+  const rects = getSpeciesRects(species, frame, baseColor, 'front')
+  
+  if (!rects || rects.length === 0) {
+    // fallback: colored circle if species not found
+    return (
+      <div style={{
+        width: 64, height: 64,
+        borderRadius: 32,
+        background: baseColor,
+      }} />
+    )
+  }
+
+  // getSpeciesRects uses pixel coordinates ~0–40 range
+  // Find bounding box to normalize
+  const xs = rects.map(r => r[0] + r[2])
+  const ys = rects.map(r => r[1] + r[3])
+  const maxX = Math.max(...xs, 1)
+  const maxY = Math.max(...ys, 1)
+
+  // Scale to fit inside 80x80 container
+  const SPRITE_SIZE = 80
+  const scaleX = SPRITE_SIZE / maxX
+  const scaleY = SPRITE_SIZE / maxY
+  const scale = Math.min(scaleX, scaleY)
+
+  return (
+    <div style={{
+      width: SPRITE_SIZE,
+      height: SPRITE_SIZE,
+      position: 'relative',
+      display: 'flex',
+    }}>
+      {rects.map(([x, y, w, h, color], i) => (
+        <div
+          key={String(i)}
+          style={{
+            position: 'absolute',
+            left: Math.round(x * scale),
+            top: Math.round(y * scale),
+            width: Math.max(1, Math.round(w * scale)),
+            height: Math.max(1, Math.round(h * scale)),
+            background: color,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
 
 export async function GET(
   _req: NextRequest,
@@ -114,7 +165,6 @@ export async function GET(
   const data = rawData;
   const petTypeString = data?.petType ?? speciesRaw ?? 'capybara';
   const petType = typeof petTypeString === 'string' ? petTypeString.toLowerCase() : 'capybara';
-  const emoji = EMOJI_MAP[petType] || EMOJI_MAP["default"]!;
   const role = ROLE_MAP[petType] || ROLE_MAP["default"]!;
   
   const streak = gitData?.streak ?? gitData?.currentStreak ?? gitData?.streakDays ?? 0;
@@ -132,6 +182,9 @@ export async function GET(
   
   const trackFillHp = `${Math.round((hp / 100) * 100)}%`;
   const trackFillActivity = `${Math.round((activity / 100) * 100)}%`;
+
+  const frame = 12; // static frame for card — no animation needed
+  const spriteJSX = renderSpriteJSX(petType, frame);
 
   return new ImageResponse(
     (
@@ -183,10 +236,10 @@ export async function GET(
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 52,
+              overflow: "hidden",
             }}
           >
-            {emoji}
+            {spriteJSX}
           </div>
           <div
             style={{

@@ -1,7 +1,7 @@
 import { deriveMood, deriveStage, deriveStats } from "./stats";
 
 const base = {
-  username: "test", totalCommits: 500, streak: 10,
+  username: "test", totalCommits: 500, streak: 10, longestStreak: 15,
   languages: ["TypeScript", "Python"], stars: 100,
   daysSinceCommit: 1, commitsThisWeek: 8,
   repoCount: 20, prsMerged: 15,
