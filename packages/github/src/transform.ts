@@ -18,11 +18,44 @@ export function transformToGitData(raw: GitHubGraphQLResponse): GitData {
     .slice(0, 7)
     .reduce((sum, d) => sum + d.contributionCount, 0);
 
-  // Current streak
-  let streak = 0;
+  // Streak logic supporting timezone shifts
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  
+  const yesterday = new Date(now);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  let currentStreak = 0;
+  let longestStreak = 0;
+  let tempStreak = 0;
+
+  // Calculate longest streak
   for (const day of allDays) {
-    if (day.contributionCount > 0) streak++;
-    else break;
+    if (day.contributionCount > 0) {
+      tempStreak++;
+      if (tempStreak > longestStreak) {
+        longestStreak = tempStreak;
+      }
+    } else {
+      tempStreak = 0;
+    }
+  }
+
+  // Calculate current streak
+  // Start counting backward if the most recent contribution day is EITHER today OR yesterday OR future
+  const firstCommitIdx = allDays.findIndex(d => d.contributionCount > 0);
+  if (firstCommitIdx !== -1) {
+    const firstCommitDate = allDays[firstCommitIdx].date;
+    if (firstCommitDate >= yesterdayStr) {
+      for (let i = firstCommitIdx; i < allDays.length; i++) {
+        if (allDays[i].contributionCount > 0) {
+          currentStreak++;
+        } else {
+          break;
+        }
+      }
+    }
   }
 
   // Languages (ordered by repo count using that language)
@@ -50,7 +83,8 @@ export function transformToGitData(raw: GitHubGraphQLResponse): GitData {
   return {
     username: user.login,
     totalCommits: contrib.totalCommitContributions,
-    streak,
+    streak: currentStreak,
+    longestStreak,
     languages,
     stars,
     daysSinceCommit: Math.max(0, daysSinceCommit),

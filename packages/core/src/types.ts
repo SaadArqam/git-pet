@@ -12,6 +12,7 @@ export interface GitData {
   username: string;
   totalCommits: number;
   streak: number;          // current day streak
+  longestStreak: number;
   languages: string[];     // ordered by usage, most used first
   stars: number;           // total stars across all repos
   daysSinceCommit: number;

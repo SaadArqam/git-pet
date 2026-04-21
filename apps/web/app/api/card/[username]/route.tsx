@@ -1,486 +1,349 @@
 import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
-import { NextRequest } from "next/server";
 import { ImageResponse } from "next/og";
+import { NextRequest } from "next/server";
+import { redis } from "@/lib/redis";
 
 export const runtime = "edge";
 
-// ── Species config ──────────────────────────────────────────────────────────
-
-const SPECIES_META: Record<string, {
-  label: string;
-  color: string;
-  accentColor: string;
-}> = {
-  wolf: {
-    label: "Wolf",
-    color: "#94a3b8",
-    accentColor: "#e2e8f0",
-  },
-  sabertooth: {
-    label: "White Sabertooth",
-    color: "#f8fafc",
-    accentColor: "#cbd5e1",
-  },
-  capybara: {
-    label: "Capybara",
-    color: "#a16207",
-    accentColor: "#fbbf24",
-  },
-  dragon: {
-    label: "Dragon",
-    color: "#7c3aed",
-    accentColor: "#a78bfa",
-  },
-  axolotl: {
-    label: "Axolotl",
-    color: "#db2777",
-    accentColor: "#f472b6",
-  },
+const EMOJI_MAP: Record<string, string> = {
+  wolf: "🐺",
+  sabertooth: "🦁",
+  capybara: "🦫",
+  dragon: "🐲",
+  axolotl: "🦎",
+  default: "🐾",
 };
 
-// ── Redis / species helper ───────────────────────────────────────────────────
-
-async function getSpeciesEdge(username: string): Promise<string | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  try {
-    const res = await fetch(`${url}/get/species:${username}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { result: string | null };
-    let val = data.result;
-    if (typeof val === "string") val = val.replace(/['"]/g, "").toLowerCase();
-    return val || null;
-  } catch {
-    return null;
-  }
-}
-
-// ── Health → color helper ────────────────────────────────────────────────────
-
-function healthColor(v: number): string {
-  if (v >= 60) return "#22c55e";
-  if (v >= 30) return "#f59e0b";
-  return "#ef4444";
-}
-
-// ── Route ────────────────────────────────────────────────────────────────────
-
-const SPECIES_ART: Record<string, string[]> = {
-  wolf: [
-    "   D   D     ",
-    "  LCL LCL    ",
-    "  CCCwCCC    ",
-    "  CCeCeCC    ",
-    "  CCCCCCC    ",
-    "   CDDDC     ",
-    "   DDDDD     ",
-    "  CCCCCCC    ",
-    "  D     D    ",
-  ],
-  sabertooth: [
-    "   D   D     ",
-    "  CDC CDC    ",
-    "  CCCwCCC    ",
-    "  CCbCbCC    ",
-    "  CCCCCCC    ",
-    "   CDDDC     ",
-    "   ww ww     ",
-    "  CCCCCCC    ",
-    "  D  D  D    ",
-  ],
-  capybara: [
-    "             ",
-    "   D   D     ",
-    "  CCCCCCC    ",
-    "  CeCCCeC    ",
-    "  CCCCCCC    ",
-    "   CDDDC     ",
-    "  CCCCCCC    ",
-    "  CCCCCCC    ",
-    "  D     D    ",
-  ],
-  dragon: [
-    "   D   D     ",
-    "   C   C     ",
-    "  DCCwCCD    ",
-    "  oCeCeCo    ",
-    "  CCCCCCC    ",
-    " p CDDDC p   ",
-    "p CCCCCCC p  ",
-    " pCCCCCCCp   ",
-    "  D  D  D    ",
-  ],
-  axolotl: [
-    " s     s     ",
-    "  CCCCC      ",
-    "sCwCCCwCs    ",
-    " CeeCeCC     ",
-    "sCCCCCCCs    ",
-    "  CDDDC      ",
-    "  CCCCC      ",
-    "  CCCCC      ",
-    "  D   D      ",
-  ]
+const ROLE_MAP: Record<string, string> = {
+  wolf: "AGGRO",
+  sabertooth: "TANK",
+  capybara: "SUPPORT",
+  dragon: "LEGEND",
+  axolotl: "REGEN",
+  default: "PET",
 };
-
-function RenderPet({ species, primaryColor }: { species: string; primaryColor: string }) {
-  const art = SPECIES_ART[species] || SPECIES_ART["capybara"]!;
-  const PIXEL_SIZE = 6;
-  const WIDTH = 13 * PIXEL_SIZE;
-  const HEIGHT = art.length * PIXEL_SIZE;
-
-  return (
-    <div style={{
-      display: "flex",
-      position: "relative",
-      width: `${WIDTH}px`,
-      height: `${HEIGHT}px`,
-      alignItems: "center",
-      justifyContent: "center",
-    }}>
-      {art.map((row, y) =>
-        row.split("").map((ch, x) => {
-          if (ch === " ") return null;
-
-          let color = primaryColor;
-          let overlay = null;
-
-          switch (ch) {
-            case "C": color = primaryColor; break;
-            case "D": color = primaryColor; overlay = "rgba(0,0,0,0.3)"; break;
-            case "L": color = primaryColor; overlay = "rgba(255,255,255,0.3)"; break;
-            case "e": color = "#1e293b"; break;
-            case "w": color = "#ffffff"; break;
-            case "b": color = "#0ea5e9"; break;
-            case "o": color = "#f97316"; break;
-            case "p": color = "#db2777"; break;
-            case "s": color = "#f472b6"; break;
-          }
-
-          return (
-            <div key={`${x}-${y}`} style={{
-              position: "absolute",
-              left: x * PIXEL_SIZE,
-              top: y * PIXEL_SIZE,
-              width: PIXEL_SIZE,
-              height: PIXEL_SIZE,
-              backgroundColor: color,
-              display: "flex"
-            }}>
-              {overlay && (
-                <div style={{
-                  width: "100%",
-                  height: "100%",
-                  backgroundColor: overlay,
-                  display: "flex"
-                }} />
-              )}
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-}
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ) {
+  const { username } = await params;
+
+  const ghToken = process.env.GITHUB_CARD_TOKEN ?? process.env.GITHUB_TOKEN;
+  
+  let gitData: any = null;
+  let petState: any = null;
+  let speciesRaw: string | null = null;
+
   try {
-    const { username } = await params;
-    const ghToken = process.env.GITHUB_CARD_TOKEN;
-    if (!ghToken) return new Response("GITHUB_CARD_TOKEN not set", { status: 500 });
-
-    const [storedSpecies, gitData] = await Promise.all([
-      getSpeciesEdge(username),
-      new GitHubClient(ghToken).fetchUserStats(username),
+    const [storedSpecies, stats] = await Promise.all([
+      redis.get<string>(`species:${username}`),
+      ghToken ? new GitHubClient(ghToken).fetchUserStats(username).catch(() => null) : Promise.resolve(null)
     ]);
+    speciesRaw = storedSpecies;
+    gitData = stats;
+    if (gitData) {
+      petState = derivePetState(gitData);
+    }
+  } catch (err) {
+    console.error('[card] Error fetching data:', err);
+  }
 
-    const petState = derivePetState(gitData);
-    const { health, energy } = petState.stats;
-    const activity = Math.min(100, Math.round(energy));
+  const rawData = {
+    streak: gitData?.streak,
+    totalCommits: gitData?.totalCommits ?? gitData?.commits,
+    stars: gitData?.stars ?? gitData?.totalStars,
+    hp: petState?.stats?.health,
+    activity: petState?.stats?.energy,
+    level: petState?.level,
+    petType: speciesRaw ?? petState?.primaryColor
+  };
 
-    const species = storedSpecies || "capybara";
-    const meta = SPECIES_META[species] || SPECIES_META["capybara"]!;
-    const glow = meta.accentColor; // Using accentColor for glows instead of dark primary
-    const speciesName = meta.label;
+  console.error('[card] raw data:', JSON.stringify(rawData));
 
-    const hColor = healthColor(health);
-    const aColor = "#818cf8";
-
-    const W = 500;
-    const H = 280;
-
+  if (!speciesRaw) {
     return new ImageResponse(
       (
         <div
           style={{
-            width: `${W}px`,
-            height: `${H}px`,
-            display: "flex",
-            backgroundColor: "#0d1a35",
-            color: "white",
-            position: "relative",
-          }}
-        >
-          {/* ── TOP accent stripe ── */}
-          <div style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: "3px",
-            backgroundColor: glow,
-            opacity: 0.8,
-            display: "flex",
-          }} />
-
-          {/* ── LEFT: pet panel ── */}
-          <div style={{
-            width: "180px",
-            height: "100%",
+            width: 640,
+            height: 300,
+            background: "#0d1117",
+            border: "1.5px solid #30363d",
+            borderRadius: 12,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            flexShrink: 0,
-            backgroundColor: "#0a0f1e",
             position: "relative",
-          }}>
-            {/* glow circle — no filter, just opacity */}
-            <div style={{
+            overflow: "hidden",
+            color: "#e6edf3",
+          }}
+        >
+          <div
+            style={{
               position: "absolute",
-              width: "110px",
-              height: "110px",
-              borderRadius: "55px",
-              backgroundColor: glow,
-              opacity: 0.15,
+              top: 0,
+              left: 0,
+              width: 640,
+              height: 3,
+              background: "linear-gradient(to right, #f0a84e, #c77c2a, transparent)",
               display: "flex",
-            }} />
-
-            {/* pet image */}
-            <img
-              src={`data:image/svg+xml;utf8,${encodeURIComponent(
-                `<svg width="78" height="${SPECIES_ART[species]?.length || 10 * 6}" viewBox="0 0 13 ${SPECIES_ART[species]?.length || 10}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
-                  ${(SPECIES_ART[species] || SPECIES_ART["capybara"]).map((row: string, y: number) => 
-                    row.split("").map((ch, x) => {
-                      if (ch === " ") return "";
-                      let color = meta.color;
-                      if (ch === "D") color = "rgba(0,0,0,0.3)";
-                      if (ch === "L") color = "rgba(255,255,255,0.3)";
-                      if (ch === "e") color = "#1e293b";
-                      if (ch === "w") color = "#ffffff";
-                      if (ch === "b") color = "#0ea5e9";
-                      if (ch === "o") color = "#f97316";
-                      if (ch === "p") color = "#db2777";
-                      if (ch === "s") color = "#f472b6";
-                      
-                      // For D and L, we need the base color too since SVG overlays are tricky in data URLs 
-                      // actually better to just resolve them:
-                      if (ch === "C") return `<rect x="${x}" y="${y}" width="1" height="1" fill="${meta.color}" />`;
-                      if (ch === "D") return `<rect x="${x}" y="${y}" width="1" height="1" fill="${meta.color}" /><rect x="${x}" y="${y}" width="1" height="1" fill="black" fill-opacity="0.3" />`;
-                      if (ch === "L") return `<rect x="${x}" y="${y}" width="1" height="1" fill="${meta.color}" /><rect x="${x}" y="${y}" width="1" height="1" fill="white" fill-opacity="0.3" />`;
-                      return `<rect x="${x}" y="${y}" width="1" height="1" fill="${color}" />`;
-                    }).join("")
-                  ).join("")}
-                </svg>`
-              )}`}
-              style={{
-                width: "78px",
-                height: `${(SPECIES_ART[species]?.length || 10) * 6}px`,
-                imageRendering: "pixelated",
-                objectFit: "contain"
-              }}
-            />
-
-            {/* species badge */}
-            <div style={{
-              marginTop: "14px",
-              paddingTop: "4px",
-              paddingBottom: "4px",
-              paddingLeft: "12px",
-              paddingRight: "12px",
-              borderRadius: "99px",
-              backgroundColor: "#1e2d4a",
-              fontSize: "10px",
-              fontWeight: 700,
-              color: glow,
-              letterSpacing: "1px",
-              display: "flex",
-            }}>
-              {speciesName.toUpperCase()}
-            </div>
+            }}
+          />
+          <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "system-ui", display: "flex", marginBottom: 12 }}>
+            No pet found for @{username}
           </div>
-
-          {/* ── RIGHT: info panel ── */}
-          <div style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            paddingTop: "28px",
-            paddingBottom: "28px",
-            paddingLeft: "24px",
-            paddingRight: "28px",
-          }}>
-            {/* label */}
-            <div style={{
-              fontSize: "11px",
-              color: "#475569",
-              letterSpacing: "1.5px",
-              marginBottom: "4px",
-              display: "flex",
-            }}>
-              GITHUB DEVELOPER
-            </div>
-
-            {/* username */}
-            <div style={{
-              fontSize: "24px",
-              fontWeight: 800,
-              color: "#f1f5f9",
-              marginBottom: "20px",
-              display: "flex",
-            }}>
-              @{username}
-            </div>
-
-            {/* ── Health bar ── */}
-            <div style={{ display: "flex", flexDirection: "column", marginBottom: "14px" }}>
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "6px",
-              }}>
-                <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600, display: "flex" }}>
-                  HEALTH
-                </div>
-                <div style={{ fontSize: "11px", color: hColor, fontWeight: 700, display: "flex" }}>
-                  {health} / 100
-                </div>
-              </div>
-              <div style={{
-                width: "100%",
-                height: "7px",
-                backgroundColor: "#1e2d4a",
-                borderRadius: "4px",
-                display: "flex",
-                overflow: "hidden",
-              }}>
-                <div style={{
-                  width: `${health}%`,
-                  height: "100%",
-                  backgroundColor: hColor,
-                  borderRadius: "4px",
-                  display: "flex",
-                }} />
-              </div>
-            </div>
-
-            {/* ── Activity bar ── */}
-            <div style={{ display: "flex", flexDirection: "column", marginBottom: "20px" }}>
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "6px",
-              }}>
-                <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600, display: "flex" }}>
-                  ACTIVITY
-                </div>
-                <div style={{ fontSize: "11px", color: aColor, fontWeight: 700, display: "flex" }}>
-                  {activity} / 100
-                </div>
-              </div>
-              <div style={{
-                width: "100%",
-                height: "7px",
-                backgroundColor: "#1e2d4a",
-                borderRadius: "4px",
-                display: "flex",
-                overflow: "hidden",
-              }}>
-                <div style={{
-                  width: `${activity}%`,
-                  height: "100%",
-                  backgroundColor: aColor,
-                  borderRadius: "4px",
-                  display: "flex",
-                }} />
-              </div>
-            </div>
-
-            {/* ── Stats row ── */}
-            <div style={{ display: "flex", alignItems: "center" }}>
-              {/* streak */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginRight: "20px" }}>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: "#e2e8f0", display: "flex" }}>
-                  {gitData.streak}d
-                </div>
-                <div style={{ fontSize: "9px", color: "#475569", letterSpacing: "0.5px", display: "flex" }}>
-                  STREAK
-                </div>
-              </div>
-
-              {/* divider */}
-              <div style={{ width: "1px", height: "28px", backgroundColor: "#1e2d4a", marginRight: "20px", display: "flex" }} />
-
-              {/* commits */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginRight: "20px" }}>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: "#e2e8f0", display: "flex" }}>
-                  {gitData.totalCommits}
-                </div>
-                <div style={{ fontSize: "9px", color: "#475569", letterSpacing: "0.5px", display: "flex" }}>
-                  COMMITS
-                </div>
-              </div>
-
-              {/* divider */}
-              <div style={{ width: "1px", height: "28px", backgroundColor: "#1e2d4a", marginRight: "20px", display: "flex" }} />
-
-              {/* stars */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: "#e2e8f0", display: "flex" }}>
-                  {gitData.stars}
-                </div>
-                <div style={{ fontSize: "9px", color: "#475569", letterSpacing: "0.5px", display: "flex" }}>
-                  STARS
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── bottom watermark ── */}
-          <div style={{
-            position: "absolute",
-            bottom: "10px",
-            right: "14px",
-            fontSize: "10px",
-            color: "#1e2d4a",
-            letterSpacing: "0.5px",
-            display: "flex",
-          }}>
+          <div style={{ fontSize: 16, color: "#6e7681", fontFamily: "monospace", display: "flex" }}>
             git-pet-beta.vercel.app
           </div>
         </div>
       ),
       {
-        width: W,
-        height: H,
+        width: 640,
+        height: 300,
         headers: {
           "Content-Type": "image/png",
-          "Cache-Control": "public, max-age=31536000"
+          "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
         },
       }
     );
-  } catch (err) {
-    console.error("Error generating card:", err);
-    return new Response("Error generating card", { status: 500 });
   }
+
+  const data = rawData;
+  const petTypeString = data?.petType ?? speciesRaw ?? 'capybara';
+  const petType = typeof petTypeString === 'string' ? petTypeString.toLowerCase() : 'capybara';
+  const emoji = EMOJI_MAP[petType] || EMOJI_MAP["default"]!;
+  const role = ROLE_MAP[petType] || ROLE_MAP["default"]!;
+  
+  const streak = gitData?.streak ?? gitData?.currentStreak ?? gitData?.streakDays ?? 0;
+  const totalCommits = data?.totalCommits ?? data?.commits ?? 0;
+  const stars = data?.stars ?? data?.totalStars ?? 0;
+  
+  const hpRawNum = data?.hp ?? 100;
+  const activityRawNum = data?.activity ?? 100;
+  const hp = Math.max(0, Math.min(100, hpRawNum));
+  const activity = Math.max(0, Math.min(100, activityRawNum));
+  const level = data?.level ?? 1;
+
+  const formattedCommits = totalCommits.toLocaleString("en-US");
+  const formattedStars = stars.toLocaleString("en-US");
+  
+  const trackFillHp = `${Math.round((hp / 100) * 100)}%`;
+  const trackFillActivity = `${Math.round((activity / 100) * 100)}%`;
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: 640,
+          height: 300,
+          background: "#0d1117",
+          border: "1.5px solid #30363d",
+          borderRadius: 12,
+          display: "flex",
+          flexDirection: "row",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 640,
+            height: 3,
+            background: "linear-gradient(to right, #f0a84e, #c77c2a, transparent)",
+            display: "flex",
+          }}
+        />
+
+        <div
+          style={{
+            width: 160,
+            flexShrink: 0,
+            background: "#0a0e13",
+            borderRight: "1px solid #30363d",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              background: "#1a2030",
+              border: "1.5px solid #30363d",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 52,
+            }}
+          >
+            {emoji}
+          </div>
+          <div
+            style={{
+              background: "#1e2940",
+              border: "1px solid #f0a84e44",
+              borderRadius: 10,
+              padding: "4px 12px",
+              fontSize: 9,
+              fontFamily: "monospace",
+              color: "#f0a84e",
+              letterSpacing: 2,
+              display: "flex",
+            }}
+          >
+            {petType.toUpperCase()}
+          </div>
+          <div
+            style={{
+              fontSize: 9,
+              fontFamily: "monospace",
+              color: "#6e7681",
+              letterSpacing: 1,
+              display: "flex",
+            }}
+          >
+            LVL {level} · {role}
+          </div>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            padding: "24px 28px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#f0a84e", letterSpacing: 3, display: "flex" }}>
+              GIT PET
+            </div>
+            <div style={{ fontSize: 9, color: "#30363d", display: "flex" }}>·</div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, display: "flex" }}>
+              DEVELOPER CARD
+            </div>
+          </div>
+
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 700,
+              color: "#e6edf3",
+              fontFamily: "system-ui",
+              marginBottom: 12,
+              display: "flex",
+            }}
+          >
+            @{username}
+          </div>
+
+          <div style={{ height: 1, background: "#21262d", marginBottom: 12, display: "flex" }} />
+
+          <div style={{ display: "flex", flexDirection: "row", gap: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, marginBottom: 4, display: "flex" }}>
+                STREAK
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                <div style={{ fontFamily: "system-ui", fontSize: 20, fontWeight: 700, color: "#e6edf3", display: "flex" }}>
+                  {streak}
+                </div>
+                <div style={{ fontFamily: "system-ui", fontSize: 12, color: "#6e7681", display: "flex", paddingBottom: 2 }}>
+                  days
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, marginBottom: 4, display: "flex" }}>
+                COMMITS
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 0 }}>
+                <div style={{ fontFamily: "system-ui", fontSize: 20, fontWeight: 700, color: "#e6edf3", display: "flex" }}>
+                  {formattedCommits}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, marginBottom: 4, display: "flex" }}>
+                STARS
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                <div style={{ fontFamily: "system-ui", fontSize: 20, fontWeight: 700, color: "#e6edf3", display: "flex" }}>
+                  {formattedStars}
+                </div>
+                <div style={{ fontFamily: "system-ui", fontSize: 12, color: "#6e7681", display: "flex", paddingBottom: 3 }}>
+                  ★
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: "#21262d", marginTop: 12, marginBottom: 12, display: "flex" }} />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, flex: 1, display: "flex" }}>
+              HEALTH
+            </div>
+            <div style={{ flex: 1, height: 6, background: "#21262d", borderRadius: 3, display: "flex" }}>
+              <div style={{ height: 6, width: trackFillHp, background: "#4ade80", borderRadius: 3, display: "flex" }} />
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#4ade80", display: "flex" }}>
+              {hp}/100
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#6e7681", letterSpacing: 2, flex: 1, display: "flex" }}>
+              ACTIVITY
+            </div>
+            <div style={{ flex: 1, height: 6, background: "#21262d", borderRadius: 3, display: "flex" }}>
+              <div style={{ height: 6, width: trackFillActivity, background: "#818cf8", borderRadius: 3, display: "flex" }} />
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#818cf8", display: "flex" }}>
+              {activity}/100
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: "#21262d", marginTop: 12, marginBottom: 12, display: "flex" }} />
+
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#30363d", letterSpacing: 2, display: "flex" }}>
+              GIT-PET-BETA.VERCEL.APP
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#30363d", display: "flex" }}>
+              2025
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+    {
+      width: 640,
+      height: 300,
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+      },
+    }
+  );
 }
