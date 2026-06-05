@@ -154,6 +154,16 @@ export default class WorldServer implements Party.Server {
       this.room.broadcast(JSON.stringify(msg));
     }
   }
+
+  onRequest(req: Party.Request) {
+    if (req.headers.get("x-internal") !== this.room.env.INTERNAL_SECRET) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    if (req.method === "GET") {
+      return Response.json({ online: Object.keys(this.pets) });
+    }
+    return new Response("Not found", { status: 404 });
+  }
 }
 
 WorldServer satisfies Party.Worker;

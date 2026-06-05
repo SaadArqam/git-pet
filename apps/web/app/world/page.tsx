@@ -52,8 +52,13 @@ export default async function WorldPage() {
     );
   }
 
-  const { getUserSpecies } = await import("@/lib/redis");
-  const species = await getUserSpecies(username) ?? "default";
+  let species = "default";
+  try {
+    const { getUserSpecies } = await import("@/lib/redis");
+    species = (await getUserSpecies(username)) ?? "default";
+  } catch (err) {
+    console.error("[WorldPage] Redis unavailable, using default species:", err);
+  }
 
   return <WorldClient petState={petState} species={species} />;
 }

@@ -5,6 +5,15 @@ export const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+async function safeRedis<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error("[redis] request failed:", err);
+    return fallback;
+  }
+}
+
 export function speciesKey(username: string) {
   return `species:${username}`;
 }
@@ -37,8 +46,18 @@ export function friendKey(username: string) {
   return `friends:${username}`;
 }
 
+export function lastSeenKey(username: string) {
+  return `last_seen:${username}`;
+}
+
+export type LastSeen = {
+  timestamp: number;
+  x: number;
+  z: number;
+};
+
 export async function getUserSpecies(username: string): Promise<Species | null> {
-  return redis.get<Species>(speciesKey(username));
+  return safeRedis(() => redis.get<Species>(speciesKey(username)), null);
 }
 
 export async function setUserSpecies(username: string, species: Species): Promise<void> {
@@ -46,7 +65,7 @@ export async function setUserSpecies(username: string, species: Species): Promis
 }
 
 export async function getFriends(username: string): Promise<string[]> {
-  return redis.smembers(friendKey(username));
+  return safeRedis(() => redis.smembers(friendKey(username)), []);
 }
 
 export async function addFriend(user1: string, user2: string): Promise<void> {

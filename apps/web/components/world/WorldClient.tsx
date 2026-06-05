@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PetState } from "@git-pet/core";
 import PartySocket from "partysocket";
-import { drawPet } from "@git-pet/renderer";
+import { drawPet, getSpeciesRects } from "@git-pet/renderer";
 
 interface Props {
   petState: PetState;
@@ -47,6 +47,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   const playerRef = useRef<any>(null); // Billboard group ref
   const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number, species: string }>>({});
+  const ghostsRef = useRef<Map<string, { group: any }>>(new Map());
   const nearbyPlayer = useRef<{ id: string, mesh: any } | null>(null);
   const interactionOpen = useRef(false);
   const prevNearbyId = useRef<string | null>(null);
@@ -519,6 +520,64 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         texture.needsUpdate = true;
       }
 
+      function buildVoxelPet(species: string, position: { x: number; z: number }) {
+        const voxelGroup = new THREE.Group();
+        const primary = SPECIES_PRIMARY[species] || SPECIES_PRIMARY.wolf;
+        const rects = getSpeciesRects(species, 0, primary, "front");
+        const scale = 0.025;
+        const centerX = 20;
+        const centerY = 22;
+
+        if (rects) {
+          for (const [rx, ry, rw, rh, color] of rects) {
+            const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color) });
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(rw * scale, rh * scale, 0.08), mat);
+            mesh.position.set(
+              (rx + rw / 2 - centerX) * scale,
+              (centerY - (ry + rh / 2)) * scale,
+              0
+            );
+            voxelGroup.add(mesh);
+          }
+        }
+
+        const groundY = getGroundHeight(position.x, position.z);
+        voxelGroup.position.set(position.x, groundY + 0.5, position.z);
+        return voxelGroup;
+      }
+
+      function removeGhost(username: string) {
+        const ghost = ghostsRef.current.get(username);
+        if (!ghost) return;
+        scene.remove(ghost.group);
+        ghostsRef.current.delete(username);
+      }
+
+      function spawnGhost(username: string, species: string, position: { x: number; z: number }) {
+        removeGhost(username);
+        const voxelGroup = buildVoxelPet(species, position);
+        voxelGroup.traverse((child: any) => {
+          if (child.material) {
+            child.material.opacity = 0.4;
+            child.material.transparent = true;
+          }
+        });
+
+        const labelDiv = document.createElement("div");
+        labelDiv.textContent = `@${username}`;
+        labelDiv.style.fontFamily = "monospace";
+        labelDiv.style.fontSize = "12px";
+        labelDiv.style.color = "#64748b";
+        labelDiv.style.textShadow = "0 1px 2px rgba(0,0,0,0.8)";
+        labelDiv.style.pointerEvents = "none";
+        const label = new THREE.CSS2DObject(labelDiv);
+        label.position.set(0, 2.2, 0);
+        voxelGroup.add(label);
+
+        scene.add(voxelGroup);
+        ghostsRef.current.set(username, { group: voxelGroup });
+      }
+
       // --- Helpers ---
       const colliders: { box: any, mesh: any }[] = [];
       function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false, isSolid = false): any {
@@ -856,8 +915,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         worldDecor.add(plank);
       }
       // Bridge railings
-      [{x: SACRED_X - 1.2, z: SACRED_Z - 4.5}, {x: SACRED_X + 1.2, z: SACRED_Z - 4.5},
-       {x: SACRED_X - 1.2, z: SACRED_Z + 4.0}, {x: SACRED_X + 1.2, z: SACRED_Z + 4.0}].forEach(({x, z}) => {
+      [{ x: SACRED_X - 1.2, z: SACRED_Z - 4.5 }, { x: SACRED_X + 1.2, z: SACRED_Z - 4.5 },
+      { x: SACRED_X - 1.2, z: SACRED_Z + 4.0 }, { x: SACRED_X + 1.2, z: SACRED_Z + 4.0 }].forEach(({ x, z }) => {
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.12), bridgeMat);
         post.position.set(x, 0.5, z);
         worldDecor.add(post);
@@ -925,7 +984,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       // ─── STONE MONUMENT PILLARS flanking shrine entrance, wide ───────────────
-      [{x: -8, z: -20}, {x: 8, z: -20}].forEach(({x, z}) => {
+      [{ x: -8, z: -20 }, { x: 8, z: -20 }].forEach(({ x, z }) => {
         const mBase = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.6), new THREE.MeshLambertMaterial({ color: 0x888878 }));
         mBase.position.set(x, 0.15, z); worldDecor.add(mBase);
         const mPillar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 2.2, 0.35), new THREE.MeshLambertMaterial({ color: 0x9a9a8a }));
@@ -952,7 +1011,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       wellLight.position.set(WELL_X, 1.5, WELL_Z); scene.add(wellLight);
 
       // ─── PRAYER ROPE (shimenawa) at torii entrance ────────────────────────────
-      [{x: -2.5, z: -6.5}, {x: 2.5, z: -6.5}].forEach(({x, z}) => {
+      [{ x: -2.5, z: -6.5 }, { x: 2.5, z: -6.5 }].forEach(({ x, z }) => {
         const pp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.5, 8), new THREE.MeshLambertMaterial({ color: 0x9a8a7a }));
         pp.position.set(x, 1.25, z); worldDecor.add(pp);
       });
@@ -1536,6 +1595,28 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const playerBB = createPetBillboard(petState.gitData.username, localSpecies, petState);
       scene.add(playerBB.group); playerRef.current = playerBB.group;
 
+      const saveGhostPosition = () => {
+        if (!playerRef.current) return;
+        const { x, z } = playerRef.current.position;
+        fetch("/api/ghosts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ x, z }),
+          keepalive: true,
+        }).catch(() => { });
+      };
+
+      try {
+        const ghostsRes = await fetch("/api/ghosts");
+        if (ghostsRes.ok) {
+          const { ghosts } = await ghostsRes.json() as { ghosts: { username: string; species: string; x: number; z: number }[] };
+          for (const ghost of ghosts) {
+            if (ghost.username === petState.gitData.username) continue;
+            spawnGhost(ghost.username, ghost.species, { x: ghost.x, z: ghost.z });
+          }
+        }
+      } catch { /* ignore */ }
+
       const p = playerStateRef.current; const pet = petStateRef.current;
       // Removed following pet logic completely
 
@@ -1778,7 +1859,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           (scene.fog as any).color.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.22, skyL);
         }
         const nightBoost = 1.0 - dayBright * 0.55;
-        lanternMats.forEach((mat: any, i: number) => { 
+        lanternMats.forEach((mat: any, i: number) => {
           mat.emissiveIntensity = (0.65 + Math.sin(elapsed * 1.8 + i * 1.3) * 0.45) * (0.75 + nightBoost * 1.3);
         });
 
@@ -2145,15 +2226,23 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         window.removeEventListener("resize", onResize);
       });
 
+      window.addEventListener("beforeunload", saveGhostPosition);
+      cleanupFns.current.push(() => window.removeEventListener("beforeunload", saveGhostPosition));
+
       const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST;
       if (host) {
         const socket = new PartySocket({ host, room: "world" }); socketRef.current = socket;
-        socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species: localSpecies, petState } })));
+        socket.addEventListener("open", () => {
+          saveGhostPosition();
+          socket.send(JSON.stringify({ type: "join", pet: { username: petState.gitData.username, x: p.pos.x, y: p.pos.z, species: localSpecies, petState } }));
+        });
+        socket.addEventListener("close", saveGhostPosition);
         socket.addEventListener("message", async (e) => {
           const msg = JSON.parse(e.data);
           if (msg.type === "snapshot") {
             Object.entries(msg.pets).forEach(async ([username, pData]: [string, any]) => {
               if (username === petState.gitData.username) return;
+              removeGhost(username);
 
               const sp = (pData.species || pData.petType || await fetchSpeciesForUser(username) || "cat").toLowerCase();
               console.log("Incoming player:", username, sp);
@@ -2175,6 +2264,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           } else if (msg.type === "move" || msg.type === "pet_update") {
             const data = msg.pet || msg; const uid = data.username || msg.id;
             if (uid === petState.gitData.username) return;
+            removeGhost(uid);
 
             const sp = (data.species || data.petType || "cat").toLowerCase();
             let peer = remotePlayersRef.current[uid];
@@ -2261,6 +2351,15 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     return () => {
       cancelAnimationFrame(rafRef.current);
       if (rendererRef.current) rendererRef.current.dispose();
+      if (playerRef.current) {
+        const { x, z } = playerRef.current.position;
+        fetch("/api/ghosts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ x, z }),
+          keepalive: true,
+        }).catch(() => { });
+      }
       cleanupFns.current.forEach(f => f());
       if (socketRef.current) socketRef.current.close();
       if (labelRendererRef.current && labelRendererRef.current.domElement.parentNode) {
