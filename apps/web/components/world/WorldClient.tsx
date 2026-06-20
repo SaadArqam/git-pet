@@ -51,6 +51,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const nearbyPlayer = useRef<{ id: string, mesh: any } | null>(null);
   const interactionOpen = useRef(false);
   const prevNearbyId = useRef<string | null>(null);
+  // Reciprocal befriend: pending incoming requests keyed by sender username
+  const pendingBefriendRef = useRef<Map<string, { timestamp: number; timerId: ReturnType<typeof setTimeout> }>>(new Map());
+  // Ambient proximity: seconds each remote player has been continuously within 4 units
+  const proximityTimers = useRef<Map<string, number>>(new Map());
+  // Tracks which pairs have an active ambient head-tilt to avoid re-triggering
+  const ambientTiltActive = useRef<Set<string>>(new Set());
 
   const [showInteractHint, setShowInteractHint] = useState(false);
   const [cinematicDone, setCinematicDone] = useState(false);
@@ -228,20 +234,93 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     });
   };
 
+  // Trigger a fizzle (failed befriend) animation — fewer particles, faster fade
+  const triggerFizzleAnim = (mesh: any) => {
+    if (!mesh || !sceneRef.current) return;
+    const THREE = (window as any).THREE;
+    if (!THREE?.CSS2DObject) return;
+    for (let i = 0; i < 4; i++) {
+      const div = document.createElement('div');
+      div.innerHTML = '💔';
+      div.style.fontSize = '16px';
+      div.style.userSelect = 'none';
+      div.style.pointerEvents = 'none';
+      const obj = new THREE.CSS2DObject(div);
+      obj.position.set(
+        mesh.position.x + (Math.random() - 0.5) * 1.2,
+        mesh.position.y + 1.2 + i * 0.2,
+        mesh.position.z + (Math.random() - 0.5) * 0.4
+      );
+      sceneRef.current.add(obj);
+      const t0 = Date.now();
+      animationsRef.current.push(() => {
+        const el = (Date.now() - t0) / 600;
+        obj.position.y += 0.012;
+        div.style.opacity = String(Math.max(0, 1 - el));
+        if (el >= 1) { sceneRef.current?.remove(obj); return false; }
+        return true;
+      });
+    }
+  };
+
+  // Enhanced heart animation spawning hearts from both pets converging at midpoint
+  const triggerMidpointHeartAnim = (meshA: any, meshB: any) => {
+    if (!sceneRef.current) return;
+    const THREE = (window as any).THREE;
+    if (!THREE?.CSS2DObject) return;
+    const mid = meshA && meshB
+      ? new THREE.Vector3().addVectors(meshA.position, meshB.position).multiplyScalar(0.5)
+      : (meshA || meshB)?.position?.clone() || new THREE.Vector3();
+    for (let i = 0; i < 12; i++) {
+      const div = document.createElement('div');
+      div.innerHTML = '♥';
+      div.style.color = '#FF4466';
+      div.style.fontSize = '22px';
+      div.style.fontWeight = 'bold';
+      div.style.userSelect = 'none';
+      div.style.pointerEvents = 'none';
+      const obj = new THREE.CSS2DObject(div);
+      obj.position.set(
+        mid.x + (Math.random() - 0.5) * 2,
+        mid.y + 1.5 + i * 0.22,
+        mid.z + (Math.random() - 0.5) * 0.8
+      );
+      sceneRef.current.add(obj);
+      const t0 = Date.now();
+      animationsRef.current.push(() => {
+        const el = (Date.now() - t0) / 2200;
+        obj.position.y += 0.018;
+        obj.position.x += Math.sin(Date.now() * 0.005) * 0.005;
+        div.style.opacity = String(Math.max(0, 1 - el));
+        if (el >= 1) { sceneRef.current?.remove(obj); return false; }
+        return true;
+      });
+    }
+    // Pulse both meshes
+    [meshA, meshB].forEach(mesh => {
+      if (!mesh) return;
+      const ox = mesh.scale.x, oy = mesh.scale.y, oz = mesh.scale.z;
+      const t1 = Date.now();
+      animationsRef.current.push(() => {
+        const el = Date.now() - t1;
+        if (el < 200) { const s = 1 + 0.4 * (el / 200); mesh.scale.set(ox * s, oy * s, oz * s); }
+        else if (el < 400) { const s = 1 + 0.4 * (1 - (el - 200) / 200); mesh.scale.set(ox * s, oy * s, oz * s); }
+        else { mesh.scale.set(ox, oy, oz); return false; }
+        return true;
+      });
+    });
+  };
+
   const befriendPlayer = (target: any) => {
     if (friendsRef.current.has(target.id)) {
       showToast("Already friends! ❤️");
       return;
     }
-    friendsRef.current.add(target.id);
-    setFriendCount(c => c + 1);
-    showToast("You are now friends! 🎉");
-
+    // Send befriend_request instead of auto-confirming
+    showToast("Friend request sent! Waiting... ⏳");
     if (socketRef.current) {
-      socketRef.current.send(JSON.stringify({ type: 'befriend', fromId: petState.gitData.username, toId: target.id }));
+      socketRef.current.send(JSON.stringify({ type: 'befriend_request', fromId: petState.gitData.username, toId: target.id }));
     }
-
-    triggerHeartAnim(playerRef.current);
   };
 
   const triggerDamageAnim = (mesh: any, damageAmount: number) => {
@@ -1833,8 +1912,86 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               minRemoteDist = d;
               closestRemote = { id, mesh: remote.bb.group };
             }
+
+            // ─── Ambient Proximity Timers ─────────────────────────────────────
+            const PROX_THRESHOLD = 4;
+            if (d < PROX_THRESHOLD) {
+              // Increment proximity timer (in seconds)
+              const prev = proximityTimers.current.get(id) ?? 0;
+              const next = prev + delta;
+              proximityTimers.current.set(id, next);
+
+              // Skip ambient behavior if a real interaction is open for this pair
+              const realInteractionActive = interactionOpen.current && interactionTargetRef.current?.id === id;
+
+              if (!realInteractionActive) {
+                // 3s threshold: head-tilt sway burst (only once per proximity window)
+                if (prev < 3 && next >= 3 && !ambientTiltActive.current.has(id)) {
+                  ambientTiltActive.current.add(id);
+                  const tiltMesh = remote.bb.group;
+                  const localMesh = playerRef.current;
+                  const tiltStart = Date.now();
+                  const TILT_DURATION = 2000;
+                  animationsRef.current.push(() => {
+                    const el = Date.now() - tiltStart;
+                    const t = el / TILT_DURATION;
+                    if (el < TILT_DURATION) {
+                      const sway = Math.sin(frameCount * 0.04) * 0.06 + Math.sin(el * 0.01) * 0.18;
+                      if (tiltMesh) tiltMesh.rotation.y = sway;
+                      if (localMesh) localMesh.rotation.y = sway;
+                      return true;
+                    }
+                    // Restore normal rotation
+                    if (tiltMesh) tiltMesh.rotation.y = Math.sin(frameCount * 0.04) * 0.06;
+                    if (localMesh) localMesh.rotation.y = 0;
+                    ambientTiltActive.current.delete(id);
+                    return false;
+                  });
+                }
+
+                // 6s threshold: occasional ambient emoji (1 in 600 frames chance)
+                if (next >= 6 && Math.random() < 1 / 600) {
+                  const ambientEmojis = ['👋', '😊', '✨', '🌸'];
+                  const emoji = ambientEmojis[Math.floor(Math.random() * ambientEmojis.length)];
+                  const spawnMesh = Math.random() < 0.5 ? playerRef.current : remote.bb.group;
+                  if (spawnMesh && sceneRef.current) {
+                    const eDiv = document.createElement('div');
+                    eDiv.innerText = emoji;
+                    eDiv.style.fontSize = '24px';
+                    eDiv.style.pointerEvents = 'none';
+                    const eObj = new THREE.CSS2DObject(eDiv);
+                    eObj.position.set(
+                      spawnMesh.position.x + (Math.random() - 0.5) * 0.5,
+                      spawnMesh.position.y + 2.5,
+                      spawnMesh.position.z
+                    );
+                    sceneRef.current.add(eObj);
+                    const et = Date.now();
+                    animationsRef.current.push(() => {
+                      const el = (Date.now() - et) / 1200;
+                      eObj.position.y += 0.015;
+                      eDiv.style.opacity = String(Math.max(0, 1 - el));
+                      if (el >= 1) { sceneRef.current?.remove(eObj); return false; }
+                      return true;
+                    });
+                  }
+                }
+              }
+            } else {
+              // Out of range — reset timer and tilt state
+              proximityTimers.current.set(id, 0);
+              ambientTiltActive.current.delete(id);
+            }
           }
         }
+
+        // Clean up timers for players who left
+        proximityTimers.current.forEach((_, id) => {
+          if (!remotePlayersRef.current[id]) {
+            proximityTimers.current.delete(id);
+            ambientTiltActive.current.delete(id);
+          }
+        });
 
         nearbyPlayer.current = closestRemote;
         const currentId = nearbyPlayer.current?.id || null;
@@ -1842,6 +1999,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           setShowInteractHint(!!nearbyPlayer.current);
           prevNearbyId.current = currentId;
         }
+
+        // ─── Ghost idle sway ─────────────────────────────────────────────────
+        ghostsRef.current.forEach(({ group }) => {
+          group.rotation.y = Math.sin(frameCount * 0.04) * 0.06;
+        });
 
         // ─── Day / Night Cycle ───────────────────────────────────────────────
         dayNightT = (dayNightT + delta / DAY_DURATION) % 1;
@@ -2075,73 +2237,48 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             return;
           }
 
-          // ── F : BEFRIEND ──
+          // ── F : BEFRIEND (reciprocal) ──
           if (e.code === 'KeyF' && target) {
             if (friendsRef.current.has(target.id)) {
               showToast("Already friends! ❤️");
               closeInteractionMenu();
               return;
             }
-            friendsRef.current.add(target.id);
-            setFriendCount(c => c + 1);
-            showToast("You are now friends! 🎉");
 
+            // Check if the target has already sent us a befriend_request (accept it)
+            const pending = pendingBefriendRef.current.get(target.id);
+            if (pending) {
+              // Accept the pending request
+              clearTimeout(pending.timerId);
+              pendingBefriendRef.current.delete(target.id);
+              // Update local state immediately
+              friendsRef.current.add(target.id);
+              setFriendCount(c => c + 1);
+              showToast("You are now friends! 🎉");
+              // Broadcast confirmation
+              if (socketRef.current) {
+                socketRef.current.send(JSON.stringify({
+                  type: 'befriend_confirmed',
+                  fromId: petState.gitData.username,
+                  toId: target.id
+                }));
+              }
+              // Enhanced midpoint heart animation
+              const remotePeer = remotePlayersRef.current[target.id];
+              triggerMidpointHeartAnim(playerRef.current, remotePeer?.bb?.group ?? null);
+              closeInteractionMenu();
+              return;
+            }
+
+            // No pending — send a new befriend_request
+            showToast("Friend request sent! Waiting... ⏳");
             if (socketRef.current) {
               socketRef.current.send(JSON.stringify({
-                type: 'befriend',
+                type: 'befriend_request',
                 fromId: petState.gitData.username,
                 toId: target.id
               }));
             }
-
-            // Heart animation on local player
-            if (playerRef.current && sceneRef.current) {
-              for (let i = 0; i < 8; i++) {
-                const hDiv = document.createElement('div');
-                hDiv.innerHTML = '♥';
-                hDiv.style.color = '#FF4466';
-                hDiv.style.fontSize = '22px';
-                hDiv.style.fontWeight = 'bold';
-                hDiv.style.pointerEvents = 'none';
-                hDiv.style.userSelect = 'none';
-                const heart = new THREE.CSS2DObject(hDiv);
-                const base = playerRef.current.position;
-                heart.position.set(
-                  base.x + (Math.random() - 0.5) * 1.5,
-                  base.y + 1.5 + i * 0.3,
-                  base.z + (Math.random() - 0.5) * 0.5
-                );
-                sceneRef.current.add(heart);
-                const ht = Date.now();
-                animationsRef.current.push(() => {
-                  const el = (Date.now() - ht) / 2000;
-                  heart.position.y += 0.018;
-                  hDiv.style.opacity = String(Math.max(0, 1 - el));
-                  if (el >= 1) { sceneRef.current?.remove(heart); return false; }
-                  return true;
-                });
-              }
-
-              // Scale pulse on local player
-              const mesh = playerRef.current;
-              const ox = mesh.scale.x, oy = mesh.scale.y, oz = mesh.scale.z;
-              const pt = Date.now();
-              animationsRef.current.push(() => {
-                const el = Date.now() - pt;
-                if (el < 200) {
-                  const s = 1 + 0.4 * (el / 200);
-                  mesh.scale.set(ox * s, oy * s, oz * s);
-                } else if (el < 400) {
-                  const s = 1 + 0.4 * (1 - (el - 200) / 200);
-                  mesh.scale.set(ox * s, oy * s, oz * s);
-                } else {
-                  mesh.scale.set(ox, oy, oz);
-                  return false;
-                }
-                return true;
-              });
-            }
-
             closeInteractionMenu();
             return;
           }
@@ -2286,15 +2423,56 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               remotePlayersRef.current[uid] = { bb, targetPos: new THREE.Vector3(data.x, 0.5, data.y), targetRot: data.rot || 0, species: sp };
             }
           } else if (msg.type === "befriend_received") {
+            // Legacy handler kept for compatibility with old server broadcasts
             const peer = remotePlayersRef.current[msg.fromId];
             if (peer) {
-              if (!friendsRef.current.has(msg.fromId)) {
-                friendsRef.current.add(msg.fromId);
-                setFriendCount(c => c + 1);
-              }
               showToast(`${msg.fromId}'s pet wants to be friends! ❤️`);
               triggerHeartAnim(peer.bb.group);
             }
+          } else if (msg.type === "befriend_request") {
+            // Incoming friend request — store in pending and notify local player
+            const sender = msg.fromId as string;
+            if (friendsRef.current.has(sender)) return;
+            // Clear any existing pending timer for this sender
+            const existingPending = pendingBefriendRef.current.get(sender);
+            if (existingPending) clearTimeout(existingPending.timerId);
+            const timerId = setTimeout(() => {
+              // 5 second window expired
+              pendingBefriendRef.current.delete(sender);
+              showToast(`Friend request from ${sender} expired 💨`);
+              // Send expiry notification so the requester also sees fizzle
+              if (socketRef.current) {
+                socketRef.current.send(JSON.stringify({
+                  type: 'befriend_expired',
+                  fromId: petState.gitData.username,
+                  toId: sender
+                }));
+              }
+              // Fizzle on local player
+              triggerFizzleAnim(playerRef.current);
+            }, 5000);
+            pendingBefriendRef.current.set(sender, { timestamp: Date.now(), timerId });
+            showToast(`${sender} wants to be friends! Press F to accept ❤️`);
+          } else if (msg.type === "befriend_confirmed") {
+            // Both sides confirmed — update state and play enhanced animation
+            const confirmerOrAccepter = msg.fromId as string;
+            // Clear any pending request from this user
+            const existingPending2 = pendingBefriendRef.current.get(confirmerOrAccepter);
+            if (existingPending2) { clearTimeout(existingPending2.timerId); pendingBefriendRef.current.delete(confirmerOrAccepter); }
+            if (!friendsRef.current.has(confirmerOrAccepter)) {
+              friendsRef.current.add(confirmerOrAccepter);
+              setFriendCount(c => c + 1);
+            }
+            showToast("You are now friends! 🎉");
+            const confirmedPeer = remotePlayersRef.current[confirmerOrAccepter];
+            triggerMidpointHeartAnim(playerRef.current, confirmedPeer?.bb?.group ?? null);
+          } else if (msg.type === "befriend_expired") {
+            // The other side's timer expired — show fizzle
+            const expiredSender = msg.fromId as string;
+            const existingPending3 = pendingBefriendRef.current.get(expiredSender);
+            if (existingPending3) { clearTimeout(existingPending3.timerId); pendingBefriendRef.current.delete(expiredSender); }
+            showToast(`Friend request expired 💨`);
+            triggerFizzleAnim(playerRef.current);
           } else if (msg.type === "fight_received") {
             const peer = remotePlayersRef.current[msg.fromId];
             setLocalHP(hp => Math.max(0, hp - msg.damage));

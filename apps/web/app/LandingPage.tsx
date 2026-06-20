@@ -59,6 +59,13 @@ export default function LandingPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [joystick, setJoystick] = useState({ active: false, dx: 0, dy: 0 })
 
+  // Leaderboard state
+  type LBEntry = { username: string; species: string; value: number }
+  type LBData = { topStreak: LBEntry[]; topCommits: LBEntry[]; topFriends: LBEntry[] }
+  const [lbData, setLbData] = useState<LBData | null>(null)
+  const [lbLoading, setLbLoading] = useState(false)
+  const [lbTab, setLbTab] = useState<'streak' | 'commits' | 'friends'>('streak')
+
   useEffect(() => {
     if (!triggerWorldEnter || status === 'loading') return
 
@@ -96,6 +103,17 @@ export default function LandingPage() {
       setQuestStep(1)
     }
   }, [promptLabel, questStep])
+
+  // Fetch leaderboard data when the overlay opens
+  useEffect(() => {
+    if (activeOverlay !== 'leaderboard') return
+    if (lbData !== null || lbLoading) return // already fetched or in flight
+    setLbLoading(true)
+    fetch('/api/leaderboard')
+      .then(r => r.json())
+      .then((data: LBData) => { setLbData(data); setLbLoading(false) })
+      .catch(() => { setLbData({ topStreak: [], topCommits: [], topFriends: [] }); setLbLoading(false) })
+  }, [activeOverlay, lbData, lbLoading])
 
   useEffect(() => {
     if (activeOverlay === 'about' && !hasSeenAbout) {
@@ -1063,17 +1081,66 @@ export default function LandingPage() {
             </>}
 
             {activeOverlay === 'leaderboard' && <>
-              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 13, color: '#ffd4a0', marginBottom: 32, letterSpacing: 1, textAlign: 'center' }}>HALL OF LEGENDS</div>
-              {[['@iris', 'Dragon', '42d'], ['@alice', 'Wolf', '30d'], ['@carol', 'Axolotl', '22d'], ['@saad', 'Dragon', '14d'], ['@bob', 'Capybara', '11d'], ['@dave', 'Wolf', '9d'], ['@eve', 'Sabertooth', '7d'], ['@frank', 'Dragon', '5d'], ['@grace', 'Axolotl', '4d'], ['@henry', 'Capybara', '3d']].map(([user, species, streak], i) => (
-                <div key={user} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 0', borderBottom: '1px solid rgba(240,200,140,0.08)', animation: `fadeSlideIn 0.4s ease ${i * 0.07}s both` }}>
-                  <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 24, color: i < 3 ? '#ffd4a0' : 'rgba(240,235,224,0.3)', minWidth: 28 }}>{i + 1}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#f0ebe0' }}>{user}</div>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'rgba(240,235,224,0.4)' }}>{species}</div>
-                  </div>
-                  <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#b5470a' }}>🔥 {streak}</div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 13, color: '#ffd4a0', marginBottom: 24, letterSpacing: 1, textAlign: 'center' }}>HALL OF LEGENDS</div>
+
+              {/* Tab bar */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
+                {(['streak', 'commits', 'friends'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setLbTab(tab)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 4px',
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: 9,
+                      letterSpacing: 2,
+                      textTransform: 'uppercase',
+                      background: lbTab === tab ? 'rgba(181,71,10,0.4)' : 'rgba(255,255,255,0.04)',
+                      border: lbTab === tab ? '1px solid rgba(255,180,80,0.5)' : '1px solid rgba(240,200,140,0.1)',
+                      color: lbTab === tab ? '#ffd4a0' : 'rgba(240,235,224,0.4)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {tab === 'streak' ? '🔥 Streak' : tab === 'commits' ? '⚡ Commits' : '❤️ Friends'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Loading state */}
+              {lbLoading && (
+                <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'rgba(240,235,224,0.3)', letterSpacing: 2 }}>
+                  loading...
                 </div>
-              ))}
+              )}
+
+              {/* Empty state */}
+              {!lbLoading && lbData && (
+                lbTab === 'streak' ? lbData.topStreak : lbTab === 'commits' ? lbData.topCommits : lbData.topFriends
+              )?.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'rgba(240,235,224,0.3)', letterSpacing: 2 }}>
+                  no entries yet
+                </div>
+              )}
+
+              {/* Real data rows */}
+              {!lbLoading && lbData && (
+                (lbTab === 'streak' ? lbData.topStreak : lbTab === 'commits' ? lbData.topCommits : lbData.topFriends)
+                  .map((entry, i) => (
+                    <div key={entry.username} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 0', borderBottom: '1px solid rgba(240,200,140,0.08)', animation: `fadeSlideIn 0.4s ease ${i * 0.07}s both` }}>
+                      <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 24, color: i < 3 ? '#ffd4a0' : 'rgba(240,235,224,0.3)', minWidth: 28 }}>{i + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#f0ebe0' }}>@{entry.username}</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: 'rgba(240,235,224,0.4)', textTransform: 'capitalize' }}>{entry.species}</div>
+                      </div>
+                      <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#b5470a' }}>
+                        {lbTab === 'streak' && `🔥 ${entry.value}d`}
+                        {lbTab === 'commits' && `⚡ ${entry.value >= 1000 ? (entry.value / 1000).toFixed(1) + 'k' : entry.value}`}
+                        {lbTab === 'friends' && `❤️ ${entry.value}`}
+                      </div>
+                    </div>
+                  ))
+              )}
             </>}
 
             {activeOverlay === 'pets' && <>
