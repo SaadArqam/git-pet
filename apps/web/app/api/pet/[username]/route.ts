@@ -33,7 +33,8 @@ export async function GET(
       { ...petState, species },
       { headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400" } }
     );
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load pet";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

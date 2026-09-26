@@ -27,7 +27,7 @@ async function getPetState(token: string, username: string): Promise<PetState> {
 export default async function Dashboard() {
   const session = await getServerSession(authOptions);
   const token = session?.accessToken;
-  const username = (session as { login?: string } | null)?.login;
+  const username = session?.login;
 
   if (!token || !username) {
     redirect("/");

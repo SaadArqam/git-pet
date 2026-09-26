@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PetState, PetStats } from "@git-pet/core";
 import PartySocket from "partysocket";
 import { drawPet, getSpeciesRects, CANON_COLORS } from "@git-pet/renderer";
@@ -54,11 +54,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const [cinematicDone, setCinematicDone] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
   const [promptLabel, setPromptLabel] = useState<string | null>(null);
-  const [timeDisplay, setTimeDisplay] = useState('☀️ Morning');
-  const [flashColor, setFlashColor] = useState<string | null>(null);
   const [narrativeText, setNarrativeText] = useState<string | null>(null);
   const [localHP, setLocalHP] = useState(100);
-  const [hasEntered, setHasEntered] = useState(false);
   // Derived once from the server-fetched `initialSpecies` prop and never
   // reassigned — see the hydration effect below for why.
   const [selectedPet] = useState<any>({ type: initialSpecies, id: 'prop-fallback' });
@@ -333,20 +330,24 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   // Persist a fight win so it durably counts for something (survives reconnects,
   // can feed the leaderboard later) instead of only living in in-memory HP refs.
-  const persistFightWin = () => {
+  const username = petState.gitData.username;
+  const persistFightWin = useCallback(() => {
     fetch("/api/fights", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ winnerId: petState.gitData.username }),
+      body: JSON.stringify({ winnerId: username }),
       keepalive: true,
     }).catch(() => { });
-  };
+  }, [username]);
 
 
   // Main Three.js logic
   useEffect(() => {
     if (typeof window === "undefined" || !canvasRef.current) return;
     if (!selectedPet) return;
+    // Same array init() pushes into below; captured once so the cleanup
+    // at the end runs exactly the functions registered by this run.
+    const cleanups = cleanupFns.current;
 
     const loadScript = (src: string): Promise<void> =>
       new Promise((resolve, reject) => {
@@ -918,7 +919,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         trim.position.set(x, 5.2, z - 2.5); g.add(trim);
         return g;
       }
-      const shrineGroup = buildShrine(0, -22);
+      buildShrine(0, -22);
 
       // ─── SACRED REFLECTION POND (far west, off path) ─────────────────────────
       const SACRED_X = -14, SACRED_Z = -18;
@@ -959,7 +960,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         post.position.set(x, 0.5, z);
         worldDecor.add(post);
       });
-      for (let side of [-1.2, 1.2]) {
+      for (const side of [-1.2, 1.2]) {
         const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 8.6), bridgeMat);
         rail.position.set(SACRED_X + side, 0.82, SACRED_Z - 0.25); worldDecor.add(rail);
       }
@@ -1093,16 +1094,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const fbFace = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 0.08), new THREE.MeshLambertMaterial({ color: 0xf5e8c0, emissive: new THREE.Color(0xffaa22), emissiveIntensity: 0.08 }));
       fbFace.position.set(FB_X, 2.2, FB_Z - 0.16); worldDecor.add(fbFace);
 
-      function buildForestTree(x: number, z: number, h: number) {
-        const lc = [0x2d4a1e, 0x1e3014, 0x3a5a28, 0x4a6a38];
-        for (let ty = 0; ty < h; ty++) vox(x, ty + 0.5, z, 0x5a3a1a, 0.65, 1, 0.65, true, false, ty < 2);
-        for (let fx = -2; fx <= 2; fx++) for (let fy = -1; fy <= 2; fy++) for (let fz = -2; fz <= 2; fz++) {
-          const d = Math.sqrt(fx * fx + fy * fy * 1.2 + fz * fz); if (d < 2.4 && Math.random() > d * 0.18) vox(x + fx * 0.9, h + fy * 0.85, z + fz * 0.9, lc[Math.floor(Math.random() * 4)], 0.9, 0.9, 0.9);
-        }
-      }
-
       function seededRandom(seed: number) {
-        let x = Math.sin(seed) * 10000;
+        const x = Math.sin(seed) * 10000;
         return x - Math.floor(x);
       }
 
@@ -1118,21 +1111,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         const s = 0.5 + seededRandom(seed) * 0.5;
         const pad = vox(x, 0.12, z, 0x3d7a4d, s, 0.05, s, false, true, false);
         swayables.push({ mesh: pad, speed: 0.5, offset: seed });
-      }
-
-      function createIceSpire(x: number, z: number, seed: number) {
-        const h = 2 + seededRandom(seed) * 4;
-        const mat = new THREE.MeshStandardMaterial({ color: 0xaeeeee, emissive: 0x2244aa, emissiveIntensity: 0.2, transparent: true, opacity: 0.8 });
-        const mesh = new THREE.Mesh(new THREE.ConeGeometry(h / 3, h, 4), mat);
-        mesh.position.set(x, h / 2, z);
-        scene.add(mesh);
-        mesh.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(mesh), mesh });
-      }
-
-      function createRuins(x: number, z: number, seed: number) {
-        const height = 1 + seededRandom(seed) * 2;
-        vox(x, height / 2, z, 0xd2b48c, 1.5, height, 0.5, true, true, true);
-        vox(x + 1, height / 4, z, 0xd2b48c, 0.5, height / 2, 0.5, true, true, true);
       }
 
       function createForestZone(offsetX: number, offsetZ: number) {
@@ -1228,7 +1206,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           worldDecor.add(dirt);
         }
 
-        let fenceAngle = Math.random() * Math.PI;
+        const fenceAngle = Math.random() * Math.PI;
         for (let i = 0; i < 5; i++) {
           const rx = offsetX + 20 + (i - 2) * 2 * Math.cos(fenceAngle);
           const rz = offsetZ + 20 + (i - 2) * 2 * Math.sin(fenceAngle);
@@ -1507,10 +1485,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         face.position.set(x, base + 2.0, z - 0.10); worldDecor.add(face);
         return { x, z };
       }
-      const nb1 = buildNoticeBoard(25, 30);
-      const nb2 = buildNoticeBoard(-40, -10);
-      const nb3 = buildNoticeBoard(55, -20);
-      const nb4 = buildNoticeBoard(5, -40);
+      buildNoticeBoard(25, 30);
+      buildNoticeBoard(-40, -10);
+      buildNoticeBoard(55, -20);
+      buildNoticeBoard(5, -40);
 
 
       function createBoundaries() {
@@ -1627,7 +1605,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       try {
         const res = await fetch("/api/species");
         if (res.ok) { const data = await res.json(); if (data.species) localSpecies = data.species; }
-      } catch (e) { }
+      } catch { }
 
       // Local Player & Pet Billboards
       const playerBB = createPetBillboard(petState.gitData.username, localSpecies, petState);
@@ -1689,7 +1667,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         { pos: new THREE.Vector3(5, 0, -40), radius: 3.5, label: '[ E ] Notice Board', onInteract: () => { setNarrativeText('Crystal caves glow brighter under the full moon. The magic runs deep.'); setTimeout(() => setNarrativeText(null), 4500); } },
       ];
 
-      const peerMeshes = new Map<string, { bb: any, targetPos: any, targetRot: number, species: string }>();
       const openInteractionMenu = (player: { id: string, mesh: any }) => {
         interactionTargetRef.current = player;
         setInteractionTarget(player);
@@ -1707,7 +1684,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         try {
           const res = await fetch(`/api/species?username=${username}`);
           if (res.ok) { const data = await res.json(); speciesCache.current.set(username, data.species); return data.species; }
-        } catch (e) { }
+        } catch { }
         return "cat";
       }
 
@@ -1787,11 +1764,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const fireflies = new THREE.Points(fireflyGeo, fireflyMat);
       scene.add(fireflies);
 
-      const dummy = new THREE.Object3D();
 
 
       let lastTime = performance.now(); let elapsed = 0; let lastFootstep = 0;
       let frameCount = 0;
+      let prevPromptLabel: string | null = null;
+      let cinematicSignaled = false;
       let dayNightT = 0.15;
       const DAY_DURATION = 75;
 
@@ -1811,9 +1789,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           p.isMoving = moved; p.vel.x *= damping; p.vel.z *= damping;
 
           // Smooth sliding collision
-          const moveX = new THREE.Vector3(p.vel.x, 0, 0);
-          const moveZ = new THREE.Vector3(0, 0, p.vel.z);
-
           // Try X movement first
           const nextX = new THREE.Vector3(p.pos.x + p.vel.x, 0.5, p.pos.z);
           const pBoxX = new THREE.Box3().setFromCenterAndSize(nextX, new THREE.Vector3(1, 2, 1));
@@ -1844,7 +1819,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           if (moved && now - lastFootstep > 320) { lastFootstep = now; playFootstep(); }
         } else if (!movementBlocked.current) {
           p.pos.z += 0.07 * (delta * 60); p.isMoving = true;
-          if (p.pos.z > -14 && !cinematicDone) setCinematicDone(true);
+          // `cinematicDone` state would be a stale `false` inside this closure,
+          // so it used to call setCinematicDone(true) on every frame of the
+          // rest of the intro walk. A loop-local flag fires it exactly once.
+          if (p.pos.z > -14 && !cinematicSignaled) { cinematicSignaled = true; setCinematicDone(true); }
           if (p.pos.z > -6) p.controlEnabled = true;
         }
 
@@ -1897,7 +1875,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                   const TILT_DURATION = 2000;
                   animationsRef.current.push(() => {
                     const el = Date.now() - tiltStart;
-                    const t = el / TILT_DURATION;
                     if (el < TILT_DURATION) {
                       const sway = Math.sin(frameCount * 0.04) * 0.06 + Math.sin(el * 0.01) * 0.18;
                       if (tiltMesh) tiltMesh.rotation.y = sway;
@@ -1963,6 +1940,27 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           prevNearbyId.current = currentId;
         }
 
+        // Interactable proximity prompt ("[ E ] Pray at Shrine" etc.). This
+        // used to call setPromptLabel() unconditionally every frame (60
+        // React re-renders/sec) and was removed entirely at some point,
+        // which left every interactable with no visible prompt. Restored,
+        // but only touching React state when the nearest label changes.
+        let nearestLabel: string | null = null;
+        let nearestDistSq = Infinity;
+        for (const obj of interactables) {
+          const dx = p.pos.x - obj.pos.x;
+          const dz = p.pos.z - obj.pos.z;
+          const dSq = dx * dx + dz * dz;
+          if (dSq < obj.radius * obj.radius && dSq < nearestDistSq) {
+            nearestDistSq = dSq;
+            nearestLabel = obj.label;
+          }
+        }
+        if (nearestLabel !== prevPromptLabel) {
+          prevPromptLabel = nearestLabel;
+          setPromptLabel(nearestLabel);
+        }
+
         // ─── Ghost idle sway ─────────────────────────────────────────────────
         ghostsRef.current.forEach(({ group, mood }) => {
           if (mood === "coma") {
@@ -2009,7 +2007,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
         fireflies.geometry.attributes.position.needsUpdate = true;
 
-        fallingPetals.forEach(({ mesh, offset }, i) => {
+        fallingPetals.forEach(({ mesh, offset }) => {
           mesh.position.y -= 0.008;
           mesh.position.x += Math.sin(elapsed * 0.5 + offset) * 0.004;
           mesh.rotation.z += 0.008;
@@ -2031,7 +2029,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           }
         }
 
-        const pBox = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(p.pos.x, 1, p.pos.z), new THREE.Vector3(2, 2, 2));
         ambientParticles.forEach((a, i) => {
           a.mesh.position.y += Math.sin(elapsed * 0.4 + i) * 0.002;
         });
@@ -2390,7 +2387,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             removeGhost(uid);
 
             const sp = (data.species || data.petType || "cat").toLowerCase();
-            let peer = remotePlayersRef.current[uid];
+            const peer = remotePlayersRef.current[uid];
 
             if (peer) {
               if (peer.species !== sp && (data.species || data.petType)) {
@@ -2461,7 +2458,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             showToast(`Friend request expired 💨`);
             triggerFizzleAnim(playerRef.current);
           } else if (msg.type === "fight_received") {
-            const peer = remotePlayersRef.current[msg.fromId];
             setLocalHP(hp => Math.max(0, hp - msg.damage));
             shakeRef.current = 0.4;
             triggerDamageAnim(playerRef.current, msg.damage);
@@ -2530,13 +2526,16 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           keepalive: true,
         }).catch(() => { });
       }
-      cleanupFns.current.forEach(f => f());
+      cleanups.forEach(f => f());
+      // Emptied after running — otherwise every earlier run's cleanups
+      // would stay registered and fire again on each later teardown.
+      cleanups.length = 0;
       if (socketRef.current) socketRef.current.close();
       if (labelRendererRef.current && labelRendererRef.current.domElement.parentNode) {
         labelRendererRef.current.domElement.parentNode.removeChild(labelRendererRef.current.domElement);
       }
     };
-  }, [petState, selectedPet, initialSpecies]);
+  }, [petState, selectedPet, initialSpecies, persistFightWin]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', background: '#0d0f18', overflow: 'hidden' }}>
@@ -2561,6 +2560,14 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.3)', fontSize: 10, letterSpacing: 3, zIndex: 10 }}>WASD · MOVE · E · INTERACT</div>
           <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 20, border: '1px solid rgba(240,200,140,0.2)' }}><canvas ref={minimapRef} width={120} height={120} style={{ display: 'block', opacity: 0.8 }} /></div>
           {promptLabel && (<div style={{ position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(20,14,8,0.9)', border: '1px solid #ffd4a0', padding: '10px 24px', zIndex: 20, fontSize: 10, color: '#ffd4a0' }}>{promptLabel}</div>)}
+          {/* Narrative text from interactables (shrine, well, campfires, chests...).
+              ~27 interactables set this, but the element rendering it had been
+              removed, so pressing E on any of them showed nothing. */}
+          {narrativeText && (
+            <div style={{ position: 'fixed', bottom: 150, left: '50%', transform: 'translateX(-50%)', maxWidth: 'min(560px, calc(100vw - 32px))', textAlign: 'center', background: 'rgba(10,8,4,0.8)', padding: '10px 20px', borderRadius: 4, color: '#f0ebe0', fontSize: 12, letterSpacing: 1, zIndex: 20, pointerEvents: 'none' }}>
+              {narrativeText}
+            </div>
+          )}
           <div style={{
             position: 'fixed',
             bottom: 80,

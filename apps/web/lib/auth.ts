@@ -27,7 +27,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string;
-      (session as any).login = token.login;
+      session.login = token.login;
       return session;
     },
   },
@@ -40,7 +40,7 @@ export const authOptions: NextAuthOptions = {
  */
 export async function getSessionUsername(): Promise<string | null> {
   const session = await getServerSession(authOptions);
-  return (session as { login?: string } | null)?.login ?? null;
+  return session?.login ?? null;
 }
 
 /**

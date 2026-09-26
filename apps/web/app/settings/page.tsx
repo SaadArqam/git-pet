@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
   const session = await getServerSession(authOptions);
-  const username = (session as { login?: string } | null)?.login;
+  const username = session?.login;
   if (!username) redirect("/");
   
   const currentSpecies = await getUserSpecies(username) ?? "wolf";

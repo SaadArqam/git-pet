@@ -14,7 +14,7 @@ const signInStyle = {
 export default async function WorldPage() {
   const session = await getServerSession(authOptions);
   const token = session?.accessToken;
-  const username = (session as any)?.login as string | undefined;
+  const username = session?.login;
 
   if (!token || !username) {
     return (

@@ -135,10 +135,17 @@ reading the code alone.
 - **Fix:** Export the map once from `packages/renderer` (it already has this exact data internally) and import it everywhere else instead of retyping it.
 - **Correction found while fixing:** `StatBar.tsx` and `PetCard.tsx` were false positives — their `#94a3b8` is an unrelated generic gray/mood color, not the species map, so they were left alone. The other 8 (plus `packages/renderer` itself, the new source of truth) now import the same `CANON_COLORS` export instead of retyping it — 2 were exact duplicate map objects, 3 (`about/page.tsx`'s inline pet array, `SpeciesSelect.tsx`/`SpeciesSwitch.tsx`'s per-species metadata) had the same 5 values spelled out as individual literals and now reference `CANON_COLORS.<species>` instead.
 
-### 20. ~142 ESLint problems across the app — mostly `any` types hiding real bugs, plus genuinely dead code
+### 20. ✅ FIXED (partially) — ~142 ESLint problems across the app — mostly `any` types hiding real bugs, plus genuinely dead code
 - **Where:** whole `apps/web/app` + `components` + `lib` tree (run `npx eslint` to see the live list)
 - **Breakdown:** the large majority are `@typescript-eslint/no-explicit-any` (a type that turns off TypeScript's safety net) and `no-unused-vars` (variables computed and then never used — often a sign a piece of logic was half-finished, e.g. an unused `pBox` collision box computed every single frame for nothing, or two unused world-decoration functions).
 - **Fix:** Not urgent individually, but worth cleaning up in the same pass as everything else — each `any` is a place a real bug could be hiding undetected.
+- **What actually shipped:** 142 → 85. Every file except the two Three.js files (`WorldClient.tsx`, `LandingPage.tsx`) is now lint-clean. The "half-finished logic" hunch was right — cleaning this up surfaced four real bugs:
+  - **World interactables were silently broken.** ~27 interactables (shrine, well, campfires, chests, totems) set narrative text that was never rendered, and the "[ E ] Pray at Shrine"-style proximity prompt was never set. Both had been removed in earlier commits (the prompt probably because it called `setState` 60×/sec). Restored, with the prompt only updating React state when the nearest interactable changes.
+  - **Every pet card showed level 1.** The card read `petState.level` through an `any`; `PetState` has no `level`. Level is now derived from life stage (egg 1 → legend 4). The card ID's hardcoded "2025" now uses the current year.
+  - **`setCinematicDone(true)` fired every frame** for the last stretch of the intro walk (stale closure value). Now fires once.
+  - **Effect cleanups accumulated.** Both Three.js effects pushed cleanup functions into a ref that was never emptied, so a re-run would fire old cleanups again. Now emptied after running.
+  - Also: removed per-frame dead allocations in the render loop (`moveX`/`moveZ`/`pBox` `Vector3`/`Box3` created every frame and never used), three never-called world builders, three never-used `useState`s, and replaced every `session as any` cast with a proper `login` field on the NextAuth `Session` type.
+- **Still open (needs your call):** the remaining 85 are all in the two Three.js files — 81 `any` (Three.js is loaded from a CDN, so there are no types for it) plus 4 React-advisory warnings in `LandingPage.tsx` whose fix would mean restructuring how the landing scene/fonts load.
 
 ### 21. ✅ FIXED — There are zero working automated tests in the entire project
 - **Where:** `packages/core/src/stats.test.ts` exists, but there's no test runner (no Jest/Vitest) installed or configured anywhere, and no `"test"` script in any `package.json` — this file cannot currently be run by anything.

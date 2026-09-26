@@ -284,9 +284,9 @@ export default function AboutPage() {
         { draw: drawAxolotl, color: CANON_COLORS.axolotl, xStart: 1800, speedDir: 1 },
       ];
 
-      pets.forEach((pet, i) => {
+      pets.forEach((pet) => {
          const move = (frame * 0.4 * pet.speedDir);
-         let rawX = (pet.xStart + move);
+         const rawX = (pet.xStart + move);
          // Bounce within panorama Width
          if (rawX < 0 || rawX > panoramaWidth) pet.speedDir *= -1;
          
@@ -318,7 +318,9 @@ export default function AboutPage() {
 
   const initAudio = () => {
     if (!audioCtxRef.current) {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (AudioContextClass) {
         const ctx = new AudioContextClass();
         audioCtxRef.current = ctx;
@@ -452,7 +454,7 @@ export default function AboutPage() {
 
           <div style={{ color: "#e2e8f0", marginBottom: "12px", fontWeight: "bold" }}>WHAT IS GIT PET?</div>
           <p style={{ color: "#475569", lineHeight: "1.6", marginBottom: "24px" }}>
-            A Tamagotchi for developers. Your GitHub commits determine your pet's health, mood, and evolution. Code more, your pet thrives. Miss a day, it gets sad. Miss a week, it gets angry.
+            A Tamagotchi for developers. Your GitHub commits determine your pet&apos;s health, mood, and evolution. Code more, your pet thrives. Miss a day, it gets sad. Miss a week, it gets angry.
           </p>
 
           <div style={{ color: "#e2e8f0", marginBottom: "12px", fontWeight: "bold" }}>HOW IT WORKS</div>

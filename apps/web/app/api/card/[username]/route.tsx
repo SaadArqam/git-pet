@@ -1,6 +1,8 @@
 import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
+import type { GitData, PetState, Stage } from "@git-pet/core";
 import { getSpeciesRects, CANON_COLORS } from "@git-pet/renderer";
+import type { ReactElement } from "react";
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
 import { redis } from "@/lib/redis";
@@ -16,7 +18,7 @@ const ROLE_MAP: Record<string, string> = {
   default: "PET",
 };
 
-function renderSprite(species: string, frame: number): any {
+function renderSprite(species: string, frame: number): ReactElement {
   const baseColor = CANON_COLORS[species] ?? "#94a3b8";
   const rects = getSpeciesRects(species, frame, baseColor, "front");
 
@@ -57,7 +59,7 @@ function renderSprite(species: string, frame: number): any {
         flexShrink: 0,
       }}
     >
-      {rects.map(([x, y, w, h, color]: any, i: number) => (
+      {rects.map(([x, y, w, h, color], i) => (
         <div
           key={String(i)}
           style={{
@@ -92,8 +94,8 @@ export async function GET(
 
   const ghToken = process.env.GITHUB_CARD_TOKEN ?? process.env.GITHUB_TOKEN;
 
-  let gitData: any = null;
-  let petState: any = null;
+  let gitData: GitData | null = null;
+  let petState: PetState | null = null;
   let speciesRaw: string | null = null;
 
   try {
@@ -176,7 +178,11 @@ export async function GET(
   const totalCommits: number = gitData?.totalCommits ?? 0;
   const hp: number = Math.max(0, Math.min(100, petState?.stats?.health ?? 100));
   const activity: number = Math.max(0, Math.min(100, petState?.stats?.energy ?? 100));
-  const level: number = petState?.level ?? 1;
+  // PetState has no `level` field — this used to read `petState?.level`
+  // through an `any`, so every card showed level 1. The pet's life stage is
+  // its actual progression, so level is derived from that.
+  const STAGE_LEVEL: Record<Stage, number> = { egg: 1, hatchling: 2, adult: 3, legend: 4 };
+  const level: number = petState ? STAGE_LEVEL[petState.stage] : 1;
 
   const displayStreak = streak > 0 ? streak : longestStreak;
   const streakUnit = streak > 0 ? "DAYS" : "BEST";
@@ -361,7 +367,7 @@ export async function GET(
               display: "flex",
             }}
           >
-            ID: GP-{level}-2025
+            ID: GP-{level}-{year}
           </div>
         </div>
 

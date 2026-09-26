@@ -145,6 +145,9 @@ export default function LandingPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!canvasRef.current) return
+    // Same array init() pushes into below; captured once so the cleanup
+    // runs exactly the functions registered by this run.
+    const cleanups = cleanupFns.current
 
     const loadScript = (src: string): Promise<void> =>
       new Promise((resolve, reject) => {
@@ -796,7 +799,10 @@ export default function LandingPage() {
       mounted.current = false
       cancelAnimationFrame(rafRef.current)
       if (rendererRef.current) rendererRef.current.dispose()
-      cleanupFns.current.forEach(fn => fn())
+      cleanups.forEach(fn => fn())
+      // Emptied after running so earlier runs' cleanups don't pile up and
+      // fire again on the next teardown.
+      cleanups.length = 0
     }
   }, [openOverlay])
 

@@ -143,7 +143,9 @@ export function PetCanvas({
   // We mirror the view state in a ref so the requestAnimationFrame loop
   // doesn't need to be re-bound on every view change
   const viewRef = useRef<ViewStep>("front");
-  viewRef.current = view;
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   const autoRotateRef = useRef(true);
   const pauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);

@@ -155,7 +155,9 @@ function drawAxolotl(ctx: CanvasRenderingContext2D, x: number, y: number, frame:
   p(32, 28, 10, 6, color); p(36, 24, 8, 6, "#f9a8d4");
 }
 
-const SPECIES_DRAWERS: Record<string, Function> = {
+type SpeciesDrawer = (ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) => void;
+
+const SPECIES_DRAWERS: Record<string, SpeciesDrawer> = {
   wolf: drawWolf,
   sabertooth: drawSabertooth,
   capybara: drawCapybara,
