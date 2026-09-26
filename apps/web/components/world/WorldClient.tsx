@@ -673,10 +673,30 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         return voxelGroup;
       }
 
+      // Frees the GPU/JS-heap resources (geometry, material, texture) backing
+      // every mesh in a group before it's dropped for good. Three.js does not
+      // do this automatically on scene.remove() — without it, every player
+      // who leaves, changes species, or every ghost that respawns leaks this
+      // memory for the rest of the session.
+      function disposeGroup(group: any) {
+        if (!group) return;
+        group.traverse((child: any) => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            materials.forEach((mat: any) => {
+              if (mat.map) mat.map.dispose();
+              mat.dispose();
+            });
+          }
+        });
+      }
+
       function removeGhost(username: string) {
         const ghost = ghostsRef.current.get(username);
         if (!ghost) return;
         scene.remove(ghost.group);
+        disposeGroup(ghost.group);
         ghostsRef.current.delete(username);
       }
 
@@ -2453,6 +2473,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               if (existing) {
                 if (existing.species !== sp) {
                   scene.remove(existing.bb.group);
+                  disposeGroup(existing.bb.group);
                   const bb = createPetBillboard(username, sp, pData.petState || petState);
                   scene.add(bb.group);
                   remotePlayersRef.current[username] = { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0, species: sp };
@@ -2474,6 +2495,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             if (peer) {
               if (peer.species !== sp && (data.species || data.petType)) {
                 scene.remove(peer.bb.group);
+                disposeGroup(peer.bb.group);
                 const bb = createPetBillboard(uid, sp, data.petState || petState);
                 scene.add(bb.group);
                 peer.bb = bb;
@@ -2581,8 +2603,15 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             const peer = remotePlayersRef.current[uid];
             if (peer) {
               scene.remove(peer.bb.group);
+              disposeGroup(peer.bb.group);
               delete remotePlayersRef.current[uid];
             }
+            // These trackers are keyed by username and otherwise never get
+            // pruned, so they'd otherwise grow for every distinct player who
+            // ever passes through the room over a session.
+            healthBarsRef.current.delete(uid);
+            remotePlayerHealth.current.delete(uid);
+            speciesCache.current.delete(uid);
           }
           setOnlineCount(Object.keys(remotePlayersRef.current).length + 1);
         });
