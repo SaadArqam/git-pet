@@ -41,7 +41,7 @@ export async function GET() {
     const cutoff = Date.now() - SEVEN_DAYS_MS;
 
     const keys = await redis.keys("species:*");
-    const ghosts: { username: string; species: Species; x: number; z: number }[] = [];
+    const ghosts: { username: string; species: Species; x: number; z: number; mood: string }[] = [];
 
     for (const key of keys) {
       const username = key.replace("species:", "");
@@ -58,6 +58,7 @@ export async function GET() {
         species,
         x: lastSeen.x,
         z: lastSeen.z,
+        mood: lastSeen.mood || "coma",
       });
     }
 
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { x, z } = (await req.json()) as { x: number; z: number };
+  const { x, z, mood } = (await req.json()) as { x: number; z: number; mood?: string };
   if (typeof x !== "number" || typeof z !== "number") {
     return NextResponse.json({ error: "Invalid position" }, { status: 400 });
   }
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
     timestamp: Date.now(),
     x,
     z,
+    mood,
   };
 
   await redis.set(lastSeenKey(username), payload);

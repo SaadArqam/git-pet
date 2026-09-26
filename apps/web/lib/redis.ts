@@ -54,6 +54,7 @@ export type LastSeen = {
   timestamp: number;
   x: number;
   z: number;
+  mood?: string;
 };
 
 export async function getUserSpecies(username: string): Promise<Species | null> {

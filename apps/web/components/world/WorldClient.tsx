@@ -47,7 +47,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   const playerRef = useRef<any>(null); // Billboard group ref
   const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number, species: string }>>({});
-  const ghostsRef = useRef<Map<string, { group: any }>>(new Map());
+  const ghostsRef = useRef<Map<string, { group: any, mood?: string }>>(new Map());
   const nearbyPlayer = useRef<{ id: string, mesh: any } | null>(null);
   const interactionOpen = useRef(false);
   const prevNearbyId = useRef<string | null>(null);
@@ -557,7 +557,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         lctx.font = 'bold 24px monospace';
         lctx.textAlign = 'center';
         lctx.fillStyle = '#ffffff';
-        lctx.fillText(`@${username.toUpperCase()}`, 128, 40);
+        let indicator = "⚪";
+        if (pState.mood === "happy" || pState.mood === "neutral") indicator = "🟢";
+        else if (pState.mood === "tired" || pState.mood === "sad") indicator = "🟡";
+        lctx.fillText(`@${username.toUpperCase()} ${indicator}`, 128, 40);
 
         const lTex = new THREE.CanvasTexture(labelCanvas);
         const lMat = new THREE.SpriteMaterial({ map: lTex, transparent: true });
@@ -595,11 +598,23 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       function updateBillboard(bb: any, frame: number, view: any) {
         const { ctx, canvas, texture, species, pState } = bb;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawPet(ctx, pState, frame, canvas.width, canvas.height, view, species, { transparent: true });
+        
+        ctx.save();
+        let adjustedFrame = frame;
+        if (pState.mood === "coma") {
+          ctx.filter = 'grayscale(100%) opacity(70%)';
+          adjustedFrame = 0;
+        } else if (pState.mood === "tired" || pState.mood === "sad") {
+          ctx.filter = 'saturate(50%)';
+          adjustedFrame = Math.floor(frame * 0.5);
+        }
+        
+        drawPet(ctx, pState, adjustedFrame, canvas.width, canvas.height, view, species, { transparent: true });
+        ctx.restore();
         texture.needsUpdate = true;
       }
 
-      function buildVoxelPet(species: string, position: { x: number; z: number }) {
+      function buildVoxelPet(species: string, position: { x: number; z: number }, mood: string = "coma") {
         const voxelGroup = new THREE.Group();
         const primary = SPECIES_PRIMARY[species] || SPECIES_PRIMARY.wolf;
         const rects = getSpeciesRects(species, 0, primary, "front");
@@ -609,7 +624,13 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
         if (rects) {
           for (const [rx, ry, rw, rh, color] of rects) {
-            const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color) });
+            const baseColor = new THREE.Color(color);
+            if (mood === "coma") {
+              baseColor.setHex(0x9ca3af);
+            } else if (mood === "tired" || mood === "sad") {
+              baseColor.lerp(new THREE.Color(0x9ca3af), 0.5);
+            }
+            const mat = new THREE.MeshLambertMaterial({ color: baseColor });
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(rw * scale, rh * scale, 0.08), mat);
             mesh.position.set(
               (rx + rw / 2 - centerX) * scale,
@@ -632,18 +653,22 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         ghostsRef.current.delete(username);
       }
 
-      function spawnGhost(username: string, species: string, position: { x: number; z: number }) {
+      function spawnGhost(username: string, species: string, position: { x: number; z: number }, mood: string = "coma") {
         removeGhost(username);
-        const voxelGroup = buildVoxelPet(species, position);
+        const voxelGroup = buildVoxelPet(species, position, mood);
         voxelGroup.traverse((child: any) => {
           if (child.material) {
-            child.material.opacity = 0.4;
+            child.material.opacity = mood === "coma" ? 0.4 : 0.6;
             child.material.transparent = true;
           }
         });
 
+        let indicator = "⚪";
+        if (mood === "happy" || mood === "neutral") indicator = "🟢";
+        else if (mood === "tired" || mood === "sad") indicator = "🟡";
+
         const labelDiv = document.createElement("div");
-        labelDiv.textContent = `@${username}`;
+        labelDiv.textContent = `@${username} ${indicator}`;
         labelDiv.style.fontFamily = "monospace";
         labelDiv.style.fontSize = "12px";
         labelDiv.style.color = "#64748b";
@@ -654,7 +679,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         voxelGroup.add(label);
 
         scene.add(voxelGroup);
-        ghostsRef.current.set(username, { group: voxelGroup });
+        ghostsRef.current.set(username, { group: voxelGroup, mood });
       }
 
       // --- Helpers ---
@@ -1680,7 +1705,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         fetch("/api/ghosts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ x, z }),
+          body: JSON.stringify({ x, z, mood: petState.mood }),
           keepalive: true,
         }).catch(() => { });
       };
@@ -1688,10 +1713,10 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       try {
         const ghostsRes = await fetch("/api/ghosts");
         if (ghostsRes.ok) {
-          const { ghosts } = await ghostsRes.json() as { ghosts: { username: string; species: string; x: number; z: number }[] };
+          const { ghosts } = await ghostsRes.json() as { ghosts: { username: string; species: string; x: number; z: number; mood: string }[] };
           for (const ghost of ghosts) {
             if (ghost.username === petState.gitData.username) continue;
-            spawnGhost(ghost.username, ghost.species, { x: ghost.x, z: ghost.z });
+            spawnGhost(ghost.username, ghost.species, { x: ghost.x, z: ghost.z }, ghost.mood);
           }
         }
       } catch { /* ignore */ }
@@ -2001,8 +2026,17 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         }
 
         // ─── Ghost idle sway ─────────────────────────────────────────────────
-        ghostsRef.current.forEach(({ group }) => {
-          group.rotation.y = Math.sin(frameCount * 0.04) * 0.06;
+        ghostsRef.current.forEach(({ group, mood }) => {
+          if (mood === "coma") {
+            // No idle sway for coma
+            group.rotation.y = 0;
+          } else if (mood === "tired" || mood === "sad") {
+            // Slower, smaller sway
+            group.rotation.y = Math.sin(frameCount * 0.02) * 0.03;
+          } else {
+            // Normal sway
+            group.rotation.y = Math.sin(frameCount * 0.04) * 0.06;
+          }
         });
 
         // ─── Day / Night Cycle ───────────────────────────────────────────────
@@ -2534,7 +2568,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         fetch("/api/ghosts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ x, z }),
+          body: JSON.stringify({ x, z, mood: petState.mood }),
           keepalive: true,
         }).catch(() => { });
       }

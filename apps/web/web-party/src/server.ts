@@ -30,6 +30,9 @@ type ServerMessage =
   | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
   | { type: "presence_update"; pet: PetPresence }
   | { type: "befriend_received"; fromId: string }
+  | { type: "befriend_request"; fromId: string }
+  | { type: "befriend_confirmed"; fromId: string }
+  | { type: "befriend_expired"; fromId: string }
   | { type: "fight_received"; fromId: string; damage: number }
   | { type: "emoji_received"; fromId: string; emoji: string };
 
@@ -39,6 +42,9 @@ type ClientMessage =
   | { type: "interaction"; fromUsername: string; toUsername: string; interactionType: "fight" | "befriend" | "play" | "trade"; result: string }
   | { type: "presence_update"; pet: PetPresence }
   | { type: "befriend"; fromId: string; toId: string }
+  | { type: "befriend_request"; fromId: string; toId: string }
+  | { type: "befriend_confirmed"; fromId: string; toId: string }
+  | { type: "befriend_expired"; fromId: string; toId: string }
   | { type: "fight"; fromId: string; toId: string; damage: number }
   | { type: "emoji"; fromId: string; toId: string; emoji: string };
 
@@ -100,6 +106,50 @@ export default class WorldServer implements Party.Server {
           secret: this.room.env.INTERNAL_SECRET 
         })
       }).catch(err => console.error("Persistence failed", err));
+    }
+
+    if (data.type === "befriend_request") {
+      const targetConns = this.userToConns.get(data.toId);
+      if (targetConns) {
+        const msg: ServerMessage = { type: "befriend_request", fromId: data.fromId };
+        targetConns.forEach(connId => {
+          const conn = this.room.getConnection(connId);
+          if (conn) conn.send(JSON.stringify(msg));
+        });
+      }
+    }
+
+    if (data.type === "befriend_confirmed") {
+      const targetConns = this.userToConns.get(data.toId);
+      if (targetConns) {
+        const msg: ServerMessage = { type: "befriend_confirmed", fromId: data.fromId };
+        targetConns.forEach(connId => {
+          const conn = this.room.getConnection(connId);
+          if (conn) conn.send(JSON.stringify(msg));
+        });
+      }
+
+      // Persist to Redis via API proxy — only on confirmed reciprocal befriend
+      fetch(`${this.room.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/friends`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromId: data.fromId,
+          toId: data.toId,
+          secret: this.room.env.INTERNAL_SECRET
+        })
+      }).catch(err => console.error("Persistence failed", err));
+    }
+
+    if (data.type === "befriend_expired") {
+      const targetConns = this.userToConns.get(data.toId);
+      if (targetConns) {
+        const msg: ServerMessage = { type: "befriend_expired", fromId: data.fromId };
+        targetConns.forEach(connId => {
+          const conn = this.room.getConnection(connId);
+          if (conn) conn.send(JSON.stringify(msg));
+        });
+      }
     }
 
     if (data.type === "fight") {
