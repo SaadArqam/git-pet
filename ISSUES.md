@@ -140,10 +140,11 @@ reading the code alone.
 - **Breakdown:** the large majority are `@typescript-eslint/no-explicit-any` (a type that turns off TypeScript's safety net) and `no-unused-vars` (variables computed and then never used — often a sign a piece of logic was half-finished, e.g. an unused `pBox` collision box computed every single frame for nothing, or two unused world-decoration functions).
 - **Fix:** Not urgent individually, but worth cleaning up in the same pass as everything else — each `any` is a place a real bug could be hiding undetected.
 
-### 21. There are zero working automated tests in the entire project
+### 21. ✅ FIXED — There are zero working automated tests in the entire project
 - **Where:** `packages/core/src/stats.test.ts` exists, but there's no test runner (no Jest/Vitest) installed or configured anywhere, and no `"test"` script in any `package.json` — this file cannot currently be run by anything.
 - **Why this matters given the "don't break anything" goal:** right now, the only way to verify a change didn't break something is manual testing and type-checking. A handful of fast tests around the core pet-stat math (`packages/core/src/stats.ts`) would catch a real class of regressions automatically.
 - **Fix:** Add a minimal test runner (Vitest is lightweight and fast) and wire up the existing test file for real, as a foundation — doesn't need to be comprehensive on day one.
+- **What actually shipped:** Vitest added to `@git-pet/core`, `npm test` at the repo root now runs it through Turborepo. The old `console.assert` file is now 10 real tests covering every threshold branch of `deriveStats`/`deriveMood`/`deriveStage`/`derivePrimaryColor`/`derivePetState`. Checked that they actually catch regressions: temporarily changing the health formula made 3 tests fail. Test files are now excluded from the `tsc` build so they no longer ship in `dist/`.
 
 ### 22. ✅ FIXED — A few leftover debug logs are running on real user actions
 - **Where:** `WorldClient.tsx` line ~411 (re-serializes a whole list of health bars on every single fight hit — in the dead code path from #18, so currently harmless but would run for real if that path is ever revived), `WorldClient.tsx` line ~2450 (prints every remote player's name + species to the console on every reconnect), `apps/web/app/api/card/[username]/route.tsx:122` (logs debug info as `console.error` — meaning it looks like a real error in any monitoring tool that watches error logs, on literally every single card image request, e.g. every GitHub README view)
