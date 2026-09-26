@@ -114,33 +114,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     setTimeout(() => setToast(null), 2000);
   };
 
-  const handleFightKey = () => {
-    if (!interactionTarget) return;
-    const now = Date.now();
-    if (now - lastFightTime.current < 700) return;
-    lastFightTime.current = now;
-    setIsFighting(true);
-    fightPlayer(interactionTarget);
-  };
-
-  const handleBefriendKey = () => {
-    if (!interactionTarget) return;
-    befriendPlayer(interactionTarget);
-    closeInteractionMenu();
-  };
-
-  const handleEmojiMenuKey = () => {
-    setIsPickingEmoji(true);
-  };
-
-  // handleInteraction kept for compatibility but unused by new HUD
-  const handleInteraction = (optionId: string, target: any) => {
-    if (optionId === 'emoji') { setIsPickingEmoji(true); return; }
-    if (optionId === 'befriend') { befriendPlayer(target); closeInteractionMenu(); return; }
-    if (optionId === 'fight') { setIsFighting(true); fightPlayer(target); return; }
-    closeInteractionMenu();
-  };
-
   // Sync Hydration & Friends
   //
   // This used to also re-read a cached `selectedPet` from localStorage and
@@ -171,12 +144,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
     return () => { mounted.current = false; };
   }, [initialSpecies, petState.gitData.username]);
-
-  const handleEmojiSelect = (emoji: string, target: any) => {
-    sendEmoji(emoji, target);
-    setIsPickingEmoji(false);
-    closeInteractionMenu();
-  };
 
   // --- Interaction Logic ---
 
@@ -317,18 +284,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     });
   };
 
-  const befriendPlayer = (target: any) => {
-    if (friendsRef.current.has(target.id)) {
-      showToast("Already friends! ❤️");
-      return;
-    }
-    // Send befriend_request instead of auto-confirming
-    showToast("Friend request sent! Waiting... ⏳");
-    if (socketRef.current) {
-      socketRef.current.send(JSON.stringify({ type: 'befriend_request', fromId: petState.gitData.username, toId: target.id }));
-    }
-  };
-
   const triggerDamageAnim = (mesh: any, damageAmount: number) => {
     if (!mesh || !sceneRef.current) return;
     const THREE = (window as any).THREE;
@@ -393,88 +348,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       body: JSON.stringify({ winnerId: petState.gitData.username }),
       keepalive: true,
     }).catch(() => { });
-  };
-
-  const fightPlayer = (target: any) => {
-    // 800ms cooldown to prevent spam damage
-    const now = Date.now();
-    if (now - lastFightTime.current < 800) return;
-    lastFightTime.current = now;
-
-    const defenderStats = remotePlayersRef.current[target.id]?.bb?.pState?.stats ?? petState.stats;
-    const damage = computeFightDamage(petState.stats, defenderStats);
-
-    const currentHP = remotePlayerHealth.current.get(target.id) ?? 100;
-    const newHP = Math.max(0, currentHP - damage);
-    remotePlayerHealth.current.set(target.id, newHP);
-    setTargetHP(newHP);
-
-    if (socketRef.current) {
-      socketRef.current.send(JSON.stringify({ type: 'fight', fromId: petState.gitData.username, toId: target.id, damage }));
-    }
-
-    // Update in-world HP Bar (keyed by username = target.id)
-    console.log('[fight] target.id:', target.id, 'healthBars keys:', [...healthBarsRef.current.keys()]);
-    const hpData = healthBarsRef.current.get(target.id);
-    if (hpData) {
-      const p = newHP / 100;
-      hpData.bar.style.width = `${p * 100}%`;
-      hpData.bar.style.background = p > 0.6 ? '#4CAF50' : p > 0.3 ? '#FF9800' : '#F44336';
-    }
-
-    if (newHP === 0) {
-      showToast("You won! 🏆");
-      persistFightWin();
-      setTimeout(() => {
-        remotePlayerHealth.current.set(target.id, 100);
-        setTargetHP(100);
-        if (hpData) {
-          hpData.bar.style.width = '100%';
-          hpData.bar.style.background = '#4CAF50';
-        }
-      }, 3000);
-    }
-
-    // Screen shake & knockback
-    shakeRef.current = 0.3;
-    const THREE = (window as any).THREE;
-    if (THREE && target.mesh && playerRef.current) {
-      const dir = target.mesh.position.clone().sub(playerRef.current.position).normalize();
-      target.mesh.position.add(dir.multiplyScalar(0.3));
-    }
-
-    triggerDamageAnim(target.mesh, damage);
-  };
-
-  const sendEmoji = (emoji: string, target: any) => {
-    const THREE = (window as any).THREE;
-    const div = document.createElement('div');
-    div.innerText = emoji;
-    div.style.fontSize = "28px";
-    const obj = new THREE.CSS2DObject(div);
-    const startPos = playerRef.current.position.clone().add(new THREE.Vector3(0, 2, 0));
-    obj.position.copy(startPos);
-    sceneRef.current.add(obj);
-
-    const startTime = Date.now();
-    const duration = 1500;
-    animationsRef.current.push(() => {
-      const now = Date.now();
-      const elapsed = now - startTime;
-      const t = Math.min(elapsed / duration, 1);
-
-      const targetPos = target.mesh.position.clone().add(new THREE.Vector3(0, 2, 0));
-      const pos = startPos.clone().lerp(targetPos, t);
-      pos.y += Math.sin(t * Math.PI) * 2;
-      obj.position.copy(pos);
-
-      if (t > 0.66) {
-        div.style.opacity = (1 - (t - 0.66) * 3).toString();
-      }
-
-      if (t >= 1) { sceneRef.current.remove(obj); return false; }
-      return true;
-    });
   };
 
 
@@ -2493,7 +2366,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
               removeGhost(username);
 
               const sp = (pData.species || pData.petType || await fetchSpeciesForUser(username) || "cat").toLowerCase();
-              console.log("Incoming player:", username, sp);
 
               const existing = remotePlayersRef.current[username];
               if (existing) {

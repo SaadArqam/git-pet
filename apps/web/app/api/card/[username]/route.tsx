@@ -119,8 +119,6 @@ export async function GET(
     console.error("[card] Error fetching data:", err);
   }
 
-  console.error("[card] raw data:", JSON.stringify({ speciesRaw, streak: gitData?.streak, totalCommits: gitData?.totalCommits }));
-
   // NULL GUARD — no pet found
   if (!speciesRaw) {
     return new ImageResponse(

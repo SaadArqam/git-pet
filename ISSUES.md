@@ -123,7 +123,7 @@ reading the code alone.
 
 ## 🟢 Code quality — duplication, dead code, and general cleanup
 
-### 18. There are two entire copies of the fight/befriend/emoji logic in the same file — one of them is 100% dead and already broken
+### 18. ✅ FIXED — There are two entire copies of the fight/befriend/emoji logic in the same file — one of them is 100% dead and already broken
 - **Where:** `apps/web/components/world/WorldClient.tsx` — `fightPlayer()`, `befriendPlayer()`, `sendEmoji()` and their wrapper functions (~115-140, ~314, ~392-441) are a full second implementation, completely separate from the one actually wired to your keyboard (inside `onKD`, ~2181+)
 - **What's wrong:** The dead copy is unreachable — nothing calls it (verified: no button in the UI is wired to it). It has also quietly drifted from the real logic: its cooldown check would make it silently do nothing if it were ever turned on, and its screen-shake/knockback numbers don't match the real version either.
 - **Why this matters for you specifically:** the fight-damage-scaling work from earlier this session was applied to *both* copies to keep them consistent — meaning some of that effort went into code that can never actually run. Worth deleting the dead copy so there's only one implementation to maintain going forward.
@@ -144,7 +144,7 @@ reading the code alone.
 - **Why this matters given the "don't break anything" goal:** right now, the only way to verify a change didn't break something is manual testing and type-checking. A handful of fast tests around the core pet-stat math (`packages/core/src/stats.ts`) would catch a real class of regressions automatically.
 - **Fix:** Add a minimal test runner (Vitest is lightweight and fast) and wire up the existing test file for real, as a foundation — doesn't need to be comprehensive on day one.
 
-### 22. A few leftover debug logs are running on real user actions
+### 22. ✅ FIXED — A few leftover debug logs are running on real user actions
 - **Where:** `WorldClient.tsx` line ~411 (re-serializes a whole list of health bars on every single fight hit — in the dead code path from #18, so currently harmless but would run for real if that path is ever revived), `WorldClient.tsx` line ~2450 (prints every remote player's name + species to the console on every reconnect), `apps/web/app/api/card/[username]/route.tsx:122` (logs debug info as `console.error` — meaning it looks like a real error in any monitoring tool that watches error logs, on literally every single card image request, e.g. every GitHub README view)
 - **Fix:** Remove these, or gate them behind a debug flag that's off in production.
 
