@@ -34,6 +34,16 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
+ * The "get the logged-in username from the session, or null" 3-line
+ * pattern was copy-pasted independently across several API routes. One
+ * place to fix it if the session shape ever changes.
+ */
+export async function getSessionUsername(): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  return (session as { login?: string } | null)?.login ?? null;
+}
+
+/**
  * Shared "is this call allowed to act as `username`?" check used by internal
  * routes (called either by the PartyKit server with a shared secret, or by a
  * logged-in browser session acting as itself).
@@ -50,7 +60,6 @@ export async function isAuthorizedAs(
   const internalSecret = process.env.INTERNAL_SECRET;
   if (internalSecret && providedSecret === internalSecret) return true;
 
-  const session = await getServerSession(authOptions);
-  const sessionUsername = (session as { login?: string } | null)?.login;
+  const sessionUsername = await getSessionUsername();
   return !!sessionUsername && sessionUsername === username;
 }

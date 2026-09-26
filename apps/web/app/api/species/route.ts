@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSessionUsername } from "@/lib/auth";
 import { getUserSpecies, setUserSpecies } from "@/lib/redis";
 import type { Species } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
@@ -22,8 +21,7 @@ export async function GET(req: NextRequest) {
   }
 
   // No username given — return the signed-in caller's own species.
-  const session = await getServerSession(authOptions);
-  const username = (session as { login?: string } | null)?.login;
+  const username = await getSessionUsername();
   if (!username) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const species = await getUserSpecies(username);
@@ -31,8 +29,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const username = (session as { login?: string } | null)?.login;
+  const username = await getSessionUsername();
   if (!username) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { species } = await req.json() as { species: Species };

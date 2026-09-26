@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSessionUsername } from "@/lib/auth";
 import {
   redis,
   lastSeenKey,
@@ -30,8 +29,7 @@ async function fetchOnlineUsernames(): Promise<string[]> {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const currentUser = (session as { login?: string } | null)?.login;
+  const currentUser = await getSessionUsername();
   if (!currentUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -71,8 +69,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const username = (session as { login?: string } | null)?.login;
+  const username = await getSessionUsername();
   if (!username) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

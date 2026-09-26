@@ -154,9 +154,10 @@ reading the code alone.
 - **Fix:** Remove them, or confirm nothing else still needs them first — keeping dead handlers around risks someone "fixing" the wrong copy later.
 - **What actually shipped:** re-verified directly (not just trusting the earlier audit) with a grep for each message type's literal string in `WorldClient.tsx` — confirmed zero matches for any of the three. Removed all three handlers, their type-union entries, and the now-unused `friendCount`/`buffs`/`lastInteraction` fields on `PetPresence` that only existed to serve `presence_update`.
 
-### 24. Small repeated boilerplate across API routes
+### 24. ✅ FIXED — Small repeated boilerplate across API routes
 - **Where:** the "get the logged-in username from the session, or return 401" 3-line pattern is copy-pasted in at least 5-6 route files; the internal-secret check from issue #1 is copy-pasted in two files instead of one
 - **Fix:** Pull both into one small shared helper function so a future fix (like #1) only needs to happen in one place.
+- **What actually shipped:** the internal-secret duplication was already fixed as part of #1 (`isAuthorizedAs()`). Added `getSessionUsername()` alongside it in `lib/auth.ts` and used it in `ghosts/route.ts` (GET+POST), `species/route.ts` (GET+POST), and `friends/route.ts` (GET) — `isAuthorizedAs()` itself was also updated to call it instead of duplicating the same 2 lines a second time. Left the page-level (not API-route) session checks in `dashboard/page.tsx`/`world/page.tsx` alone — they redirect rather than return a JSON 401, a genuinely different pattern, not just a copy of this one.
 
 ---
 
