@@ -73,12 +73,12 @@ reading the code alone.
 - **Confirmed on investigation:** this wasn't an edge case — `selectedPet` is only ever written to localStorage once, at species-selection time, so it's present for essentially every returning user. Worse, `world/page.tsx` already does a fresh Redis lookup for the correct species on every server render and passes it in as `initialSpecies` — so the localStorage re-read wasn't just redundant, it was reintroducing a value the server had already fetched more recently, from two separate effects, every single time.
 - **Fix:** removed the localStorage re-read entirely (not just deduplicated) — `selectedPet` is now derived once from the already-authoritative `initialSpecies` prop and never reassigned, so it can no longer force the world-build effect to tear down and restart after mount.
 
-### 10. A single bad or malformed multiplayer message can silently and permanently disconnect a player, with no cleanup
+### 10. ✅ FIXED — A single bad or malformed multiplayer message can silently and permanently disconnect a player, with no cleanup
 - **Where:** `apps/web/web-party/src/server.ts` — the entire `onMessage` function (63-192) has no error handling and no validation of message contents before using them
 - **What's wrong:** If any message is malformed (corrupt JSON, a missing field), the server crashes while handling *that one message*. The player who sent it gets disconnected with zero explanation, and — because the crash happens before the server's own cleanup code runs — their name and pet stay stuck in the shared room state forever, visible to everyone else, using up a slot with no way to clear it except restarting the server.
 - **Fix:** Wrap message handling in error handling so a bad message just gets ignored (logged, not crashed), and validate fields before trusting them.
 
-### 11. There's no limit on how fast one player can spam actions — one bad client can lag the whole shared room
+### 11. ✅ FIXED — There's no limit on how fast one player can spam actions — one bad client can lag the whole shared room
 - **Where:** `apps/web/web-party/src/server.ts` (whole file — no rate limiting exists); the only "cooldowns" that exist today are in the browser code (`WorldClient.tsx`), which a misbehaving client can simply ignore by talking to the server directly
 - **What a user notices:** One buggy or bad-actor client spamming fight/move/emoji messages can make the game feel laggy for *everyone* in the room, not just themselves, since the server broadcasts every message to every connected player.
 - **Fix:** Add a basic per-player rate limit on the server side (e.g., "no more than N messages per second"), independent of whatever the browser client does.
@@ -92,10 +92,11 @@ reading the code alone.
 
 ## 🟡 Medium — reliability bugs (things quietly go wrong, no crash)
 
-### 13. Friend/fight results can silently fail to save — the game says "you're friends" but a refresh undoes it
+### 13. ✅ FIXED (partially) — Friend/fight results can silently fail to save — the game says "you're friends" but a refresh undoes it
 - **Where:** `apps/web/web-party/src/server.ts:100-108, 133-141` — the save-to-database call is "fire and forget" with no timeout and no retry
 - **What's wrong:** The game tells both players "you're now friends!" immediately, before actually confirming the save worked. If the save fails or times out (server hiccup, database blip), nobody is told — the two players believe it happened, but a page refresh reverts it because it was never actually saved.
 - **Fix:** Add a timeout to the save call, and if it fails, either retry or tell the client so the UI can reflect what's actually true.
+- **What actually shipped:** a 5-second timeout plus one retry (500ms backoff) on the friend-persistence call, covering the common case (a transient blip). Still not fixed: if both attempts fail, neither client is told — they'll still see "you're friends!" in the moment and find out on a later refresh that it didn't save. Telling the client requires a new WS message round-trip and isn't done yet.
 
 ### 14. A temporary database outage looks exactly like "you're a new user" or "you have no friends" — not like an error
 - **Where:** `apps/web/lib/redis.ts` (`safeRedis` helper) — used by species/friends/wins lookups
@@ -146,9 +147,10 @@ reading the code alone.
 - **Where:** `WorldClient.tsx` line ~411 (re-serializes a whole list of health bars on every single fight hit — in the dead code path from #18, so currently harmless but would run for real if that path is ever revived), `WorldClient.tsx` line ~2450 (prints every remote player's name + species to the console on every reconnect), `apps/web/app/api/card/[username]/route.tsx:122` (logs debug info as `console.error` — meaning it looks like a real error in any monitoring tool that watches error logs, on literally every single card image request, e.g. every GitHub README view)
 - **Fix:** Remove these, or gate them behind a debug flag that's off in production.
 
-### 23. Dead multiplayer message types are still sitting in the server
+### 23. ✅ FIXED — Dead multiplayer message types are still sitting in the server
 - **Where:** `apps/web/web-party/src/server.ts` — the old `befriend` handler (89-109), `presence_update` (177-187), and `interaction` (189-191) are never sent by the actual client anymore (verified against what `WorldClient.tsx` really sends)
 - **Fix:** Remove them, or confirm nothing else still needs them first — keeping dead handlers around risks someone "fixing" the wrong copy later.
+- **What actually shipped:** re-verified directly (not just trusting the earlier audit) with a grep for each message type's literal string in `WorldClient.tsx` — confirmed zero matches for any of the three. Removed all three handlers, their type-union entries, and the now-unused `friendCount`/`buffs`/`lastInteraction` fields on `PetPresence` that only existed to serve `presence_update`.
 
 ### 24. Small repeated boilerplate across API routes
 - **Where:** the "get the logged-in username from the session, or return 401" 3-line pattern is copy-pasted in at least 5-6 route files; the internal-secret check from issue #1 is copy-pasted in two files instead of one
