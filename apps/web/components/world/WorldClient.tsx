@@ -2642,6 +2642,15 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         });
         const broadcast = setInterval(() => { if (socket.readyState === 1 && p.isMoving) socket.send(JSON.stringify({ type: "move", x: p.pos.x, y: p.pos.z, rot: p.rot, petType: localSpecies })); }, 100);
         cleanupFns.current.push(() => clearInterval(broadcast));
+        // A pending befriend request's 5-second expiry timer otherwise
+        // outlives the page: its closure still references sceneRef/
+        // playerRef/socketRef, none of which are nulled on unmount, so it
+        // fires after the world has already been torn down and tries to
+        // animate a scene that no longer exists / send on a closed socket.
+        cleanupFns.current.push(() => {
+          pendingBefriendRef.current.forEach(({ timerId }) => clearTimeout(timerId));
+          pendingBefriendRef.current.clear();
+        });
       }
     };
     init();

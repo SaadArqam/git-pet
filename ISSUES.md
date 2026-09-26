@@ -113,7 +113,7 @@ reading the code alone.
 - **What's wrong:** This is a public endpoint meant for outside tools (bots, badges, extensions) to poll, but unlike `/api/card` and `/api/leaderboard` it sets no cache headers, and it uses the same shared GitHub token as those two. If anything polls it more than a couple times a minute across a modest number of users, it can burn through that token's hourly GitHub quota — which would then start breaking the shareable card images and the leaderboard too, not just itself.
 - **Fix:** Add the same hour-long cache header the other two routes already use.
 
-### 17. A pending friend-request timer can fire after you've already left the world page
+### 17. ✅ FIXED — A pending friend-request timer can fire after you've already left the world page
 - **Where:** `apps/web/components/world/WorldClient.tsx` — timers created around line 2504, never explicitly cancelled on unmount
 - **What's wrong:** If you leave the world page while someone's 5-second friend-request window is still open, the timer still fires afterward and tries to animate/send a message using parts of the page that no longer exist.
 - **Fix:** Cancel any pending friend-request timers when leaving the page, same as other cleanup already does for event listeners.
