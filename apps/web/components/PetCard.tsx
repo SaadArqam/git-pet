@@ -22,9 +22,15 @@ const STAGE_LABEL: Record<string, string> = {
 interface Props {
   petState: PetState;
   species: Species;
+  /** "owner": the signed-in user viewing their own card (default).
+   *  "public": anyone viewing someone else's pet — hides account actions
+   *  (world/settings/sign out) and shows a sign-up CTA instead. */
+  mode?: "owner" | "public";
+  /** Battles won, from /api/fights — shown when known. */
+  wins?: number;
 }
 
-export function PetCard({ petState, species }: Props) {
+export function PetCard({ petState, species, mode = "owner", wins }: Props) {
   const { stats, mood, stage, gitData } = petState;
   const moodColor = MOOD_COLOR[mood] ?? "#94a3b8";
 
@@ -64,6 +70,12 @@ export function PetCard({ petState, species }: Props) {
           <span style={{ fontSize: 9, color: "#334155" }}>{gitData.totalCommits} commits</span>
         </div>
 
+        {typeof wins === "number" && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "6px 12px", borderTop: "1px solid #1e293b" }}>
+            <span style={{ fontSize: 9, color: "#f59e0b" }}>🏆 {wins} BATTLE{wins === 1 ? "" : "S"} WON</span>
+          </div>
+        )}
+
       </div>
 
       <div style={{ background: "#0a1628", borderRadius: 8, padding: "14px 16px", border: "1px solid #1e293b", marginBottom: 12 }}>
@@ -93,60 +105,84 @@ export function PetCard({ petState, species }: Props) {
           {copied ? "COPIED!" : "COPY README EMBED"}
         </button>
 
-        <Link
-          href="/world"
-          style={{
-            background: "transparent",
-            border: "1px solid #3b82f644",
-            color: "#3b82f6",
-            fontFamily: "monospace",
-            fontSize: 9,
-            padding: "10px 14px",
-            borderRadius: 6,
-            textDecoration: "none",
-            display: "flex",
-            alignItems: "center",
-            letterSpacing: 1
-          }}
-        >
-          WORLD
-        </Link>
+        {mode === "owner" ? (
+          <>
+            <Link
+              href="/world"
+              style={{
+                background: "transparent",
+                border: "1px solid #3b82f644",
+                color: "#3b82f6",
+                fontFamily: "monospace",
+                fontSize: 9,
+                padding: "10px 14px",
+                borderRadius: 6,
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                letterSpacing: 1
+              }}
+            >
+              WORLD
+            </Link>
 
-        <Link
-          href="/settings"
-          style={{
-            background: "transparent",
-            border: "1px solid #1e293b",
-            color: "#334155",
-            fontFamily: "monospace",
-            fontSize: 9,
-            padding: "10px 14px",
-            borderRadius: 6,
-            textDecoration: "none",
-            display: "flex",
-            alignItems: "center"
-          }}
-        >
-          SETTINGS
-        </Link>
+            <Link
+              href="/settings"
+              style={{
+                background: "transparent",
+                border: "1px solid #1e293b",
+                color: "#334155",
+                fontFamily: "monospace",
+                fontSize: 9,
+                padding: "10px 14px",
+                borderRadius: 6,
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center"
+              }}
+            >
+              SETTINGS
+            </Link>
 
-        <Link
-          href="/api/auth/signout"
-          style={{
-            background: "transparent",
-            border: "1px solid #1e293b",
-            color: "#334155",
-            fontFamily: "monospace",
-            fontSize: 9,
-            padding: "10px 14px",
-            borderRadius: 6,
-            textDecoration: "none",
-            display: "flex",
-            alignItems: "center"
-          }}
-        >
-          OUT
-        </Link>
+            <Link
+              href="/api/auth/signout"
+              style={{
+                background: "transparent",
+                border: "1px solid #1e293b",
+                color: "#334155",
+                fontFamily: "monospace",
+                fontSize: 9,
+                padding: "10px 14px",
+                borderRadius: 6,
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center"
+              }}
+            >
+              OUT
+            </Link>
+          </>
+        ) : (
+          <Link
+            href="/"
+            style={{
+              background: "transparent",
+              border: "1px solid #22c55e44",
+              color: "#22c55e",
+              fontFamily: "monospace",
+              fontSize: 9,
+              padding: "10px 14px",
+              borderRadius: 6,
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              letterSpacing: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            GET YOUR OWN →
+          </Link>
+        )}
       </div>
 
     </div>

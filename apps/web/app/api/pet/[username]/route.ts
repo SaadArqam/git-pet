@@ -1,27 +1,30 @@
 import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getUserSpecies } from "@/lib/redis";
 
+// Public, read-only endpoint — no session required. Uses the same
+// server-side PAT as /api/card/[username] and /api/leaderboard so any
+// visitor (or a bot, badge, editor extension, etc.) can look up any
+// GitHub user's pet, not just their own.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ username: string }> }
 ) {
-  const { username } = await params; // ✅ FIX
+  const { username } = await params;
 
-  const session = await getServerSession(authOptions);
-  const token = session?.accessToken;
-
-  if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ghToken = process.env.GITHUB_CARD_TOKEN ?? process.env.GITHUB_TOKEN;
+  if (!ghToken) {
+    return NextResponse.json({ error: "Server misconfigured: no GitHub token" }, { status: 500 });
   }
 
   try {
-    const client = new GitHubClient(token);
-    const gitData = await client.fetchUserStats(username);
+    const [gitData, species] = await Promise.all([
+      new GitHubClient(ghToken).fetchUserStats(username),
+      getUserSpecies(username),
+    ]);
     const petState = derivePetState(gitData);
-    return NextResponse.json(petState);
+    return NextResponse.json({ ...petState, species });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
