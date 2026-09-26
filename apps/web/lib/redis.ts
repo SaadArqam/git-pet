@@ -76,3 +76,15 @@ export async function addFriend(user1: string, user2: string): Promise<void> {
     redis.sadd(friendKey(user2), user1)
   ]);
 }
+
+export function winsKey(username: string) {
+  return `wins:${username}`;
+}
+
+export async function incrementWins(username: string): Promise<number> {
+  return safeRedis(() => redis.incr(winsKey(username)), 0);
+}
+
+export async function getWins(username: string): Promise<number> {
+  return safeRedis(() => redis.get<number>(winsKey(username)), 0).then((v) => v ?? 0);
+}

@@ -1,9 +1,19 @@
-import type { PetState } from "@git-pet/core";
+import type { PetState, Stage } from "@git-pet/core";
 import { getSpriteView } from "./sprites";
 import type { SpriteView } from "./sprites";
 import { getSpeciesRects } from "./speciesRects";
 
 const PIXEL_SIZE = 6;
+
+// How big the pet renders at each life stage, so a real streak (which drives
+// `stage` via totalCommits/languages — see packages/core/src/stats.ts) is
+// visible everywhere a pet is drawn, not just a number on a dashboard.
+const STAGE_SCALE: Record<Stage, number> = {
+  egg: 0.6,
+  hatchling: 0.8,
+  adult: 1.0,
+  legend: 1.15,
+};
 
 export interface DrawOptions {
   transparent?: boolean;
@@ -48,12 +58,28 @@ export function drawPet(
   let ox = 0, oy = 0;
 
   if (rects && rects.length > 0) {
-    // scale 1 is equivalent to 100% of the 80x80 local coordinate bounds
-    const scale = Math.min(canvasWidth / 80, canvasHeight / 80) * 1.0;
-    
+    // scale 1 is equivalent to 100% of the 80x80 local coordinate bounds,
+    // adjusted by life stage so evolution is actually visible
+    const scale = Math.min(canvasWidth / 80, canvasHeight / 80) * STAGE_SCALE[state.stage];
+
     // adjust centering for rects assuming they center around (20, 22) locally
     ox = Math.floor(canvasWidth / 2 - 20 * scale);
     oy = Math.floor(canvasHeight / 2 - 22 * scale);
+
+    // Legend aura — a soft golden glow behind the sprite, the clearest
+    // "this pet has a serious streak" signal in the world
+    if (state.stage === "legend") {
+      const cx = canvasWidth / 2;
+      const cy = oy + 20 * scale;
+      const glowRadius = 30 * scale;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
+      glow.addColorStop(0, "rgba(250,204,21,0.35)");
+      glow.addColorStop(1, "rgba(250,204,21,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Drop shadow
     if (!options?.transparent) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PetState } from "@git-pet/core";
+import type { PetState, PetStats } from "@git-pet/core";
 import PartySocket from "partysocket";
 import { drawPet, getSpeciesRects } from "@git-pet/renderer";
 
@@ -366,19 +366,45 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     });
   };
 
+  // Fight damage is driven by real GitHub-derived stats, not a flat number:
+  // an attacker with a healthy streak (high health/energy) hits harder, and a
+  // defender with a healthy streak (high health) resists more of it. Kept on
+  // the familiar 0-100 HP scale so none of the bar/UI math has to change.
+  const computeFightDamage = (attackerStats: PetStats, defenderStats: PetStats) => {
+    const attackPower = (attackerStats.health + attackerStats.energy) / 2; // 0-100
+    const attackMult = 0.5 + attackPower / 100;         // 0.5x (neglected) – 1.5x (thriving)
+    const defenseMult = 1 - defenderStats.health / 200; // 1.0x (neglected) – 0.5x (thriving)
+    const damage = Math.round(20 * attackMult * defenseMult);
+    return Math.min(35, Math.max(5, damage));
+  };
+
+  // Persist a fight win so it durably counts for something (survives reconnects,
+  // can feed the leaderboard later) instead of only living in in-memory HP refs.
+  const persistFightWin = () => {
+    fetch("/api/fights", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ winnerId: petState.gitData.username }),
+      keepalive: true,
+    }).catch(() => { });
+  };
+
   const fightPlayer = (target: any) => {
     // 800ms cooldown to prevent spam damage
     const now = Date.now();
     if (now - lastFightTime.current < 800) return;
     lastFightTime.current = now;
 
+    const defenderStats = remotePlayersRef.current[target.id]?.bb?.pState?.stats ?? petState.stats;
+    const damage = computeFightDamage(petState.stats, defenderStats);
+
     const currentHP = remotePlayerHealth.current.get(target.id) ?? 100;
-    const newHP = Math.max(0, currentHP - 20);
+    const newHP = Math.max(0, currentHP - damage);
     remotePlayerHealth.current.set(target.id, newHP);
     setTargetHP(newHP);
 
     if (socketRef.current) {
-      socketRef.current.send(JSON.stringify({ type: 'fight', fromId: petState.gitData.username, toId: target.id, damage: 20 }));
+      socketRef.current.send(JSON.stringify({ type: 'fight', fromId: petState.gitData.username, toId: target.id, damage }));
     }
 
     // Update in-world HP Bar (keyed by username = target.id)
@@ -392,6 +418,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
     if (newHP === 0) {
       showToast("You won! 🏆");
+      persistFightWin();
       setTimeout(() => {
         remotePlayerHealth.current.set(target.id, 100);
         setTargetHP(100);
@@ -410,7 +437,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       target.mesh.position.add(dir.multiplyScalar(0.3));
     }
 
-    triggerDamageAnim(target.mesh, 20);
+    triggerDamageAnim(target.mesh, damage);
   };
 
   const sendEmoji = (emoji: string, target: any) => {
@@ -2156,8 +2183,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             if (now - lastFightTime.current < 700) return;
             lastFightTime.current = now;
 
+            const defenderStats = remotePlayersRef.current[target.id]?.bb?.pState?.stats ?? petState.stats;
+            const damage = computeFightDamage(petState.stats, defenderStats);
+
             const currentHP = remotePlayerHealth.current.get(target.id) ?? 100;
-            const newHP = Math.max(0, currentHP - 20);
+            const newHP = Math.max(0, currentHP - damage);
             remotePlayerHealth.current.set(target.id, newHP);
             setTargetHP(newHP);
             setIsFighting(true);
@@ -2168,7 +2198,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 type: 'fight',
                 fromId: petState.gitData.username,
                 toId: target.id,
-                damage: 20
+                damage
               }));
             }
 
@@ -2182,6 +2212,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
             if (newHP === 0) {
               showToast("You won! 🏆");
+              persistFightWin();
               setTimeout(() => {
                 remotePlayerHealth.current.set(target.id, 100);
                 setTargetHP(100);
@@ -2227,7 +2258,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             // Floating damage number
             if (target.mesh && sceneRef.current) {
               const dmgDiv = document.createElement('div');
-              dmgDiv.innerText = `-20`;
+              dmgDiv.innerText = `-${damage}`;
               dmgDiv.style.color = '#FF3333';
               dmgDiv.style.fontWeight = 'bold';
               dmgDiv.style.fontSize = '26px';
