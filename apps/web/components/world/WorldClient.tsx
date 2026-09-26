@@ -553,6 +553,17 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a6741, 0.45); scene.add(hemiLight);
 
       // billboard sprite helper
+      // Redrawing a billboard's canvas + re-uploading it as a GPU texture is
+      // the one part of the render loop whose cost scales with player count
+      // (it happens once per remote player, every frame). The sway/idle
+      // animation is slow enough that redrawing every few frames instead of
+      // every single frame is visually indistinguishable, so remote players'
+      // billboards are throttled to this interval (staggered per-player via
+      // redrawOffset below, so N players don't all redraw on the same
+      // frame). The local player's own billboard is left unthrottled since
+      // there's only ever one of it — it doesn't scale with room size.
+      const BILLBOARD_REDRAW_INTERVAL = 3;
+
       function createPetBillboard(username: string, species: string, pState: PetState) {
         const canvas = document.createElement('canvas');
         canvas.width = 80; canvas.height = 80;
@@ -619,7 +630,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           healthBarsRef.current.set(username, { container, bar });
         }
 
-        return { group, canvas, ctx, texture, species, pState, labelSprite };
+        const redrawOffset = Math.floor(Math.random() * BILLBOARD_REDRAW_INTERVAL);
+        return { group, canvas, ctx, texture, species, pState, labelSprite, redrawOffset };
       }
 
       function updateBillboard(bb: any, frame: number, view: any) {
@@ -1976,7 +1988,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         for (const id in remotePlayersRef.current) {
           const remote = remotePlayersRef.current[id];
           remote.bb.group.position.lerp(remote.targetPos, 0.1);
-          updateBillboard(remote.bb, frameCount, "front");
+          // Position/movement stays smooth every frame (above); only the
+          // sprite's own idle-animation redraw is throttled.
+          if ((frameCount + remote.bb.redrawOffset) % BILLBOARD_REDRAW_INTERVAL === 0) {
+            updateBillboard(remote.bb, frameCount, "front");
+          }
 
           if (playerRef.current) {
             const d = playerRef.current.position.distanceTo(remote.bb.group.position);
