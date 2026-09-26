@@ -140,7 +140,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   };
 
 
-// test
+
 
   const showToast = (msg: string) => {
     setToast(msg);
