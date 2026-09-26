@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { SpeciesCanvas } from '@/components/SpeciesSwitch'
+import { getThree, type ThreeNS } from '@/lib/three-global'
 
 const PROMPT_SUBTITLES: Record<string, string> = {
   'What is Git-Pet?': 'NOTICE BOARD',
@@ -36,7 +37,7 @@ export default function LandingPage() {
   const minimapRef = useRef<HTMLCanvasElement>(null)
   const mounted = useRef(true)
   const rafRef = useRef<number>(0)
-  const rendererRef = useRef<any>(null)
+  const rendererRef = useRef<ThreeNS.WebGLRenderer | null>(null)
   const cleanupFns = useRef<(() => void)[]>([])
   const activeOverlayRef = useRef<string | null>(null)
   const joystickRef = useRef({ active: false, dx: 0, dy: 0 })
@@ -161,7 +162,11 @@ export default function LandingPage() {
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js')
       if (!mounted.current || !canvasRef.current) return
 
-      const THREE = (window as any).THREE
+      const loadedThree = getThree()
+      if (!loadedThree) return
+      // Re-bound so hoisted function declarations below (which TypeScript
+      // can't see the null check from) get the non-undefined type too.
+      const THREE = loadedThree
 
       const renderer = new THREE.WebGLRenderer({ canvas: canvasRef.current, antialias: true, alpha: false })
       renderer.setSize(window.innerWidth, window.innerHeight)
@@ -174,8 +179,12 @@ export default function LandingPage() {
       rendererRef.current = renderer
 
       const scene = new THREE.Scene()
-      scene.fog = new THREE.FogExp2(0xb8cce0, 0.018)
-      scene.background = new THREE.Color(0x87b4d0)
+      // Kept as typed references so the day/night cycle can recolor them
+      // directly instead of casting scene.fog / scene.background every frame.
+      const sceneFog = new THREE.FogExp2(0xb8cce0, 0.018)
+      const skyColor = new THREE.Color(0x87b4d0)
+      scene.fog = sceneFog
+      scene.background = skyColor
 
       const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 120)
       camera.position.set(0, 7, 22)
@@ -204,9 +213,9 @@ export default function LandingPage() {
 
       // Vox helper
       function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false) {
-        const mesh = new (window as any).THREE.Mesh(
-          new (window as any).THREE.BoxGeometry(w, h, d),
-          new (window as any).THREE.MeshLambertMaterial({ color: new (window as any).THREE.Color(color) })
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(w, h, d),
+          new THREE.MeshLambertMaterial({ color: new THREE.Color(color) })
         )
         mesh.position.set(x, y, z)
         mesh.castShadow = castShadow; mesh.receiveShadow = receiveShadow
@@ -241,7 +250,7 @@ export default function LandingPage() {
       })
 
       // Torii
-      const toriiBars: any[] = []
+      const toriiBars: ThreeNS.Mesh<ThreeNS.BoxGeometry, ThreeNS.MeshLambertMaterial>[] = []
       function buildTorii(x: number, z: number) {
         const red = 0xcc3300, darkRed = 0x992200
         for (let py = 0; py < 5; py++) {
@@ -256,7 +265,7 @@ export default function LandingPage() {
       buildTorii(0, -7); buildTorii(0, -18)
 
       // Lanterns
-      const lanternMats: any[] = []
+      const lanternMats: ThreeNS.MeshLambertMaterial[] = []
       function buildLantern(x: number, z: number) {
         const stone = 0x888880
         vox(x, 0.2, z, stone, 0.85, 0.45, 0.85)
@@ -436,7 +445,7 @@ export default function LandingPage() {
       let rainActive = false, rainPhaseTimer = 0
 
       // ─── NPC CREATURES ──────────────────────────────────────────────────────
-      function buildNPC(x: number, z: number, col: string): any {
+      function buildNPC(x: number, z: number, col: string): ThreeNS.Group {
         const g = new THREE.Group()
         const nb = (px: number, py: number, pz: number, w: number, h: number, d: number) => {
           const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: new THREE.Color(col) }))
@@ -446,7 +455,7 @@ export default function LandingPage() {
         nb(-0.12, 0.63, -0.22, 0.08, 0.08, 0.02); nb(0.12, 0.63, -0.22, 0.08, 0.08, 0.02)
         g.position.set(x, 0.28, z); scene.add(g); return g
       }
-      const npcData: Array<{ mesh: any, homeX: number, homeZ: number, angle: number, radius: number, speed: number, state: string, timer: number, walkPhase: number }> = [
+      const npcData: Array<{ mesh: ThreeNS.Group, homeX: number, homeZ: number, angle: number, radius: number, speed: number, state: string, timer: number, walkPhase: number }> = [
         { mesh: buildNPC(17, -7, '#c4a8a0'), homeX: 17, homeZ: -7, angle: 0, radius: 3.5, speed: 0.007, state: 'wander', timer: 0, walkPhase: 0 },
         { mesh: buildNPC(-11, 21, '#a0c4a8'), homeX: -11, homeZ: 21, angle: 1.5, radius: 2.8, speed: 0.005, state: 'idle', timer: 2.5, walkPhase: 0 },
         { mesh: buildNPC(25, -12, '#a0a8c4'), homeX: 25, homeZ: -12, angle: 3.1, radius: 4.2, speed: 0.009, state: 'wander', timer: 0, walkPhase: 0 },
@@ -457,7 +466,14 @@ export default function LandingPage() {
         if (rainMesh) { scene.remove(rainMesh) }
         scene.remove(wispMesh)
         streamGeo.dispose(); streamMat.dispose(); forestAltarMat.dispose()
-        npcData.forEach(n => { n.mesh.traverse((c: any) => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose() }); scene.remove(n.mesh) })
+        npcData.forEach(n => {
+          n.mesh.traverse((c) => {
+            const renderable = c as Partial<Pick<ThreeNS.Mesh, 'geometry' | 'material'>>
+            renderable.geometry?.dispose()
+            if (renderable.material) (Array.isArray(renderable.material) ? renderable.material : [renderable.material]).forEach(m => m.dispose())
+          })
+          scene.remove(n.mesh)
+        })
       })
 
       // Player
@@ -486,18 +502,18 @@ export default function LandingPage() {
         [-4, -26, 4, -18], [-2.3, -8.5, -1.1, -7], [1.1, -8.5, 2.3, -7], [-2.3, -19, -1.1, -17], [1.1, -19, 2.3, -17],
         [5, -8, 14, 0], [-12.5, -6.5, -9.5, -3.5], [-16, -14, -13, -11], [10.5, -9.5, 13.5, -6.5], [-8, 2, -6, 4], [8, -2, 10, 0], [-13, -13, -3, -3],
       ]
-      function checkCollision(p: any): boolean {
+      function checkCollision(p: { x: number; z: number }): boolean {
         const r = 0.55
         return COLLIDERS.some(([x0, z0, x1, z1]) => p.x + r > x0 && p.x - r < x1 && p.z + r > z0 && p.z - r < z1)
       }
 
       const keys: Record<string, boolean> = {}
-      let nearestObj: any = null
+      let nearestObj: Obj | null = null
       let cameraMode: 'follow' | 'cinematic' = 'follow'
       const cinematicPos = new THREE.Vector3()
       const cinematicLook = new THREE.Vector3()
 
-      interface Obj { pos: any; radius: number; label: string; onInteract: () => void }
+      interface Obj { pos: ThreeNS.Vector3; radius: number; label: string; onInteract: () => void }
       const interactables: Obj[] = [
         {
           pos: new THREE.Vector3(-7, 0, 3), radius: 3, label: '[ E ]  What is Git-Pet?',
@@ -579,7 +595,13 @@ export default function LandingPage() {
 
       // Audio
       let audioCtx: AudioContext | null = null
-      const initAudio = () => { if (!audioCtx) audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)() }
+      const initAudio = () => {
+        if (audioCtx) return
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (AudioContextClass) audioCtx = new AudioContextClass()
+      }
       const playChime = (freq: number, dur: number, delay = 0) => {
         if (!audioCtx) return
         setTimeout(() => {
@@ -702,8 +724,8 @@ export default function LandingPage() {
         ambientLight.intensity = 0.1 + dayBright * 0.45
         hemiLight.intensity = 0.1 + dayBright * 0.35
         const skyL = 0.18 + dayBright * 0.62
-          ; (scene.background as any).setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.32, skyL)
-          ; (scene.fog as any).color.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.22, skyL)
+        skyColor.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.32, skyL)
+        sceneFog.color.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.22, skyL)
         const nightBoost = 1.0 - dayBright * 0.55
 
         // Lanterns — enhanced flicker + night boost
@@ -1072,12 +1094,12 @@ export default function LandingPage() {
               <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 40, color: '#f0ebe0', marginBottom: 8 }}>Choose your creature</div>
               <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 11, color: 'rgba(240,235,224,0.4)', marginBottom: 28, letterSpacing: 1 }}>Sign in first — your species is selected in settings after.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
-                {[{ name: 'Wolf', id: 'wolf', col: '#7a8070', role: 'Aggro' }, { name: 'Saber', id: 'sabertooth', col: '#c5c0b8', role: 'Tank' }, { name: 'Capy', id: 'capybara', col: '#8a6a3a', role: 'Support' }, { name: 'Dragon', id: 'dragon', col: '#3d4a33', role: 'Legend' }, { name: 'Axolotl', id: 'axolotl', col: '#8a5a60', role: 'Regen' }].map(s => (
+                {[{ name: 'Wolf', id: 'wolf' as const, col: '#7a8070', role: 'Aggro' }, { name: 'Saber', id: 'sabertooth' as const, col: '#c5c0b8', role: 'Tank' }, { name: 'Capy', id: 'capybara' as const, col: '#8a6a3a', role: 'Support' }, { name: 'Dragon', id: 'dragon' as const, col: '#3d4a33', role: 'Legend' }, { name: 'Axolotl', id: 'axolotl' as const, col: '#8a5a60', role: 'Regen' }].map(s => (
                   <div key={s.name} style={{ border: `1px solid ${s.col}44`, padding: '16px 8px', textAlign: 'center', cursor: 'pointer', transition: 'background 0.2s', overflow: 'hidden' }}
                     onMouseEnter={e => (e.currentTarget.style.background = `${s.col}22`)}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     onClick={() => signIn('github', { callbackUrl: '/dashboard' })}>
-                    <div style={{ display: 'flex', justifyContent: 'center', transform: 'scale(0.8)', transformOrigin: 'top center', marginBottom: -8, marginTop: -4 }}><SpeciesCanvas species={s.id as any} isSelected={false} isHovered={true} /></div>
+                    <div style={{ display: 'flex', justifyContent: 'center', transform: 'scale(0.8)', transformOrigin: 'top center', marginBottom: -8, marginTop: -4 }}><SpeciesCanvas species={s.id} isSelected={false} isHovered={true} /></div>
                     <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: 15, color: '#f0ebe0', marginBottom: 4 }}>{s.name}</div>
                     <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>{s.role}</div>
                   </div>

@@ -4,10 +4,53 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PetState, PetStats } from "@git-pet/core";
 import PartySocket from "partysocket";
 import { drawPet, getSpeciesRects, CANON_COLORS } from "@git-pet/renderer";
+import type { SpriteView } from "@git-pet/renderer";
+import { getThree, type ThreeNS } from "@/lib/three-global";
+import type { CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer";
 
 interface Props {
   petState: PetState;
   species: string;
+}
+
+// A player's floating 2D sprite: a canvas redrawn with drawPet(), used as a
+// texture on a camera-facing plane. Built by createPetBillboard().
+interface Billboard {
+  group: ThreeNS.Group;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  texture: ThreeNS.CanvasTexture;
+  species: string;
+  pState: PetState;
+  labelSprite: ThreeNS.Sprite;
+  redrawOffset: number;
+}
+
+interface RemotePlayer {
+  bb: Billboard;
+  targetPos: ThreeNS.Vector3;
+  targetRot: number;
+  species: string;
+}
+
+interface InteractionTarget {
+  id: string;
+  mesh: ThreeNS.Object3D;
+}
+
+// One step of a transient animation; returns false when finished.
+type AnimationStep = () => boolean;
+
+// A player's presence as sent by the PartyKit server (PetPresence in
+// web-party/src/server.ts), in "snapshot" and "pet_update" messages.
+interface RemotePresence {
+  username?: string;
+  species?: string;
+  petType?: string;
+  x: number;
+  y: number;
+  rot?: number;
+  petState?: PetState;
 }
 
 export function WorldClient({ petState, species: initialSpecies }: Props) {
@@ -15,7 +58,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const minimapRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const mounted = useRef(true);
-  const rendererRef = useRef<any>(null);
+  const rendererRef = useRef<ThreeNS.WebGLRenderer | null>(null);
   const cleanupFns = useRef<(() => void)[]>([]);
   const socketRef = useRef<PartySocket | null>(null);
 
@@ -33,14 +76,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const petStateRef = useRef({
     pos: { x: 0, y: 0.5, z: -22.5 },
     rot: Math.PI,
-    mesh: null as any,
-    bb: null as any
   });
 
-  const playerRef = useRef<any>(null); // Billboard group ref
-  const remotePlayersRef = useRef<Record<string, { bb: any, targetPos: any, targetRot: number, species: string }>>({});
-  const ghostsRef = useRef<Map<string, { group: any, mood?: string }>>(new Map());
-  const nearbyPlayer = useRef<{ id: string, mesh: any } | null>(null);
+  const playerRef = useRef<ThreeNS.Group | null>(null); // Billboard group ref
+  const remotePlayersRef = useRef<Record<string, RemotePlayer>>({});
+  const ghostsRef = useRef<Map<string, { group: ThreeNS.Group, mood?: string }>>(new Map());
+  const nearbyPlayer = useRef<InteractionTarget | null>(null);
   const interactionOpen = useRef(false);
   const prevNearbyId = useRef<string | null>(null);
   // Reciprocal befriend: pending incoming requests keyed by sender username
@@ -58,7 +99,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const [localHP, setLocalHP] = useState(100);
   // Derived once from the server-fetched `initialSpecies` prop and never
   // reassigned — see the hydration effect below for why.
-  const [selectedPet] = useState<any>({ type: initialSpecies, id: 'prop-fallback' });
+  const [selectedPet] = useState<{ type: string; id: string }>({ type: initialSpecies, id: 'prop-fallback' });
   const [isHydrated, setIsHydrated] = useState(false);
   const [friendCount, setFriendCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -70,16 +111,16 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   // Interaction Data Refs
   const friendsRef = useRef<Set<string>>(new Set());
   const remotePlayerHealth = useRef<Map<string, number>>(new Map());
-  const healthBarsRef = useRef<Map<string, { container: any, bar: any }>>(new Map());
+  const healthBarsRef = useRef<Map<string, { container: HTMLDivElement, bar: HTMLDivElement }>>(new Map());
   const shakeRef = useRef(0);
-  const animationsRef = useRef<any[]>([]);
-  const sceneRef = useRef<any>(null);
+  const animationsRef = useRef<AnimationStep[]>([]);
+  const sceneRef = useRef<ThreeNS.Scene | null>(null);
   const cssContainerRef = useRef<HTMLDivElement>(null);
-  const labelRendererRef = useRef<any>(null);
+  const labelRendererRef = useRef<CSS2DRenderer | null>(null);
 
   // Interaction Menu State
-  const [interactionTarget, setInteractionTarget] = useState<{ id: string, mesh: any } | null>(null);
-  const interactionTargetRef = useRef<{ id: string, mesh: any } | null>(null);
+  const [interactionTarget, setInteractionTarget] = useState<InteractionTarget | null>(null);
+  const interactionTargetRef = useRef<InteractionTarget | null>(null);
   const movementBlocked = useRef(false);
   const speciesCache = useRef<Map<string, string>>(new Map());
 
@@ -136,9 +177,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
   // --- Interaction Logic ---
 
-  const triggerHeartAnim = (mesh: any) => {
+  const triggerHeartAnim = (mesh: ThreeNS.Object3D | null | undefined) => {
     if (!mesh || !sceneRef.current) return;
-    const THREE = (window as any).THREE;
+    const THREE = getThree();
     if (!THREE || !THREE.CSS2DObject) return;
 
     for (let i = 0; i < 8; i++) {
@@ -197,9 +238,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   };
 
   // Trigger a fizzle (failed befriend) animation — fewer particles, faster fade
-  const triggerFizzleAnim = (mesh: any) => {
+  const triggerFizzleAnim = (mesh: ThreeNS.Object3D | null | undefined) => {
     if (!mesh || !sceneRef.current) return;
-    const THREE = (window as any).THREE;
+    const THREE = getThree();
     if (!THREE?.CSS2DObject) return;
     for (let i = 0; i < 4; i++) {
       const div = document.createElement('div');
@@ -226,9 +267,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   };
 
   // Enhanced heart animation spawning hearts from both pets converging at midpoint
-  const triggerMidpointHeartAnim = (meshA: any, meshB: any) => {
+  const triggerMidpointHeartAnim = (meshA: ThreeNS.Object3D | null | undefined, meshB: ThreeNS.Object3D | null | undefined) => {
     if (!sceneRef.current) return;
-    const THREE = (window as any).THREE;
+    const THREE = getThree();
     if (!THREE?.CSS2DObject) return;
     const mid = meshA && meshB
       ? new THREE.Vector3().addVectors(meshA.position, meshB.position).multiplyScalar(0.5)
@@ -273,9 +314,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     });
   };
 
-  const triggerDamageAnim = (mesh: any, damageAmount: number) => {
+  const triggerDamageAnim = (mesh: ThreeNS.Object3D | null | undefined, damageAmount: number) => {
     if (!mesh || !sceneRef.current) return;
-    const THREE = (window as any).THREE;
+    const THREE = getThree();
     if (!THREE?.CSS2DObject) return;
 
     // Floating damage number
@@ -362,8 +403,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       await loadScript("https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js");
       if (!mounted.current || !canvasRef.current) return;
 
-      const THREE = (window as any).THREE;
-      if (!THREE) return;
+      const loadedThree = getThree();
+      if (!loadedThree) return;
+      // Re-bound so hoisted function declarations below (which TypeScript
+      // can't see the null check from) get the non-undefined type too.
+      const THREE = loadedThree;
 
       // ─── SETUP ───
       const renderer = new THREE.WebGLRenderer({
@@ -380,8 +424,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       const scene = new THREE.Scene();
       sceneRef.current = scene;
-      scene.fog = new THREE.FogExp2(0xb8cce0, 0.018);
-      scene.background = new THREE.Color(0x87b4d0);
+      // Kept as typed references so the day/night cycle can recolor them
+      // directly instead of casting scene.fog / scene.background every frame.
+      const sceneFog = new THREE.FogExp2(0xb8cce0, 0.018);
+      const skyColor = new THREE.Color(0x87b4d0);
+      scene.fog = sceneFog;
+      scene.background = skyColor;
 
       const labelRenderer = new THREE.CSS2DRenderer();
       labelRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -437,7 +485,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         plane.position.y = 1.25;
 
         // billboard behavior
-        plane.onBeforeRender = (renderer: any, scene: any, camera: any) => {
+        plane.onBeforeRender = (_renderer, _scene, camera) => {
           plane.quaternion.copy(camera.quaternion);
         };
 
@@ -491,7 +539,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         return { group, canvas, ctx, texture, species, pState, labelSprite, redrawOffset };
       }
 
-      function updateBillboard(bb: any, frame: number, view: any) {
+      function updateBillboard(bb: Billboard, frame: number, view: SpriteView) {
         const { ctx, canvas, texture, species, pState } = bb;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
@@ -547,14 +595,17 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       // do this automatically on scene.remove() — without it, every player
       // who leaves, changes species, or every ghost that respawns leaks this
       // memory for the rest of the session.
-      function disposeGroup(group: any) {
+      function disposeGroup(group: ThreeNS.Object3D | null | undefined) {
         if (!group) return;
-        group.traverse((child: any) => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            const materials = Array.isArray(child.material) ? child.material : [child.material];
-            materials.forEach((mat: any) => {
-              if (mat.map) mat.map.dispose();
+        group.traverse((child) => {
+          // Meshes, sprites, and points all carry geometry/material; plain
+          // groups and CSS2D labels don't, so both are optional here.
+          const renderable = child as Partial<Pick<ThreeNS.Mesh, "geometry" | "material">>;
+          renderable.geometry?.dispose();
+          if (renderable.material) {
+            const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
+            materials.forEach((mat) => {
+              (mat as Partial<ThreeNS.MeshBasicMaterial>).map?.dispose();
               mat.dispose();
             });
           }
@@ -591,10 +642,11 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       function spawnGhost(username: string, species: string, position: { x: number; z: number }, mood: string = "coma") {
         removeGhost(username);
         const voxelGroup = buildVoxelPet(species, position, mood);
-        voxelGroup.traverse((child: any) => {
-          if (child.material) {
-            child.material.opacity = mood === "coma" ? 0.4 : 0.6;
-            child.material.transparent = true;
+        voxelGroup.traverse((child) => {
+          const material = (child as Partial<Pick<ThreeNS.Mesh, "material">>).material;
+          if (material && !Array.isArray(material)) {
+            material.opacity = mood === "coma" ? 0.4 : 0.6;
+            material.transparent = true;
           }
         });
 
@@ -618,8 +670,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       // --- Helpers ---
-      const colliders: { box: any, mesh: any }[] = [];
-      function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false, isSolid = false): any {
+      const colliders: { box: ThreeNS.Box3, mesh: ThreeNS.Object3D }[] = [];
+      function vox(x: number, y: number, z: number, color: number | string, w = 1, h = 1, d = 1, castShadow = false, receiveShadow = false, isSolid = false): ThreeNS.Mesh {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: new THREE.Color(color) }));
         mesh.position.set(x, y, z); mesh.castShadow = castShadow; mesh.receiveShadow = receiveShadow;
         scene.add(mesh);
@@ -628,7 +680,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       // ─── AUDIO SYSTEM ───
-      let audioInit = false; let audioCtx: any = null; let audioListener: any = null;
+      let audioInit = false; let audioCtx: AudioContext | null = null; let audioListener: ThreeNS.AudioListener | null = null;
       function initAudio() {
         if (audioInit) return; audioInit = true;
         try {
@@ -638,7 +690,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       function playFootstep() {
-        if (!audioInit || !audioCtx) return;
+        if (!audioInit || !audioCtx || !audioListener) return;
         const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
         osc.frequency.setValueAtTime(120, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.05);
         gain.gain.setValueAtTime(0.015, audioCtx.currentTime); osc.connect(gain); gain.connect(audioListener.getInput());
@@ -646,7 +698,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       function playInteract() {
-        if (!audioInit || !audioCtx) return;
+        if (!audioInit || !audioCtx || !audioListener) return;
         const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
         osc.type = 'triangle'; osc.frequency.setValueAtTime(600, audioCtx.currentTime);
         gain.gain.setValueAtTime(0.08, audioCtx.currentTime); osc.connect(gain); gain.connect(audioListener.getInput());
@@ -654,14 +706,14 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       }
 
       // ─── WORLD BUILDING ───
-      const swayables: any[] = [];
+      const swayables: { mesh: ThreeNS.Object3D; speed: number; offset: number }[] = [];
       const worldDecor = new THREE.Group();
       scene.add(worldDecor);
 
-      const fallingPetals: any[] = [];
-      let pondMesh: any = null;
-      let shrineBellHitbox: any = null;
-      let shrineBellMesh: any = null;
+      const fallingPetals: { mesh: ThreeNS.Object3D; offset: number }[] = [];
+      let pondMesh: ThreeNS.Mesh<ThreeNS.CylinderGeometry, ThreeNS.MeshLambertMaterial> | null = null;
+      let shrineBellHitbox: ThreeNS.Object3D | null = null;
+      let shrineBellMesh: ThreeNS.Mesh | null = null;
       function getGroundHeight(x: number, z: number) {
         const dist = Math.sqrt(x * x + z * z);
         const yOffset = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 1.2 + Math.sin(x * 0.02) * 0.5;
@@ -794,7 +846,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         vox(x + 1.8, 4.6, z, darkRed, 0.25, 0.8, 0.35);
       }
       buildTorii(0, -7); buildTorii(0, -18);
-      const lanternMats: any[] = [];
+      const lanternMats: ThreeNS.MeshLambertMaterial[] = [];
       function buildStoneLantern(x: number, z: number) {
         const g = new THREE.Group();
         g.position.set(x, 0, z);
@@ -901,8 +953,12 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           if (!isWall) continue;
           if (wx === 0 && wz === -2 && wy < 2) continue;
           const isWindow = Math.abs(wx) === 2 && wz === -2 && wy === 1;
-          const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: isWindow ? 0xffcc66 : wood }));
-          if (isWindow) { (m.material as any).emissive = new THREE.Color(0xffaa22); (m.material as any).emissiveIntensity = 1.2; }
+          const m = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1, 1),
+            new THREE.MeshLambertMaterial(isWindow
+              ? { color: 0xffcc66, emissive: 0xffaa22, emissiveIntensity: 1.2 }
+              : { color: wood })
+          );
           m.position.set(x + wx, 1.4 + wy, z + wz); g.add(m);
           m.updateMatrixWorld(true); colliders.push({ box: new THREE.Box3().setFromObject(m), mesh: m });
         }
@@ -1578,8 +1634,8 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         createLilyPad(POND_X + (Math.random() - 0.5) * 5, POND_Z + (Math.random() - 0.5) * 4, i);
       }
 
-      const ambientParticles: any[] = [];
-      const snowParticles: any[] = [];
+      const ambientParticles: { mesh: ThreeNS.Object3D; offset: number }[] = [];
+      const snowParticles: { mesh: ThreeNS.Object3D }[] = [];
       for (let i = 0; i < 40; i++) {
         const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), new THREE.MeshBasicMaterial({ color: 0xA8D8EA, transparent: true, opacity: 0.6 }));
         const ox = (Math.random() - 0.5) * 30;
@@ -1667,7 +1723,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         { pos: new THREE.Vector3(5, 0, -40), radius: 3.5, label: '[ E ] Notice Board', onInteract: () => { setNarrativeText('Crystal caves glow brighter under the full moon. The magic runs deep.'); setTimeout(() => setNarrativeText(null), 4500); } },
       ];
 
-      const openInteractionMenu = (player: { id: string, mesh: any }) => {
+      const openInteractionMenu = (player: InteractionTarget) => {
         interactionTargetRef.current = player;
         setInteractionTarget(player);
         movementBlocked.current = true;
@@ -1731,7 +1787,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       const fireflyCount = 60;
       const fireflyGeo = new THREE.BufferGeometry();
       const fireflyPos = new Float32Array(fireflyCount * 3);
-      const fireflyData: any[] = [];
+      const fireflyData: { x: number; y: number; z: number; offset: number }[] = [];
 
       for (let i = 0; i < fireflyCount; i++) {
         const fx = (Math.random() - 0.5) * 80;
@@ -1835,7 +1891,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         playerBB.group.position.set(p.pos.x, 0.5 + Math.sin(frameCount * 0.1) * 0.05, p.pos.z);
 
         // Update remote players & Proximity
-        let closestRemote: { id: string, mesh: any } | null = null;
+        let closestRemote: InteractionTarget | null = null;
         let minRemoteDist = 4;
 
         for (const id in remotePlayersRef.current) {
@@ -1986,17 +2042,15 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         ambientLight.intensity = 0.1 + dayBright * 0.45;
         hemiLight.intensity = 0.1 + dayBright * 0.35;
         const skyL = 0.18 + dayBright * 0.62;
-        (scene.background as any).setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.32, skyL);
-        if (scene.fog && (scene.fog as any).color) {
-          (scene.fog as any).color.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.22, skyL);
-        }
+        skyColor.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.32, skyL);
+        sceneFog.color.setHSL(dayBright > 0.15 ? 0.60 : 0.67, 0.22, skyL);
         const nightBoost = 1.0 - dayBright * 0.55;
-        lanternMats.forEach((mat: any, i: number) => {
+        lanternMats.forEach((mat, i) => {
           mat.emissiveIntensity = (0.65 + Math.sin(elapsed * 1.8 + i * 1.3) * 0.45) * (0.75 + nightBoost * 1.3);
         });
 
-        if (pondMesh && pondMesh.material) {
-          (pondMesh.material as any).color.setHSL(0.55, 0.5, 0.35 + Math.sin(elapsed * 0.9) * 0.025);
+        if (pondMesh) {
+          pondMesh.material.color.setHSL(0.55, 0.5, 0.35 + Math.sin(elapsed * 0.9) * 0.025);
         }
 
         const positions = fireflies.geometry.attributes.position.array as Float32Array;
@@ -2071,7 +2125,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
       };
       tick();
 
-      const onKD = (e: any) => {
+      const onKD = (e: KeyboardEvent) => {
         initAudio();
 
         // When interaction is open, ONLY allow interaction keys, block everything else
@@ -2325,7 +2379,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           }
         }
       };
-      const onKU = (e: any) => keysRef.current[e.code] = false;
+      const onKU = (e: KeyboardEvent) => { keysRef.current[e.code] = false; };
       window.addEventListener("keydown", onKD); window.addEventListener("keyup", onKU);
 
       const onResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); };
@@ -2350,7 +2404,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
         socket.addEventListener("message", async (e) => {
           const msg = JSON.parse(e.data);
           if (msg.type === "snapshot") {
-            Object.entries(msg.pets).forEach(async ([username, pData]: [string, any]) => {
+            (Object.entries(msg.pets) as [string, RemotePresence][]).forEach(async ([username, pData]) => {
               if (username === petState.gitData.username) return;
               removeGhost(username);
 
@@ -2465,7 +2519,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
           } else if (msg.type === "emoji_received") {
             const peer = remotePlayersRef.current[msg.fromId];
             if (peer) {
-              const THREE = (window as any).THREE;
               const div = document.createElement('div');
               div.innerText = msg.emoji;
               div.style.fontSize = "28px";
@@ -2481,7 +2534,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 const elapsed = now - startTime;
                 const t = Math.min(elapsed / duration, 1);
 
-                const targetPos = playerRef.current.position.clone().add(new THREE.Vector3(0, 2, 0));
+                const player = playerRef.current;
+                if (!player) { scene.remove(obj); return false; }
+                const targetPos = player.position.clone().add(new THREE.Vector3(0, 2, 0));
                 const pos = startPos.clone().lerp(targetPos, t);
                 pos.y += Math.sin(t * Math.PI) * 2;
                 obj.position.copy(pos);
