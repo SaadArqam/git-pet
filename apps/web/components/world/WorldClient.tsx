@@ -139,6 +139,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     playerStateRef.current.isMoving = false;
   };
 
+
+// test
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2000);
