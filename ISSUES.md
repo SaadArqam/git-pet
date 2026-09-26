@@ -61,17 +61,17 @@ reading the code alone.
 - **What a user notices:** Same slow memory creep as #6, specifically from leftover DOM elements (HP bar divs) and numbers that pile up as different people cycle through the room over a session.
 - **Fix:** When a player leaves, also delete their entry from these two trackers.
 
-### 8. If your connection briefly drops and reconnects, other players can get stuck in the world forever as "phantoms"
+### 8. ✅ FIXED — If your connection briefly drops and reconnects, other players can get stuck in the world forever as "phantoms"
 - **Where:** the "snapshot" handler (received on reconnect), `apps/web/components/world/WorldClient.tsx` ~2444-2465
 - **What's wrong:** On reconnect the server sends you the current true room state, but the client only ever *adds/updates* players from it — it never removes a player who's in your local view but is missing from the fresh snapshot (meaning they actually left while you were reconnecting).
 - **What a user notices:** A player who left is still visible, standing still, forever — a permanent "ghost" of someone no longer in the game.
 - **Fix:** When a snapshot arrives, remove any locally-tracked player who isn't present in it.
 
-### 9. *(needs a quick live check before fixing — flagging as suspected, not confirmed)* The world may silently rebuild itself right after you enter it
+### 9. ✅ FIXED — CONFIRMED — The world was silently rebuilding itself right after every returning user entered it
 - **Where:** `apps/web/components/world/WorldClient.tsx` — two near-duplicate "read my saved pet from localStorage" effects (~143-167 and ~476-488), both feeding into the giant Three.js setup effect's dependency list (~2612)
 - **What's wrong:** Reading from localStorage always produces a brand-new object, which can make the giant "build the whole world" effect think its inputs changed and re-run itself moments after you arrive — rebuilding the entire world, reopening your connection to other players (sending a second "I've joined" message), and doubling up keyboard listeners and the render loop.
-- **What a user notices, if this is really happening:** A visible flash/stutter shortly after entering the world, and other players seeing you "join" twice.
-- **Fix:** Only keep one of the two duplicate effects, and stop a freshly-parsed object from being able to re-trigger the world-build effect.
+- **Confirmed on investigation:** this wasn't an edge case — `selectedPet` is only ever written to localStorage once, at species-selection time, so it's present for essentially every returning user. Worse, `world/page.tsx` already does a fresh Redis lookup for the correct species on every server render and passes it in as `initialSpecies` — so the localStorage re-read wasn't just redundant, it was reintroducing a value the server had already fetched more recently, from two separate effects, every single time.
+- **Fix:** removed the localStorage re-read entirely (not just deduplicated) — `selectedPet` is now derived once from the already-authoritative `initialSpecies` prop and never reassigned, so it can no longer force the world-build effect to tear down and restart after mount.
 
 ### 10. A single bad or malformed multiplayer message can silently and permanently disconnect a player, with no cleanup
 - **Where:** `apps/web/web-party/src/server.ts` — the entire `onMessage` function (63-192) has no error handling and no validation of message contents before using them

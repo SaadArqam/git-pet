@@ -67,7 +67,9 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   const [narrativeText, setNarrativeText] = useState<string | null>(null);
   const [localHP, setLocalHP] = useState(100);
   const [hasEntered, setHasEntered] = useState(false);
-  const [selectedPet, setSelectedPet] = useState<any>({ type: initialSpecies, id: 'prop-fallback' });
+  // Derived once from the server-fetched `initialSpecies` prop and never
+  // reassigned — see the hydration effect below for why.
+  const [selectedPet] = useState<any>({ type: initialSpecies, id: 'prop-fallback' });
   const [isHydrated, setIsHydrated] = useState(false);
   const [friendCount, setFriendCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -139,18 +141,22 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
     closeInteractionMenu();
   };
 
-  // Sync Hydration, LocalStorage & Friends
+  // Sync Hydration & Friends
+  //
+  // This used to also re-read a cached `selectedPet` from localStorage and
+  // call setSelectedPet() with it (and a second, near-identical effect below
+  // did the exact same thing again). world/page.tsx already does a fresh
+  // Redis lookup for the current species on every server render and passes
+  // it in as `initialSpecies`, so that read was both redundant and actively
+  // harmful: JSON.parse always returns a new object, so calling
+  // setSelectedPet() with it — twice, from two separate effects — changed
+  // `selectedPet`'s identity shortly after mount for any returning user, and
+  // `selectedPet` sits in the giant Three.js effect's dependency array
+  // below. That silently tore down and rebuilt the entire world (new
+  // WebGLRenderer, a second "join" broadcast to other players, doubled
+  // keyboard listeners) moments after every such user entered it.
   useEffect(() => {
     setIsHydrated(true);
-    try {
-      const stored = localStorage.getItem("selectedPet");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSelectedPet(parsed);
-      }
-    } catch (e) {
-      console.error("Failed to load pet from localStorage", e);
-    }
 
     // Fetch friends
     fetch(`/api/friends?userId=${petState.gitData.username}`)
@@ -472,21 +478,6 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
   };
 
 
-  // Sync Hydration & LocalStorage
-  useEffect(() => {
-    setIsHydrated(true);
-    try {
-      const stored = localStorage.getItem("selectedPet");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSelectedPet(parsed);
-      }
-    } catch (e) {
-      console.error("Failed to load pet from localStorage", e);
-    }
-    return () => { mounted.current = false; };
-  }, [initialSpecies]);
-
   // Main Three.js logic
   useEffect(() => {
     if (typeof window === "undefined" || !canvasRef.current) return;
@@ -702,6 +693,25 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             });
           }
         });
+      }
+
+      // Fully removes a remote player: scene object, its GPU resources, and
+      // every tracker keyed by their username (health bar DOM node, in-memory
+      // battle HP, cached species) — otherwise these keep growing for every
+      // distinct player who ever passes through the room over a session.
+      // Shared by the explicit pet_left message and by the snapshot-diff
+      // cleanup below (for a player who left while we were reconnecting and
+      // so never got an explicit pet_left).
+      function removeRemotePlayer(uid: string) {
+        const peer = remotePlayersRef.current[uid];
+        if (peer) {
+          scene.remove(peer.bb.group);
+          disposeGroup(peer.bb.group);
+          delete remotePlayersRef.current[uid];
+        }
+        healthBarsRef.current.delete(uid);
+        remotePlayerHealth.current.delete(uid);
+        speciesCache.current.delete(uid);
       }
 
       function removeGhost(username: string) {
@@ -2500,6 +2510,16 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
                 remotePlayersRef.current[username] = { bb, targetPos: new THREE.Vector3(pData.x, 0.5, pData.y), targetRot: pData.rot || 0, species: sp };
               }
             });
+
+            // A snapshot is the server's authoritative "who's really here"
+            // list. Anyone we're still tracking locally but who isn't in it
+            // actually left (most often: they disconnected while we were
+            // reconnecting and we missed their pet_left message) — without
+            // this they'd stay in the world forever as a stuck phantom.
+            const stillHere = new Set(Object.keys(msg.pets));
+            for (const uid of Object.keys(remotePlayersRef.current)) {
+              if (!stillHere.has(uid)) removeRemotePlayer(uid);
+            }
           } else if (msg.type === "move" || msg.type === "pet_update") {
             const data = msg.pet || msg; const uid = data.username || msg.id;
             if (uid === petState.gitData.username) return;
@@ -2616,18 +2636,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
             }
           } else if (msg.type === "pet_left") {
             const uid = msg.username || msg.id;
-            const peer = remotePlayersRef.current[uid];
-            if (peer) {
-              scene.remove(peer.bb.group);
-              disposeGroup(peer.bb.group);
-              delete remotePlayersRef.current[uid];
-            }
-            // These trackers are keyed by username and otherwise never get
-            // pruned, so they'd otherwise grow for every distinct player who
-            // ever passes through the room over a session.
-            healthBarsRef.current.delete(uid);
-            remotePlayerHealth.current.delete(uid);
-            speciesCache.current.delete(uid);
+            removeRemotePlayer(uid);
           }
           setOnlineCount(Object.keys(remotePlayersRef.current).length + 1);
         });
