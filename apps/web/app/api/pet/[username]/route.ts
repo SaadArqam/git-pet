@@ -24,7 +24,15 @@ export async function GET(
       getUserSpecies(username),
     ]);
     const petState = derivePetState(gitData);
-    return NextResponse.json({ ...petState, species });
+    // This is a public endpoint meant for outside pollers (bots, badges,
+    // editor extensions) and shares its GitHub token with /api/card and
+    // /api/leaderboard — without caching, frequent polling here could burn
+    // through that token's hourly quota and break those too. Same
+    // hour-long cache as those two routes.
+    return NextResponse.json(
+      { ...petState, species },
+      { headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400" } }
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

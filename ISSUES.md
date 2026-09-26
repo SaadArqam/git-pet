@@ -83,7 +83,7 @@ reading the code alone.
 - **What a user notices:** One buggy or bad-actor client spamming fight/move/emoji messages can make the game feel laggy for *everyone* in the room, not just themselves, since the server broadcasts every message to every connected player.
 - **Fix:** Add a basic per-player rate limit on the server side (e.g., "no more than N messages per second"), independent of whatever the browser client does.
 
-### 12. Loading the world page runs 100-200 database calls in a row, one at a time, and it gets slower as more people sign up
+### 12. ✅ FIXED — Loading the world page runs 100-200 database calls in a row, one at a time, and it gets slower as more people sign up
 - **Where:** `apps/web/app/api/ghosts/route.ts:43-63` — loops through every onboarded user with `await` inside a plain loop instead of doing them all at once
 - **What a user notices:** Every time anyone opens the World page, this endpoint runs — and with even 50-100 onboarded users, that's 100-200 sequential round-trips to the database before the page can finish loading, adding real, avoidable wait time that gets worse the more people join the project.
 - **Fix:** Run these database calls in parallel instead of one-by-one (the leaderboard route already does this correctly elsewhere — same fix, applied here).
@@ -98,17 +98,18 @@ reading the code alone.
 - **Fix:** Add a timeout to the save call, and if it fails, either retry or tell the client so the UI can reflect what's actually true.
 - **What actually shipped:** a 5-second timeout plus one retry (500ms backoff) on the friend-persistence call, covering the common case (a transient blip). Still not fixed: if both attempts fail, neither client is told — they'll still see "you're friends!" in the moment and find out on a later refresh that it didn't save. Telling the client requires a new WS message round-trip and isn't done yet.
 
-### 14. A temporary database outage looks exactly like "you're a new user" or "you have no friends" — not like an error
+### 14. ✅ FIXED — A temporary database outage looks exactly like "you're a new user" or "you have no friends" — not like an error
 - **Where:** `apps/web/lib/redis.ts` (`safeRedis` helper) — used by species/friends/wins lookups
 - **What's wrong:** Any database error is caught and silently replaced with the same "empty" answer used for a genuinely new/empty user. A brief database hiccup while an existing user opens their dashboard can bounce them back into the "pick your species" onboarding screen, because "database is down" and "you haven't picked a species yet" look identical to the app.
 - **Fix:** Have these lookups distinguish "confirmed nothing there" from "the call actually failed," at least for the dashboard's new-user check.
+- **What actually shipped:** added `getUserSpeciesOrThrow()`, which lets a real failure propagate instead of swallowing it; the dashboard now catches it specifically and shows a "couldn't reach the database, try again" screen instead of silently treating an existing user as brand new. `getUserSpecies()` (the swallow-and-default-to-null version) is left as-is for every other caller that just wants a best-effort value — this was scoped to the one place the ambiguity actually causes a bad outcome, per the issue's own fix note.
 
-### 15. The leaderboard can fire up to 50 simultaneous requests to GitHub at once, and silently shows wrong numbers if any fail
+### 15. ✅ FIXED — The leaderboard can fire up to 50 simultaneous requests to GitHub at once, and silently shows wrong numbers if any fail
 - **Where:** `apps/web/app/api/leaderboard/route.ts:80-112`
 - **What's wrong:** All 50 users' GitHub data is fetched at the exact same time, which risks GitHub's own anti-abuse throttling for bursts of requests. If any of those fail, the code has no logging at all — it just quietly shows `0 commits` / `0 day streak` for that person, which looks like a real (and unflattering) stat rather than a failed request.
 - **Fix:** Fetch in smaller batches instead of all 50 at once, and log failures so a rate-limit issue is visible instead of masquerading as real user data.
 
-### 16. `/api/pet/[username]` has no caching, unlike every similar endpoint, and shares a token with the card image + leaderboard
+### 16. ✅ FIXED — `/api/pet/[username]` has no caching, unlike every similar endpoint, and shares a token with the card image + leaderboard
 - **Where:** `apps/web/app/api/pet/[username]/route.ts`
 - **What's wrong:** This is a public endpoint meant for outside tools (bots, badges, extensions) to poll, but unlike `/api/card` and `/api/leaderboard` it sets no cache headers, and it uses the same shared GitHub token as those two. If anything polls it more than a couple times a minute across a modest number of users, it can burn through that token's hourly GitHub quota — which would then start breaking the shareable card images and the leaderboard too, not just itself.
 - **Fix:** Add the same hour-long cache header the other two routes already use.

@@ -7,6 +7,19 @@ import { derivePetState } from "@git-pet/core";
 // Beyond this, GitHub rate limits become a concern and latency grows linearly.
 const USER_CAP = 50;
 
+// GitHub calls are batched instead of all firing at once: 50 simultaneous
+// requests from one shared token risks tripping GitHub's own anti-abuse
+// throttling for request bursts, which would show up here as usernames
+// silently getting 0s (see the catch block below, which now at least logs
+// this instead of staying completely silent about it).
+const GITHUB_BATCH_SIZE = 8;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 export interface LeaderboardEntry {
   username: string;
   species: string;
@@ -77,51 +90,61 @@ export async function GET() {
     const ghToken =
       process.env.GITHUB_CARD_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
 
-    const results = await Promise.allSettled(
-      usernamesForRanking.map(async (username) => {
-        // Get species (already known but re-read to keep it simple)
-        const species =
-          (await redis.get<string>(`species:${username}`)) ?? "capybara";
+    type Entry = {
+      username: string;
+      species: string;
+      streak: number;
+      totalCommits: number;
+      friendCount: number;
+    };
 
-        // Friend count — direct Redis Set cardinality
-        let friendCount = 0;
-        try {
-          friendCount = await redis.scard(friendKey(username));
-        } catch {
-          friendCount = 0;
-        }
+    const results: PromiseSettledResult<Entry>[] = [];
+    for (const batch of chunk(usernamesForRanking, GITHUB_BATCH_SIZE)) {
+      const batchResults = await Promise.allSettled(
+        batch.map(async (username): Promise<Entry> => {
+          // Get species (already known but re-read to keep it simple)
+          const species =
+            (await redis.get<string>(`species:${username}`)) ?? "capybara";
 
-        // GitHub stats — skip if no token
-        let streak = 0;
-        let totalCommits = 0;
-
-        if (ghToken) {
+          // Friend count — direct Redis Set cardinality
+          let friendCount = 0;
           try {
-            const client = new GitHubClient(ghToken);
-            const gitData = await client.fetchUserStats(username);
-            const petState = derivePetState(gitData);
-            streak = petState.gitData.streak;
-            totalCommits = petState.gitData.totalCommits;
+            friendCount = await redis.scard(friendKey(username));
           } catch {
-            // User may have been deleted, made private, etc.
+            friendCount = 0;
           }
-        }
 
-        return { username, species, streak, totalCommits, friendCount };
-      })
-    );
+          // GitHub stats — skip if no token
+          let streak = 0;
+          let totalCommits = 0;
+
+          if (ghToken) {
+            try {
+              const client = new GitHubClient(ghToken);
+              const gitData = await client.fetchUserStats(username);
+              const petState = derivePetState(gitData);
+              streak = petState.gitData.streak;
+              totalCommits = petState.gitData.totalCommits;
+            } catch (err) {
+              // Was silently swallowed with zero logging, so a GitHub
+              // rate-limit failure was indistinguishable from a genuinely
+              // inactive user (both just showed up as "0 commits").
+              console.warn(
+                `[leaderboard] GitHub fetch failed for ${username} (deleted/private/rate-limited?):`,
+                err
+              );
+            }
+          }
+
+          return { username, species, streak, totalCommits, friendCount };
+        })
+      );
+      results.push(...batchResults);
+    }
 
     // 4. Collect successful results
     const entries = results
-      .filter(
-        (r): r is PromiseFulfilledResult<{
-          username: string;
-          species: string;
-          streak: number;
-          totalCommits: number;
-          friendCount: number;
-        }> => r.status === "fulfilled"
-      )
+      .filter((r): r is PromiseFulfilledResult<Entry> => r.status === "fulfilled")
       .map((r) => r.value);
 
     // 5. Build three ranked lists (descending, top 10 each)

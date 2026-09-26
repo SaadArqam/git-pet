@@ -41,26 +41,27 @@ export async function GET() {
     const cutoff = Date.now() - SEVEN_DAYS_MS;
 
     const keys = await redis.keys("species:*");
-    const ghosts: { username: string; species: Species; x: number; z: number; mood: string }[] = [];
+    const candidates = keys
+      .map((key) => key.replace("species:", ""))
+      .filter((username) => username !== currentUser && !online.has(username));
 
-    for (const key of keys) {
-      const username = key.replace("species:", "");
-      if (username === currentUser || online.has(username)) continue;
-
-      const lastSeen = await redis.get<LastSeen>(lastSeenKey(username));
-      if (!lastSeen || lastSeen.timestamp < cutoff) continue;
-
-      const species = await getUserSpecies(username);
-      if (!species) continue;
-
-      ghosts.push({
-        username,
-        species,
-        x: lastSeen.x,
-        z: lastSeen.z,
-        mood: lastSeen.mood || "coma",
-      });
-    }
+    // Was a plain for-of loop doing 2 sequential Redis round trips per
+    // candidate — with even 50-100 onboarded users that's 100-200 round
+    // trips, one at a time, before the World page can finish loading. Fetch
+    // every candidate's data concurrently instead (same pattern the
+    // leaderboard route already uses for its per-user fan-out).
+    type Ghost = { username: string; species: Species; x: number; z: number; mood: string };
+    const results = await Promise.all(
+      candidates.map(async (username): Promise<Ghost | null> => {
+        const [lastSeen, species] = await Promise.all([
+          redis.get<LastSeen>(lastSeenKey(username)),
+          getUserSpecies(username),
+        ]);
+        if (!lastSeen || lastSeen.timestamp < cutoff || !species) return null;
+        return { username, species, x: lastSeen.x, z: lastSeen.z, mood: lastSeen.mood || "coma" };
+      })
+    );
+    const ghosts = results.filter((g): g is Ghost => g !== null);
 
     return NextResponse.json({ ghosts });
   } catch (err) {

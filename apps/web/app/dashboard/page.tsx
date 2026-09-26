@@ -4,7 +4,7 @@ import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
 import { PetCard } from "@/components/PetCard";
 import { SpeciesSelect } from "@/components/SpeciesSelect";
-import { getUserSpecies, autoAssignSpecies } from "@/lib/redis";
+import { getUserSpeciesOrThrow, autoAssignSpecies } from "@/lib/redis";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { PetState } from "@git-pet/core";
@@ -58,11 +58,29 @@ export default async function Dashboard() {
     );
   }
 
-  // Check if user has chosen a species yet
-  const savedSpecies = await getUserSpecies(username);
-  const isNewUser = savedSpecies === null;
-
-  if (isNewUser) {
+  // Check if user has chosen a species yet. A real Redis failure here must
+  // not be treated the same as "no species set" — that would silently
+  // bounce an existing user back into species selection during a database
+  // blip, so it's surfaced as its own error state instead.
+  let savedSpecies;
+  try {
+    savedSpecies = await getUserSpeciesOrThrow(username);
+  } catch (err) {
+    console.error("[dashboard] Redis unavailable while checking species:", err);
+    return (
+      <main style={centerStyle}>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ fontFamily: "monospace", color: "#ef4444", fontSize: 12, marginBottom: 16 }}>
+            couldn&apos;t reach the database — try again in a moment
+          </p>
+          <Link href="/dashboard" style={{ fontFamily: "monospace", fontSize: 11, color: "#475569", textDecoration: "none" }}>
+            retry
+          </Link>
+        </div>
+      </main>
+    );
+  }
+  if (savedSpecies === null) {
     return (
       <SpeciesSelect
         username={username}

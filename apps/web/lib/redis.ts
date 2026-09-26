@@ -61,6 +61,18 @@ export async function getUserSpecies(username: string): Promise<Species | null> 
   return safeRedis(() => redis.get<Species>(speciesKey(username)), null);
 }
 
+// Unlike getUserSpecies(), this lets a real Redis failure propagate instead
+// of silently returning null — because null already means "genuinely no
+// species set yet" (a brand-new user). Without this distinction, a caller
+// that treats null as "show onboarding" can't tell a real outage apart from
+// a new user, and would bounce an *existing* user back into species
+// selection during a transient Redis blip. Used where that distinction
+// actually matters (the dashboard's new-user check); everywhere else that
+// just wants a best-effort value, getUserSpecies() is still the right call.
+export async function getUserSpeciesOrThrow(username: string): Promise<Species | null> {
+  return redis.get<Species>(speciesKey(username));
+}
+
 export async function setUserSpecies(username: string, species: Species): Promise<void> {
   await redis.set(speciesKey(username), species);
 }
