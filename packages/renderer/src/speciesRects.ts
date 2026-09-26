@@ -1,6 +1,11 @@
 export type Rect = [number, number, number, number, string]; // [x, y, w, h, color]
 
-const CANON_COLORS: Record<string, string> = {
+// The single source of truth for each species' canonical color — this used
+// to be hand-copied independently in ~11 other files across the app
+// (dashboard, card route, WorldClient, SpeciesSelect, etc.), so a palette
+// tweak here would silently drift out of sync with all of them. Exported so
+// everywhere else can import it instead of retyping the hex values.
+export const CANON_COLORS: Record<string, string> = {
   wolf: "#94a3b8",
   sabertooth: "#f8fafc",
   capybara: "#a16207",

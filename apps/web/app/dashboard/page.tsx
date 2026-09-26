@@ -8,15 +8,7 @@ import { getUserSpeciesOrThrow, autoAssignSpecies } from "@/lib/redis";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { PetState } from "@git-pet/core";
-
-// The canonical primary color for each species
-const SPECIES_PRIMARY_COLOR: Record<string, string> = {
-  wolf:       "#94a3b8",
-  sabertooth: "#f8fafc",
-  capybara:   "#a16207",
-  dragon:     "#7c3aed",
-  axolotl:    "#db2777",
-};
+import { CANON_COLORS } from "@git-pet/renderer";
 
 const centerStyle = {
   display: "flex" as const,
@@ -92,7 +84,7 @@ export default async function Dashboard() {
 
   // Override primaryColor with the species' canonical color so the
   // renderer draws the right sprite palette, not the GitHub-derived color
-  const speciesColor = SPECIES_PRIMARY_COLOR[savedSpecies];
+  const speciesColor = CANON_COLORS[savedSpecies];
   const petStateWithSpeciesColor: PetState = speciesColor
     ? { ...petState, primaryColor: speciesColor }
     : petState;

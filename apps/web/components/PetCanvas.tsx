@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PetState } from "@git-pet/core";
-import { drawPet } from "@git-pet/renderer";
+import { drawPet, CANON_COLORS } from "@git-pet/renderer";
 import type { Species } from "@/lib/redis";
 
 type ViewStep = "front" | "side" | "back";
@@ -122,13 +122,6 @@ const SPECIES_DRAWERS: Record<string, (ctx: CanvasRenderingContext2D, x: number,
   axolotl: drawAxolotl,
 };
 
-const SPECIES_PRIMARY: Record<string, string> = {
-  wolf:       "#94a3b8",
-  sabertooth: "#f8fafc",
-  capybara:   "#a16207",
-  dragon:     "#7c3aed",
-  axolotl:    "#db2777",
-};
 // -------------------------------------------------------------
 
 interface Props {
@@ -195,7 +188,7 @@ export function PetCanvas({
       
       if (drawFn) {
         // Draw the custom inline pixel art
-        const finalColor = SPECIES_PRIMARY[cleanSpecies] || petState.primaryColor;
+        const finalColor = CANON_COLORS[cleanSpecies] || petState.primaryColor;
         ctx.save();
         
         // The inline functions draw in a ~40x40 bounding box. 

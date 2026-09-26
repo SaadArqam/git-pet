@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CANON_COLORS } from "@git-pet/renderer";
 
 import type { Species } from "@/lib/redis";
 
@@ -20,35 +21,35 @@ const SPECIES_META: Record<Species, {
   wolf: {
     label: "Wolf",
     description: "Fast, fierce, low-level",
-    color: "#94a3b8",
+    color: CANON_COLORS.wolf,
     accentColor: "#e2e8f0",
     languages: ["Rust", "C++"],
   },
   sabertooth: {
     label: "White Sabertooth",
     description: "Powerful, ancient, systems thinker",
-    color: "#f8fafc",
+    color: CANON_COLORS.sabertooth,
     accentColor: "#cbd5e1",
     languages: ["Go", "C"],
   },
   capybara: {
     label: "Capybara",
     description: "Chill, friendly, gets along with everyone",
-    color: "#a16207",
+    color: CANON_COLORS.capybara,
     accentColor: "#fbbf24",
     languages: ["Python", "Ruby"],
   },
   dragon: {
     label: "Dragon",
     description: "Versatile, modern, full-stack fire",
-    color: "#7c3aed",
+    color: CANON_COLORS.dragon,
     accentColor: "#a78bfa",
     languages: ["TypeScript", "JavaScript"],
   },
   axolotl: {
     label: "Axolotl",
     description: "Rare, curious, polyglot explorer",
-    color: "#db2777",
+    color: CANON_COLORS.axolotl,
     accentColor: "#f472b6",
     languages: ["Everything else"],
   },

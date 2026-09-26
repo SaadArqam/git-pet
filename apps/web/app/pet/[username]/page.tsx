@@ -5,19 +5,12 @@ import { PetCard } from "@/components/PetCard";
 import { getUserSpecies, getWins } from "@/lib/redis";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { CANON_COLORS } from "@git-pet/renderer";
 
 // No sign-in required — this is the shareable, public view of any GitHub
 // user's pet (e.g. git-pet-beta.vercel.app/pet/torvalds). Mirrors the same
 // "GITHUB_CARD_TOKEN, no session" fetch pattern as /api/card/[username] and
 // /api/leaderboard, so it works for visitors who have never signed in.
-
-const SPECIES_PRIMARY_COLOR: Record<string, string> = {
-  wolf: "#94a3b8",
-  sabertooth: "#f8fafc",
-  capybara: "#a16207",
-  dragon: "#7c3aed",
-  axolotl: "#db2777",
-};
 
 const centerStyle = {
   display: "flex" as const,
@@ -97,7 +90,7 @@ export default async function PublicPetPage(
     );
   }
 
-  const speciesColor = SPECIES_PRIMARY_COLOR[species];
+  const speciesColor = CANON_COLORS[species];
   const petStateWithSpeciesColor: PetState = speciesColor
     ? { ...petState, primaryColor: speciesColor }
     : petState;

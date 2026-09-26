@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import Link from "next/link";
+import { CANON_COLORS } from "@git-pet/renderer";
 
 // Inline drawing functions for pets
 function drawWolf(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number, color: string) {
@@ -276,11 +277,11 @@ export default function AboutPage() {
 
       // Pets
       const pets = [
-        { draw: drawWolf, color: "#94a3b8", xStart: 200, speedDir: 1 },
-        { draw: drawSabertooth, color: "#f8fafc", xStart: 600, speedDir: -1 },
-        { draw: drawCapybara, color: "#a16207", xStart: 1000, speedDir: 1 },
-        { draw: drawDragon, color: "#7c3aed", xStart: 1400, speedDir: -1 },
-        { draw: drawAxolotl, color: "#db2777", xStart: 1800, speedDir: 1 },
+        { draw: drawWolf, color: CANON_COLORS.wolf, xStart: 200, speedDir: 1 },
+        { draw: drawSabertooth, color: CANON_COLORS.sabertooth, xStart: 600, speedDir: -1 },
+        { draw: drawCapybara, color: CANON_COLORS.capybara, xStart: 1000, speedDir: 1 },
+        { draw: drawDragon, color: CANON_COLORS.dragon, xStart: 1400, speedDir: -1 },
+        { draw: drawAxolotl, color: CANON_COLORS.axolotl, xStart: 1800, speedDir: 1 },
       ];
 
       pets.forEach((pet, i) => {

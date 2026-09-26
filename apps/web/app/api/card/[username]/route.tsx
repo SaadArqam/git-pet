@@ -1,6 +1,6 @@
 import { GitHubClient } from "@git-pet/github";
 import { derivePetState } from "@git-pet/core";
-import { getSpeciesRects } from "@git-pet/renderer";
+import { getSpeciesRects, CANON_COLORS } from "@git-pet/renderer";
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
 import { redis } from "@/lib/redis";
@@ -17,13 +17,6 @@ const ROLE_MAP: Record<string, string> = {
 };
 
 function renderSprite(species: string, frame: number): any {
-  const CANON_COLORS: Record<string, string> = {
-    wolf: "#94a3b8",
-    sabertooth: "#f8fafc",
-    capybara: "#a16207",
-    dragon: "#7c3aed",
-    axolotl: "#db2777",
-  };
   const baseColor = CANON_COLORS[species] ?? "#94a3b8";
   const rects = getSpeciesRects(species, frame, baseColor, "front");
 

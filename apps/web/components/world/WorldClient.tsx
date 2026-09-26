@@ -3,20 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { PetState, PetStats } from "@git-pet/core";
 import PartySocket from "partysocket";
-import { drawPet, getSpeciesRects } from "@git-pet/renderer";
+import { drawPet, getSpeciesRects, CANON_COLORS } from "@git-pet/renderer";
 
 interface Props {
   petState: PetState;
   species: string;
 }
-
-const SPECIES_PRIMARY: Record<string, string> = {
-  wolf: "#94a3b8",
-  sabertooth: "#f8fafc",
-  capybara: "#a16207",
-  dragon: "#7c3aed",
-  axolotl: "#db2777",
-};
 
 export function WorldClient({ petState, species: initialSpecies }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -519,7 +511,7 @@ export function WorldClient({ petState, species: initialSpecies }: Props) {
 
       function buildVoxelPet(species: string, position: { x: number; z: number }, mood: string = "coma") {
         const voxelGroup = new THREE.Group();
-        const primary = SPECIES_PRIMARY[species] || SPECIES_PRIMARY.wolf;
+        const primary = CANON_COLORS[species] || CANON_COLORS.wolf;
         const rects = getSpeciesRects(species, 0, primary, "front");
         const scale = 0.025;
         const centerX = 20;

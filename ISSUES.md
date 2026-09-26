@@ -129,10 +129,11 @@ reading the code alone.
 - **Why this matters for you specifically:** the fight-damage-scaling work from earlier this session was applied to *both* copies to keep them consistent — meaning some of that effort went into code that can never actually run. Worth deleting the dead copy so there's only one implementation to maintain going forward.
 - **Fix:** Delete the dead functions, or if they're meant to back a future clickable HUD, wire them up and remove the duplicate logic in `onKD` instead.
 
-### 19. The 5-species → color map is hand-copied in at least 11 different files
+### 19. ✅ FIXED — The 5-species → color map is hand-copied in at least 11 different files
 - **Where:** `apps/web/app/dashboard/page.tsx`, `apps/web/app/about/page.tsx`, `apps/web/app/pet/[username]/page.tsx`, `apps/web/app/api/card/[username]/route.tsx`, `apps/web/components/StatBar.tsx`, `apps/web/components/SpeciesSwitch.tsx`, `apps/web/components/PetCanvas.tsx`, `apps/web/components/SpeciesSelect.tsx`, `apps/web/components/PetCard.tsx`, `apps/web/components/world/WorldClient.tsx`, `packages/renderer/src/speciesRects.ts`
 - **What's wrong:** The exact same five hex colors are typed out independently in all of these. A future palette tweak has to be made correctly in 11 places by hand, or the card image, the dashboard, and the in-world pet will all show different colors for the same species.
 - **Fix:** Export the map once from `packages/renderer` (it already has this exact data internally) and import it everywhere else instead of retyping it.
+- **Correction found while fixing:** `StatBar.tsx` and `PetCard.tsx` were false positives — their `#94a3b8` is an unrelated generic gray/mood color, not the species map, so they were left alone. The other 8 (plus `packages/renderer` itself, the new source of truth) now import the same `CANON_COLORS` export instead of retyping it — 2 were exact duplicate map objects, 3 (`about/page.tsx`'s inline pet array, `SpeciesSelect.tsx`/`SpeciesSwitch.tsx`'s per-species metadata) had the same 5 values spelled out as individual literals and now reference `CANON_COLORS.<species>` instead.
 
 ### 20. ~142 ESLint problems across the app — mostly `any` types hiding real bugs, plus genuinely dead code
 - **Where:** whole `apps/web/app` + `components` + `lib` tree (run `npx eslint` to see the live list)
