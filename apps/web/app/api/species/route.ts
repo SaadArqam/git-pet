@@ -5,9 +5,12 @@ import type { Species } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  // Internal card route lookup — no session required
-  // Only allowed when x-internal header is present + username param provided
-  const isInternal = req.headers.get("x-internal") === "card";
+  // Internal lookup — no session required, used by server-to-server callers
+  // that already know a specific username (e.g. the card route). Gated by
+  // the same shared secret every other internal route uses, not a hardcoded
+  // string, so it's an actual credential rather than public knowledge.
+  const internalSecret = process.env.INTERNAL_SECRET;
+  const isInternal = !!internalSecret && req.headers.get("x-internal") === internalSecret;
   const queryUsername = req.nextUrl.searchParams.get("username");
 
   if (isInternal && queryUsername) {

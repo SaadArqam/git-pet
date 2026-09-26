@@ -63,6 +63,12 @@ export default class WorldServer implements Party.Server {
   onMessage(message: string, sender: Party.Connection) {
     const data: ClientMessage = JSON.parse(message);
 
+    // The authoritative identity of whoever is actually sending this
+    // message. Interaction messages below use this instead of trusting a
+    // client-supplied `fromId` — otherwise any connection could claim to be
+    // any username and attack/friend-request/emoji as someone else.
+    const senderUsername = this.connToUser.get(sender.id);
+
     if (data.type === "join") {
       this.connToUser.set(sender.id, data.pet.username);
       if (!this.userToConns.has(data.pet.username)) this.userToConns.set(data.pet.username, new Set());
@@ -87,31 +93,33 @@ export default class WorldServer implements Party.Server {
     }
 
     if (data.type === "befriend") {
+      if (!senderUsername) return;
       const targetConns = this.userToConns.get(data.toId);
       if (targetConns) {
-        const msg: ServerMessage = { type: "befriend_received", fromId: data.fromId };
+        const msg: ServerMessage = { type: "befriend_received", fromId: senderUsername };
         targetConns.forEach(connId => {
           const conn = this.room.getConnection(connId);
           if (conn) conn.send(JSON.stringify(msg));
         });
       }
-      
+
       // Persist to Redis via API proxy
       fetch(`${this.room.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/friends`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          fromId: data.fromId, 
-          toId: data.toId, 
-          secret: this.room.env.INTERNAL_SECRET 
+        body: JSON.stringify({
+          fromId: senderUsername,
+          toId: data.toId,
+          secret: this.room.env.INTERNAL_SECRET
         })
       }).catch(err => console.error("Persistence failed", err));
     }
 
     if (data.type === "befriend_request") {
+      if (!senderUsername) return;
       const targetConns = this.userToConns.get(data.toId);
       if (targetConns) {
-        const msg: ServerMessage = { type: "befriend_request", fromId: data.fromId };
+        const msg: ServerMessage = { type: "befriend_request", fromId: senderUsername };
         targetConns.forEach(connId => {
           const conn = this.room.getConnection(connId);
           if (conn) conn.send(JSON.stringify(msg));
@@ -120,9 +128,10 @@ export default class WorldServer implements Party.Server {
     }
 
     if (data.type === "befriend_confirmed") {
+      if (!senderUsername) return;
       const targetConns = this.userToConns.get(data.toId);
       if (targetConns) {
-        const msg: ServerMessage = { type: "befriend_confirmed", fromId: data.fromId };
+        const msg: ServerMessage = { type: "befriend_confirmed", fromId: senderUsername };
         targetConns.forEach(connId => {
           const conn = this.room.getConnection(connId);
           if (conn) conn.send(JSON.stringify(msg));
@@ -134,7 +143,7 @@ export default class WorldServer implements Party.Server {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fromId: data.fromId,
+          fromId: senderUsername,
           toId: data.toId,
           secret: this.room.env.INTERNAL_SECRET
         })
@@ -142,9 +151,10 @@ export default class WorldServer implements Party.Server {
     }
 
     if (data.type === "befriend_expired") {
+      if (!senderUsername) return;
       const targetConns = this.userToConns.get(data.toId);
       if (targetConns) {
-        const msg: ServerMessage = { type: "befriend_expired", fromId: data.fromId };
+        const msg: ServerMessage = { type: "befriend_expired", fromId: senderUsername };
         targetConns.forEach(connId => {
           const conn = this.room.getConnection(connId);
           if (conn) conn.send(JSON.stringify(msg));
@@ -153,9 +163,10 @@ export default class WorldServer implements Party.Server {
     }
 
     if (data.type === "fight") {
+      if (!senderUsername) return;
       const targetConns = this.userToConns.get(data.toId);
       if (targetConns) {
-        const msg: ServerMessage = { type: "fight_received", fromId: data.fromId, damage: data.damage };
+        const msg: ServerMessage = { type: "fight_received", fromId: senderUsername, damage: data.damage };
         targetConns.forEach(connId => {
           const conn = this.room.getConnection(connId);
           if (conn) conn.send(JSON.stringify(msg));
@@ -164,9 +175,10 @@ export default class WorldServer implements Party.Server {
     }
 
     if (data.type === "emoji") {
+      if (!senderUsername) return;
       const targetConns = this.userToConns.get(data.toId);
       if (targetConns) {
-        const msg: ServerMessage = { type: "emoji_received", fromId: data.fromId, emoji: data.emoji };
+        const msg: ServerMessage = { type: "emoji_received", fromId: senderUsername, emoji: data.emoji };
         targetConns.forEach(connId => {
           const conn = this.room.getConnection(connId);
           if (conn) conn.send(JSON.stringify(msg));

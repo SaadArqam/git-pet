@@ -22,14 +22,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: Request) {
-  // This can be used for internal persistence calls from PartyKit
+  // Internal-only: the PartyKit server calls this after both sides have
+  // already confirmed a reciprocal befriend in-game (see server.ts's
+  // befriend_confirmed handler). There is no legitimate direct-from-browser
+  // caller — a regular user session is deliberately not accepted here, so a
+  // logged-in user can't force a one-sided "friendship" onto a stranger by
+  // calling this endpoint directly.
   const { fromId, toId, secret } = await req.json();
-  
-  // Basic security for internal route
-  if (secret !== process.env.INTERNAL_SECRET) {
-      const session = await getServerSession(authOptions);
-      const username = (session as { login?: string } | null)?.login;
-      if (!username || username !== fromId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!fromId || !toId) {
+    return NextResponse.json({ error: "Missing fromId/toId" }, { status: 400 });
+  }
+
+  const internalSecret = process.env.INTERNAL_SECRET;
+  if (!internalSecret || secret !== internalSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   await addFriend(fromId, toId);
