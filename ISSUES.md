@@ -1,8 +1,11 @@
 # git-pet — QA & Optimization Audit
 
 **Scope:** full read-through of the app for bugs, performance/memory issues (target: tens of
-concurrent users staying online without lag), and code quality, per request. Nothing in this
-file has been fixed yet — this is the review pass before any changes.
+concurrent users staying online without lag), and code quality, per request.
+
+**Status:** items are being fixed in order and checked off as they land (each is its own commit,
+type-checked and smoke-tested before being marked done). **✅ FIXED** means it's done, verified,
+committed, and pushed. Unmarked items are still open.
 
 **How to read this:** each item has what's actually wrong, what a real user would notice, where
 it lives (`file:line`), and a plain-English fix. Ordered by severity. A "confidence" note is added
@@ -13,25 +16,26 @@ reading the code alone.
 
 ## 🔴 Critical — security holes (small, safe fixes, no user-facing behavior change)
 
-### 1. The "internal secret" check on `/api/friends` and `/api/fights` fails *open* when the secret isn't set
+### 1. ✅ FIXED — The "internal secret" check on `/api/friends` and `/api/fights` fails *open* when the secret isn't set
 - **Where:** `apps/web/app/api/friends/route.ts:29`, `apps/web/app/api/fights/route.ts:20`
 - **What's wrong:** Both routes do `if (secret !== process.env.INTERNAL_SECRET) { ...require login... }`. If `INTERNAL_SECRET` is ever unset (a staging env missing the var, a misconfigured deploy), `process.env.INTERNAL_SECRET` is `undefined`. Anyone who calls the API with **no** `secret` field at all gets `undefined !== undefined` → `false` → the entire login check is skipped.
 - **What a user notices:** Nothing, until someone finds it. A stranger with zero login could call `POST /api/friends` with `{"fromId":"anyone","toId":"anyone"}` and force a friendship, or `POST /api/fights` with `{"winnerId":"anyone"}` and inflate that person's win count / leaderboard rank, with no account at all.
 - **Fix:** Only accept the "internal caller" path when `INTERNAL_SECRET` is actually set *and* non-empty *and* matches — never treat "both sides are blank" as a match.
 
-### 2. `/api/species`'s "internal" check is a hardcoded word, not a secret
+### 2. ✅ FIXED — `/api/species`'s "internal" check is a hardcoded word, not a secret
 - **Where:** `apps/web/app/api/species/route.ts:10` — `const isInternal = req.headers.get("x-internal") === "card";`
 - **What's wrong:** The "secret" is the literal string `"card"`, sitting in this public source file. Anyone can send that header and read any user's chosen species with zero login.
 - **What a user notices:** Low real-world harm (species isn't sensitive), but it's a real access-control hole and inconsistent with how every other internal route does this correctly.
 - **Fix:** Use the same `INTERNAL_SECRET` env-var pattern as friends/fights/ghosts instead of a hardcoded header value.
+- **What actually shipped:** on closer look, the browser itself needed to look up *other* players' species (`fetchSpeciesForUser` in `WorldClient.tsx`) and can never safely hold a server secret — so the real fix made `?username=` lookups public (no auth needed), same treatment `/api/friends`' `?userId=` already gets, since species isn't sensitive data. This also fixed a bug the hardcoded check was hiding: the old fallback path was silently returning the *caller's own* species instead of the one actually requested.
 
-### 3. The multiplayer server trusts whatever username a client claims to be — identity spoofing
+### 3. ✅ FIXED — The multiplayer server trusts whatever username a client claims to be — identity spoofing
 - **Where:** `apps/web/web-party/src/server.ts:89-175` (fight, emoji, and all befriend handlers use `data.fromId`/`data.toId` straight from the message body)
 - **What's wrong:** The server never checks that `fromId` actually matches the username the sender joined as (`connToUser.get(sender.id)`). Any connected client can send `{"type":"fight","fromId":"someoneElse","toId":"victim","damage":999999}` and attack (or send a friend request, or an emoji) as if they were a completely different player.
 - **What a user notices:** A player could be "attacked by" or "friended by" someone who isn't actually there / isn't who the game says they are.
 - **Fix:** Server should derive `fromId` itself from the sender's own connection record, never trust the client's claim.
 
-### 4. Friending someone doesn't require their consent, and can't be undone by them
+### 4. ✅ FIXED — Friending someone doesn't require their consent, and can't be undone by them
 - **Where:** `apps/web/app/api/friends/route.ts:24-37`, `apps/web/lib/redis.ts` (`addFriend`)
 - **What's wrong:** Any logged-in user can `POST /api/friends` with `toId` set to any stranger's username with no validation, and it's always written both ways. So you can force yourself onto someone else's friends list — which also inflates *their* public "friend count" on the leaderboard without them knowing.
 - **Fix:** Require the target to actually accept (the reciprocal-befriend flow you already built for the live game does this correctly — this HTTP route just isn't held to the same rule).
@@ -40,19 +44,19 @@ reading the code alone.
 
 ## 🟠 High — the actual "many users online, no lag" problems
 
-### 5. Every player's pet is fully redrawn and re-uploaded to the GPU, every single frame
+### 5. ✅ FIXED — Every player's pet is fully redrawn and re-uploaded to the GPU, every single frame
 - **Where:** `apps/web/components/world/WorldClient.tsx` — `updateBillboard()` (~625-642), called once for you and once **per other player in the room**, every frame (60×/second)
 - **What's wrong:** Each call clears a canvas, redraws the pixel art, and pushes a fresh texture to the GPU — even when nothing about that pet (mood, animation frame) actually changed since last frame.
 - **What a user notices:** This is the one that scales directly with player count — frame rate drops and the game feels laggy specifically *because* more people are online, which is exactly the problem you asked about.
 - **Fix:** Only redraw a billboard when its mood/animation actually changed, or redraw remote players less often (e.g. every 3-6 frames instead of every frame).
 
-### 6. Nothing is ever cleaned up when a player leaves, changes species, or a ghost despawns — memory grows all session
+### 6. ✅ FIXED — Nothing is ever cleaned up when a player leaves, changes species, or a ghost despawns — memory grows all session
 - **Where:** every place a pet is removed from the 3D scene: `pet_left` handler (~2579-2585), species-change in "snapshot"/"move" handlers (~2454-2481), `removeGhost()` (~676-681)
 - **What's wrong:** The 3D shapes/materials/images backing each pet (`.geometry`, `.material`, `.map`) are removed from view but never `.dispose()`d — the memory they used is never given back.
 - **What a user notices:** Nothing at first. Over a long session with people joining/leaving, changing species, or ghosts respawning, the browser tab's memory use climbs and never comes back down — eventually a slow-down or crash on a long play session.
 - **Fix:** Before removing any pet from the scene, call `.dispose()` on its geometry/material/texture.
 
-### 7. Health-bar and battle-HP tracking never gets cleaned up when a player leaves
+### 7. ✅ FIXED — Health-bar and battle-HP tracking never gets cleaned up when a player leaves
 - **Where:** `pet_left` handler, `apps/web/components/world/WorldClient.tsx` ~2579-2585 — only removes the pet's 3D model, never touches `healthBarsRef`, `remotePlayerHealth`
 - **What a user notices:** Same slow memory creep as #6, specifically from leftover DOM elements (HP bar divs) and numbers that pile up as different people cycle through the room over a session.
 - **Fix:** When a player leaves, also delete their entry from these two trackers.
