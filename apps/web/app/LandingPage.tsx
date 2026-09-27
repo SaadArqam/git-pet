@@ -5,263 +5,15 @@ import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 import { getThree, type ThreeNS } from '@/lib/three-global'
-import { getSpeciesRects, CANON_COLORS } from '@git-pet/renderer'
 
-// ─── Hatch intro: a smooth, vector-drawn egg (not a pixel grid — the blocky
-// look and the visible bounding "square" during the pop both came from
-// filling a coarse row/column grid) that gently breathes, cracks, and opens
-// into the actual species sprite (getSpeciesRects — the same rects used for
-// every pet in the world). Runs once per page load in its own tiny canvas,
-// independent of the main Three.js scene, so it can start animating on the
-// very first frame instead of waiting on the CDN script loads below.
-const INTRO_SPECIES_LIST = ['wolf', 'sabertooth', 'capybara', 'dragon', 'axolotl'] as const
-
-// A closed egg silhouette, sampled from a limaçon-style polar curve
-// (r(t) = 1 - k·cos t) — narrower "top", rounder "bottom" — as 100 smooth
-// points in normalized [-1,1]-ish local space. Computed once; scaled,
-// rotated, and translated per frame instead of redrawn from scratch.
-const EGG_K = 0.26
-const EGG_SAMPLES = 100
-const EGG_POINTS: [number, number][] = Array.from({ length: EGG_SAMPLES + 1 }, (_, i) => {
-  const t = (i / EGG_SAMPLES) * Math.PI * 2
-  const r = 1 - EGG_K * Math.cos(t)
-  return [r * Math.sin(t), -r * Math.cos(t)]
-})
-// The curve's parameter runs right side (t: 0→π) then left side (t: π→2π),
-// each starting and ending exactly on the vertical centerline — so each half
-// is already a closable polygon on its own, for the shell-burst halves.
-const EGG_RIGHT_HALF = EGG_POINTS.slice(0, EGG_SAMPLES / 2 + 1)
-const EGG_LEFT_HALF = EGG_POINTS.slice(EGG_SAMPLES / 2)
-
-// Speckle positions, in the same normalized local space as EGG_POINTS,
-// hand-placed to sit within the silhouette.
-const HATCH_SPECKLES: [number, number][] = [[0.12, -0.5], [-0.35, -0.2], [0.4, -0.05], [-0.15, 0.35], [0.3, 0.55], [-0.4, 0.75]]
-
-// Cracks all radiate from one impact point — a real eggshell fractures from
-// a single tap, it doesn't grow several unrelated lines on its own schedule.
-// Each entry is [points-from-the-shared-origin, startOffset-after-impact,
-// revealDuration]; the 4th is a fork branching off partway along crack C,
-// which is what actually sells "one fracturing shell" instead of "shapes
-// laid on top of it".
-const HATCH_CRACK_ORIGIN: [number, number] = [0.02, -0.52]
-const HATCH_CRACKS: { pts: [number, number][]; delay: number; dur: number }[] = [
-  { pts: [HATCH_CRACK_ORIGIN, [-0.10, -0.30], [-0.28, -0.05], [-0.18, 0.25], [-0.38, 0.55], [-0.30, 0.85]], delay: 0, dur: 0.95 },
-  { pts: [HATCH_CRACK_ORIGIN, [0.15, -0.28], [0.35, -0.02], [0.22, 0.28], [0.48, 0.5], [0.34, 0.78]], delay: 0.06, dur: 0.9 },
-  { pts: [HATCH_CRACK_ORIGIN, [-0.05, -0.25], [0.05, 0.0], [-0.08, 0.25], [0.02, 0.5]], delay: 0.1, dur: 0.8 },
-  { pts: [[-0.08, 0.25], [-0.25, 0.35], [-0.22, 0.55]], delay: 0.1 + 0.8 * 0.5, dur: 0.45 },
-]
-
-// Timeline (seconds) — slow enough to actually read as a sequence rather
-// than a flicker. Cracks spread from one impact, then the shell holds for a
-// beat before the pop lingers instead of flashing, and the grow-in eases in
-// over a full second.
-const HATCH_IMPACT_T = 1.7
-const HATCH_POP_START = 3.4
-const HATCH_POP_DUR = 0.75
-const HATCH_GROW_START = HATCH_POP_START + HATCH_POP_DUR
-const HATCH_GROW_DUR = 1.0
-// Stop scheduling frames a beat before the world reveal — no point animating
-// a canvas about to be unmounted (kept in sync with the ~8.6s reveal timeout
-// inside the Three.js init() below).
-const HATCH_STOP_AT = 8.4
-
-function clamp01(x: number): number { return Math.max(0, Math.min(1, x)) }
-// Smooth start-and-end easing for reveals/fades — no linear "ticking".
-function smoothstep(x: number): number { const t = clamp01(x); return t * t * (3 - 2 * t) }
-function easeOutCubic(x: number): number { return 1 - Math.pow(1 - x, 3) }
-// "Overshoot then settle" — the bounce when the pet grows in from the shell.
-function easeOutBack(x: number): number {
-  const c1 = 1.70158, c3 = c1 + 1
-  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
+// The hatch intro plays in full once per browser session. Storage can throw
+// (private mode, blocked site data), in which case the intro just plays.
+const INTRO_SEEN_KEY = 'gitpet_intro_seen'
+function hasSeenIntro(): boolean {
+  try { return sessionStorage.getItem(INTRO_SEEN_KEY) === '1' } catch { return false }
 }
-
-// Local-space point -> world pixel, applying the egg's current scale/rotation.
-function toWorld(p: [number, number], cx: number, cy: number, rx: number, ry: number, rot: number): [number, number] {
-  const ex = p[0] * rx, ey = p[1] * ry
-  const cos = Math.cos(rot), sin = Math.sin(rot)
-  return [cx + ex * cos - ey * sin, cy + ex * sin + ey * cos]
-}
-
-function pathFromPoints(ctx: CanvasRenderingContext2D, pts: [number, number][], cx: number, cy: number, rx: number, ry: number, rot: number) {
-  ctx.beginPath()
-  pts.forEach((p, i) => {
-    const [x, y] = toWorld(p, cx, cy, rx, ry, rot)
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
-  })
-}
-
-// A real crack is angular (not a smooth flowing curve — that's what read as
-// "a doodle laid on top" of the shell) and tapers from a wide mouth at the
-// impact point to a hairline at its tip. Drawn as straight jagged segments,
-// each with its own width, plus a thin warm highlight offset to one side of
-// every segment to suggest a lit groove edge instead of a flat ink line.
-function drawCrack(ctx: CanvasRenderingContext2D, pts: [number, number][], cx: number, cy: number, rx: number, ry: number, rot: number, revealFrac: number, baseWidth: number) {
-  if (revealFrac <= 0) return
-  const world = pts.map((p) => toWorld(p, cx, cy, rx, ry, rot))
-  const segTotal = world.length - 1
-  const exact = smoothstep(revealFrac) * segTotal
-  const fullSegs = Math.max(0, Math.floor(exact))
-  const partial = exact - fullSegs
-  const visible: [number, number][] = [world[0]]
-  for (let i = 1; i <= fullSegs && i < world.length; i++) visible.push(world[i])
-  if (fullSegs < segTotal) {
-    const [x0, y0] = world[fullSegs], [x1, y1] = world[fullSegs + 1]
-    visible.push([x0 + (x1 - x0) * partial, y0 + (y1 - y0) * partial])
-  }
-  ctx.lineCap = 'round'
-  for (let i = 1; i < visible.length; i++) {
-    const segT = i / segTotal
-    const w = baseWidth * (1 - segT * 0.75)
-    const [x0, y0] = visible[i - 1], [x1, y1] = visible[i]
-    ctx.strokeStyle = '#241608'
-    ctx.lineWidth = w
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
-
-    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1
-    const nx = -dy / len, ny = dx / len, off = w * 0.35
-    ctx.strokeStyle = 'rgba(255,214,150,0.5)'
-    ctx.lineWidth = Math.max(0.6, w * 0.35)
-    ctx.beginPath(); ctx.moveTo(x0 + nx * off, y0 + ny * off); ctx.lineTo(x1 + nx * off, y1 + ny * off); ctx.stroke()
-  }
-}
-
-// The egg's shell body (ground shadow + gradient-filled silhouette).
-function drawEggShell(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, rot: number, alpha: number) {
-  ctx.globalAlpha = alpha
-  ctx.beginPath()
-  ctx.ellipse(cx, cy + ry * 1.05, rx * 0.75, rx * 0.22, 0, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(10,8,6,0.28)'
-  ctx.filter = 'blur(3px)'
-  ctx.fill()
-  ctx.filter = 'none'
-
-  const grad = ctx.createRadialGradient(cx - rx * 0.4, cy - ry * 0.45, rx * 0.15, cx, cy, rx * 1.4)
-  grad.addColorStop(0, '#fff7e8')
-  grad.addColorStop(0.6, '#f3e2c2')
-  grad.addColorStop(1, '#e2c99a')
-  ctx.shadowColor = 'rgba(0,0,0,0.3)'
-  ctx.shadowBlur = 14
-  ctx.shadowOffsetY = 6
-  pathFromPoints(ctx, EGG_POINTS, cx, cy, rx, ry, rot)
-  ctx.closePath()
-  ctx.fillStyle = grad
-  ctx.fill()
-  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0
-}
-
-// The egg sequence: breathe → crack → pop → grow.
-function drawHatchFrame(ctx: CanvasRenderingContext2D, size: number, t: number, species: string) {
-  ctx.clearRect(0, 0, size, size)
-  const cx = size / 2, cy = size / 2 + size * 0.04
-  const rx = size * 0.22, ry = size * 0.29
-  const tint = CANON_COLORS[species] ?? '#94a3b8'
-
-  if (t < HATCH_POP_START) {
-    // ── Whole, breathing, cracking ──
-    const introAlpha = smoothstep(t / 0.5)
-    // A gentle idle rock until the impact, then one decaying jolt (like a
-    // bell struck once) exactly when the cracks start spreading — not a
-    // shake that vaguely builds over several unrelated events.
-    const sinceImpact = t - HATCH_IMPACT_T
-    const jolt = sinceImpact >= 0 ? Math.exp(-sinceImpact * 4.5) * Math.sin(sinceImpact * 42) * 0.07 : 0
-    const rot = Math.sin(t * 2.1) * 0.02 + jolt
-    const breathe = 1 + Math.sin(t * 1.6) * 0.012
-
-    ctx.save()
-    drawEggShell(ctx, cx, cy, rx * breathe, ry * breathe, rot, introAlpha)
-
-    // Speckles — soft tinted dots, foreshadowing the species inside
-    HATCH_SPECKLES.forEach(([sx, sy]) => {
-      const [wx, wy] = toWorld([sx, sy], cx, cy, rx * breathe, ry * breathe, rot)
-      ctx.beginPath()
-      ctx.arc(wx, wy, size * 0.014, 0, Math.PI * 2)
-      ctx.fillStyle = tint
-      ctx.globalAlpha = introAlpha * 0.3
-      ctx.fill()
-    })
-    ctx.globalAlpha = introAlpha
-
-    // Cracks — clipped to the shell's own silhouette so they read as the
-    // shell fracturing, not as lines drawn over a separate layer.
-    ctx.save()
-    pathFromPoints(ctx, EGG_POINTS, cx, cy, rx * breathe, ry * breathe, rot)
-    ctx.closePath()
-    ctx.clip()
-    ctx.shadowColor = 'rgba(255,190,110,0.45)'
-    ctx.shadowBlur = 4
-    HATCH_CRACKS.forEach(({ pts, delay, dur }) => {
-      const reveal = clamp01((t - HATCH_IMPACT_T - delay) / dur)
-      drawCrack(ctx, pts, cx, cy, rx * breathe, ry * breathe, rot, reveal, size * 0.02)
-    })
-    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0
-    ctx.restore()
-    ctx.restore()
-    return
-  }
-
-  if (t < HATCH_GROW_START) {
-    // ── Popping open: shell halves drift apart on a soft light burst ──
-    const popT = easeOutCubic(clamp01((t - HATCH_POP_START) / HATCH_POP_DUR))
-    const burstStrength = Math.sin(Math.PI * clamp01((t - HATCH_POP_START) / HATCH_POP_DUR))
-
-    // A restrained glow behind the halves — just enough to read as "light
-    // spilling out", not so bright it washes the halves into one blob.
-    // Fades to fully transparent well inside the canvas, so (unlike the old
-    // full-canvas rect flash) nothing ever reads as a "visible square".
-    const burst = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx * 1.3)
-    burst.addColorStop(0, `rgba(255,248,230,${0.4 * burstStrength})`)
-    burst.addColorStop(0.6, `rgba(255,238,200,${0.16 * burstStrength})`)
-    burst.addColorStop(1, 'rgba(255,238,200,0)')
-    ctx.fillStyle = burst
-    ctx.beginPath()
-    ctx.arc(cx, cy, rx * 1.3, 0, Math.PI * 2)
-    ctx.fill()
-
-    const alpha = popT < 0.65 ? 1 : 1 - (popT - 0.65) / 0.35
-    const grad = ctx.createRadialGradient(cx - rx * 0.4, cy - ry * 0.45, rx * 0.15, cx, cy, rx * 1.4)
-    grad.addColorStop(0, '#fff7e8'); grad.addColorStop(0.6, '#f3e2c2'); grad.addColorStop(1, '#e2c99a')
-    ctx.globalAlpha = alpha
-    ctx.fillStyle = grad
-    ctx.strokeStyle = `rgba(120,70,20,${alpha * 0.55})`
-    ctx.lineWidth = Math.max(1, size * 0.008)
-
-    const drift = popT * rx * 0.95
-    const lift = popT * ry * 0.5
-    const spin = popT * 0.7
-    // Fill then stroke each half on its own path (fill/stroke re-use the
-    // current path) so the split stays legible even while everything else
-    // stays soft-edged — a thin rim rather than a hard silhouette.
-    pathFromPoints(ctx, EGG_RIGHT_HALF, cx + drift, cy - lift, rx, ry, spin)
-    ctx.fill(); ctx.stroke()
-    pathFromPoints(ctx, EGG_LEFT_HALF, cx - drift, cy - lift, rx, ry, -spin)
-    ctx.fill(); ctx.stroke()
-    ctx.globalAlpha = 1
-    return
-  }
-
-  // ── Shell's cleared — grow the real species sprite in with a gentle
-  // overshoot, then hold a slow idle bob (same rects buildVoxelPet/drawPet
-  // use everywhere else, so the hatchling matches the one in the world).
-  const growT = clamp01((t - HATCH_GROW_START) / HATCH_GROW_DUR)
-  const scale = easeOutBack(growT)
-  const rects = getSpeciesRects(species, Math.floor(t * 20), tint, 'front') ?? []
-  const finalScale = Math.max(0, (size / 100) * scale)
-  const bob = growT >= 1 ? Math.sin(t * 1.6) * 4 : 0
-
-  // Soft glow + ground shadow beneath the pet for a bit of polish
-  ctx.beginPath()
-  ctx.ellipse(cx, cy + ry * 0.95, rx * 0.7 * scale, rx * 0.2 * scale, 0, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(10,8,6,0.25)'
-  ctx.filter = 'blur(3px)'
-  ctx.fill()
-  ctx.filter = 'none'
-
-  const ox = cx - 20 * finalScale
-  const oy = cy - 22 * finalScale + bob - ry * 0.15
-  rects.forEach(([rx2, ry2, rw, rh, color]) => {
-    ctx.fillStyle = color
-    ctx.fillRect(ox + rx2 * finalScale, oy + ry2 * finalScale, rw * finalScale, rh * finalScale)
-  })
+function markIntroSeen(): void {
+  try { sessionStorage.setItem(INTRO_SEEN_KEY, '1') } catch { /* ignore */ }
 }
 
 const PROMPT_SUBTITLES: Record<string, string> = {
@@ -293,9 +45,9 @@ const overlayBtnStyle: React.CSSProperties = {
 export default function LandingPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const minimapRef = useRef<HTMLCanvasElement>(null)
-  const hatchCanvasRef = useRef<HTMLCanvasElement>(null)
-  // Picked once per page load — "which pet hatches today?"
-  const [introSpecies] = useState(() => INTRO_SPECIES_LIST[Math.floor(Math.random() * INTRO_SPECIES_LIST.length)])
+  // Set by the Skip button / Esc; read by the render loop, which owns the
+  // intro's timeline, so skipping doesn't need a React re-render to land.
+  const skipIntroRef = useRef(false)
   const mounted = useRef(true)
   const rafRef = useRef<number>(0)
   const rendererRef = useRef<ThreeNS.WebGLRenderer | null>(null)
@@ -314,8 +66,11 @@ export default function LandingPage() {
   >(null)
   const [cinematicDone, setCinematicDone] = useState(false)
   const [controlsHint, setControlsHint] = useState(true)
-  // 0 = hatch animation only, 1 = title beat, 2 = controls-hint beat
-  const [introStep, setIntroStep] = useState<0|1|2>(0)
+  // First frame of the 3D scene has rendered — lifts the black cover so the
+  // intro plays out in the real world rather than behind it.
+  const [sceneReady, setSceneReady] = useState(false)
+  // 0 = egg hatching, 1 = title beat (driven from the render loop's clock)
+  const [introStep, setIntroStep] = useState<0|1>(0)
   const [questStep, setQuestStep] = useState<0|1|2|'done'|'hidden'>(0)
   const [hasSeenAbout, setHasSeenAbout] = useState(false)
   const [hintIndex, setHintIndex] = useState(0)
@@ -342,41 +97,6 @@ export default function LandingPage() {
     const t = setTimeout(() => setTriggerWorldEnter(false), 0)
     return () => clearTimeout(t)
   }, [triggerWorldEnter, status, router])
-
-  // Intro sequence beats — timed to land just after the hatch animation
-  // (HATCH_GROW_START + HATCH_GROW_DUR ≈ 5.15s) finishes, and to clear
-  // before the ~8.6s world-reveal timeout inside the Three.js init() below.
-  useEffect(() => {
-    const t1 = setTimeout(() => setIntroStep(1), 5500)
-    const t2 = setTimeout(() => setIntroStep(2), 7200)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
-  }, [])
-
-  // Hatch intro animation — its own tiny canvas and RAF loop, independent of
-  // the main Three.js scene, so it starts drawing on the very first frame
-  // instead of waiting on the CDN script loads in the effect below.
-  useEffect(() => {
-    if (typeof window === 'undefined' || !hatchCanvasRef.current) return
-    const canvas = hatchCanvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const cssSize = 200
-    canvas.width = cssSize * dpr
-    canvas.height = cssSize * dpr
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    const start = performance.now()
-    let raf = 0
-    const loop = () => {
-      const t = (performance.now() - start) / 1000
-      drawHatchFrame(ctx, cssSize, t, introSpecies)
-      if (t < HATCH_STOP_AT) raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [introSpecies])
 
   // Hint rotation
   useEffect(() => {
@@ -864,7 +584,7 @@ export default function LandingPage() {
           if (e.code === 'Digit2') signIn('github', { callbackUrl: '/dashboard' })
         }
         if (e.code === 'KeyE' && nearestObj) nearestObj.onInteract()
-        if (e.code === 'Escape') { openOverlay(null); cameraMode = 'follow' }
+        if (e.code === 'Escape') { openOverlay(null); cameraMode = 'follow'; skipIntroRef.current = true }
       }
       const onKeyUp = (e: KeyboardEvent) => { keys[e.code] = false }
       window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp)
@@ -874,13 +594,266 @@ export default function LandingPage() {
       // ─── Day/Night state (0=dawn→0.25=noon→0.5=dusk→0.75=night→1=dawn) ──
       let dayNightT = 0.15 // start just past dawn
       const DAY_DURATION = 75 // seconds per full cycle
-      setTimeout(() => {
-        controlEnabled = true
-        if (mounted.current) { setCinematicDone(true); setTimeout(() => { if (mounted.current) setControlsHint(false) }, 8000) }
-      }, 8600)
 
       const camPos = new THREE.Vector3(0, 14, 40)
       const camLook = new THREE.Vector3(0, 2, 0)
+
+      // ─── HATCHING EGG INTRO ─────────────────────────────────────────────────
+      // The egg lives in the world itself: blocks lit by the same sun and
+      // lanterns, casting real shadows, glowing from a core inside. Cracks are
+      // blocks physically popping out to reveal that glow, which is why they
+      // read as the shell breaking — a line drawn over a flat 2D egg never
+      // could. One InstancedMesh, so ~400 blocks cost a single draw call.
+      const EGG_X = player.pos.x, EGG_Z = player.pos.z
+      // Block size matters: at 0.1 the whole egg was only ~290 blocks, so
+      // even a one-block-wide crack ate most of the visible surface and read
+      // as holes, not a crack. At 0.07 it's ~610 blocks and a crack is a line.
+      const EGG_VOX = 0.07, EGG_R = 0.5, EGG_H = 0.66
+      // Intro clock, in seconds from the first rendered frame.
+      const STAR_START = 1.9          // impact: one jagged crack runs down from the top
+      const EQ_START = 2.7            // zig-zag split spreads around the middle...
+      const EQ_SPREAD = 0.9           // ...all the way round over this long
+      const TREMBLE_START = 3.6
+      const BURST_T = 4.2
+      const PET_IN_DUR = 0.7
+      const TITLE_T = 4.9
+      // Pull back as soon as the pet has landed, so it never fills the frame.
+      const PULLBACK_START = BURST_T + 0.75
+      const PULLBACK_DUR = 1.9
+      const INTRO_END = PULLBACK_START + PULLBACK_DUR + 0.1
+      const IMPACT_THETA = 1.1        // the side of the egg facing the camera
+
+      const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+      const smoothstep = (x: number) => { const k = clamp01(x); return k * k * (3 - 2 * k) }
+      const easeOutCubic = (x: number) => 1 - Math.pow(1 - clamp01(x), 3)
+      const easeOutBack = (x: number) => { const c1 = 1.70158, c3 = c1 + 1, k = clamp01(x); return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2) }
+      const triWave = (x: number) => 1 - 4 * Math.abs(x - Math.floor(x + 0.5)) // -1..1, sharp corners
+      const angDist = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)))
+      const hash = (a: number, b: number, c: number) => { const s = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return s - Math.floor(s) }
+      // Height (in -1..1 egg space) of the zig-zag line the shell splits
+      // along — ~2 blocks of amplitude, or the teeth round away to a flat band.
+      const splitAt = (theta: number) => 0.1 + 0.24 * triWave(theta * 6 / (Math.PI * 2))
+      // The impact crack's path down the camera-facing side, and a short
+      // branch forking off it partway down.
+      const mainCrackAt = (v: number) => IMPACT_THETA + 0.16 * triWave(v * 3.2) + 0.05 * Math.sin(v * 23)
+      const BRANCH_V = 0.6
+      const branchCrackAt = (v: number) => IMPACT_THETA + 0.16 * triWave(BRANCH_V * 3.2) + (BRANCH_V - v) * 0.9
+      const CRACK_RUN = 0.7 // seconds for the main crack to travel top → split
+
+      // Classic egg profile: narrower at the top than the bottom.
+      const eggRadiusAt = (v: number) => Math.sqrt(Math.max(0, 1 - v * v)) * (1 - 0.14 * v) * EGG_R
+      const insideEgg = (x: number, y: number, z: number) => {
+        const v = y / EGG_H
+        return Math.abs(v) <= 1 && Math.hypot(x, z) <= eggRadiusAt(v)
+      }
+
+      type EggVoxel = {
+        base: ThreeNS.Vector3; normal: ThreeNS.Vector3; isCap: boolean; crackAt: number
+        pos: ThreeNS.Vector3; vel: ThreeNS.Vector3; rot: ThreeNS.Euler; spin: ThreeNS.Vector3; scale: number
+      }
+      const eggVoxels: EggVoxel[] = []
+      const eggColors: ThreeNS.Color[] = []
+      const nR = Math.ceil(EGG_R / EGG_VOX), nH = Math.ceil(EGG_H / EGG_VOX)
+      for (let i = -nR; i <= nR; i++) for (let j = -nH; j <= nH; j++) for (let k = -nR; k <= nR; k++) {
+        const x = i * EGG_VOX, y = j * EGG_VOX, z = k * EGG_VOX
+        if (!insideEgg(x, y, z)) continue
+        // Hollow shell: keep only blocks with an exposed face.
+        const d = EGG_VOX
+        if (insideEgg(x + d, y, z) && insideEgg(x - d, y, z) && insideEgg(x, y + d, z) &&
+            insideEgg(x, y - d, z) && insideEgg(x, y, z + d) && insideEgg(x, y, z - d)) continue
+
+        const v = y / EGG_H, theta = Math.atan2(z, x), rho = Math.max(Math.hypot(x, z), EGG_VOX)
+        const split = splitAt(theta)
+        // Every crack is one block wide (a band of ~half a block either side
+        // of its path) — wider and it reads as holes rather than a crack.
+        const halfBlock = EGG_VOX * 0.55
+        let crackAt = Infinity
+        // The zig-zag split, spreading around from the impact side.
+        if (Math.abs(v - split) < (EGG_VOX / EGG_H) * 0.55) {
+          crackAt = EQ_START + (angDist(theta, IMPACT_THETA) / Math.PI) * EQ_SPREAD
+        }
+        // The impact crack, travelling down from the top...
+        if (v > split && v < 0.97 && angDist(theta, mainCrackAt(v)) * rho < halfBlock) {
+          crackAt = Math.min(crackAt, STAR_START + (0.97 - v) * CRACK_RUN)
+        }
+        // ...and its branch, starting once the main crack reaches the fork.
+        if (v > split && v < BRANCH_V && v > 0.28 && angDist(theta, branchCrackAt(v)) * rho < halfBlock) {
+          crackAt = Math.min(crackAt, STAR_START + (0.97 - BRANCH_V) * CRACK_RUN + (BRANCH_V - v) * 0.8)
+        }
+        const base = new THREE.Vector3(x, y + EGG_H + EGG_VOX / 2, z)
+        eggVoxels.push({
+          base, normal: new THREE.Vector3(x / EGG_R, y / EGG_H, z / EGG_R).normalize(),
+          isCap: v > split, crackAt,
+          pos: base.clone(), vel: new THREE.Vector3(), rot: new THREE.Euler(), spin: new THREE.Vector3(), scale: 1,
+        })
+        // Warm cream shell with a little per-block variation, plus sparse speckles.
+        const h = hash(i, j, k)
+        const col = new THREE.Color(0xf2e6cc).offsetHSL(0, 0, (hash(k, i, j) - 0.5) * 0.06)
+        if (h > 0.955) col.set(0xb98552)
+        else if (h > 0.93) col.set(0x8fb3a4)
+        eggColors.push(col)
+      }
+
+      const eggGroup = new THREE.Group()
+      eggGroup.position.set(EGG_X, 0, EGG_Z)
+      scene.add(eggGroup)
+      const eggGeo = new THREE.BoxGeometry(EGG_VOX * 0.97, EGG_VOX * 0.97, EGG_VOX * 0.97)
+      // A faint warm self-glow keeps the shell reading as a cream egg under
+      // the dim pre-dawn exposure (without it, it looked like grey stone).
+      const eggMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: new THREE.Color(0x3a2a14), emissiveIntensity: 0.9 })
+      const eggMesh = new THREE.InstancedMesh(eggGeo, eggMat, eggVoxels.length)
+      eggMesh.castShadow = true; eggMesh.receiveShadow = true
+      eggColors.forEach((c, i) => eggMesh.setColorAt(i, c))
+      eggGroup.add(eggMesh)
+      // The glowing core the cracks reveal. Not tone-mapped, so it stays
+      // bright against the dimmed pre-dawn scene.
+      const coreGeo = new THREE.SphereGeometry(1, 20, 14)
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, toneMapped: false })
+      const eggCore = new THREE.Mesh(coreGeo, coreMat)
+      eggCore.scale.set(EGG_R * 0.8, EGG_H * 0.8, EGG_R * 0.8)
+      eggCore.position.y = EGG_H + EGG_VOX / 2
+      eggGroup.add(eggCore)
+      const eggLight = new THREE.PointLight(0xffb45a, 0.6, 7)
+      eggLight.position.y = EGG_H
+      eggGroup.add(eggLight)
+      const crackTotal = eggVoxels.filter(ev => ev.crackAt < Infinity).length || 1
+      cleanupFns.current.push(() => {
+        scene.remove(eggGroup)
+        eggGeo.dispose(); eggMat.dispose(); coreGeo.dispose(); coreMat.dispose()
+      })
+
+      // Where the normal follow camera settles behind the pet — the intro
+      // ends exactly here so control hands over without a jump.
+      const followPos = player.pos.clone().add(new THREE.Vector3(0, 7, 14))
+      const followLook = player.pos.clone().add(new THREE.Vector3(0, 3, 0))
+      const orbitPos = new THREE.Vector3(), orbitLook = new THREE.Vector3()
+      const eggDummy = new THREE.Object3D()
+      const INTRO_EXPOSURE_START = 0.38, FINAL_EXPOSURE = renderer.toneMappingExposure
+      renderer.toneMappingExposure = INTRO_EXPOSURE_START
+      playerMesh.group.visible = false
+
+      let introDone = false, introT = 0, burstStarted = false, titleShown = false, sceneShown = false
+
+      const finishIntro = () => {
+        if (introDone) return
+        introDone = true
+        eggGroup.visible = false
+        playerMesh.group.visible = true
+        playerMesh.group.scale.setScalar(1)
+        renderer.toneMappingExposure = FINAL_EXPOSURE
+        camPos.copy(followPos); camLook.copy(followLook)
+        controlEnabled = true
+        markIntroSeen()
+        if (mounted.current) {
+          setSceneReady(true)
+          setCinematicDone(true)
+          setTimeout(() => { if (mounted.current) setControlsHint(false) }, 8000)
+        }
+      }
+
+      // Seen it already this visit? Go straight into the world.
+      if (hasSeenIntro()) finishIntro()
+
+      const updateIntro = (delta: number) => {
+        if (skipIntroRef.current || introT >= INTRO_END) { finishIntro(); return }
+        introT += delta
+        const t = introT
+
+        // ── Camera: slow push-in orbit around the egg, then a pull-back that
+        // lands on the follow camera's resting pose.
+        const a = 0.55 - t * 0.05
+        // Push in while the egg cracks; ease back out the moment it bursts.
+        const r = 4.4 - Math.min(t, BURST_T) * 0.22 + smoothstep((t - BURST_T) / 0.9) * 1.2
+        orbitPos.set(EGG_X + Math.sin(a) * r, 1.25 + Math.sin(t * 0.5) * 0.1, EGG_Z + Math.cos(a) * r)
+        orbitLook.set(EGG_X, 0.75 + smoothstep((t - BURST_T) / 0.8) * 0.25, EGG_Z)
+        const pull = smoothstep((t - PULLBACK_START) / PULLBACK_DUR)
+        camPos.copy(orbitPos).lerp(followPos, pull)
+        camLook.copy(orbitLook).lerp(followLook, pull)
+        const shake = t >= BURST_T ? Math.exp(-(t - BURST_T) * 6) * 0.12 : 0
+        camera.position.copy(camPos).add(new THREE.Vector3((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, 0))
+        camera.lookAt(camLook)
+
+        if (t < BURST_T) {
+          // ── Whole egg: idle rock, a jolt at each crack event, a rising
+          // tremble, then a squash just before it gives way.
+          const jolt = (dt: number) => (dt >= 0 ? Math.exp(-dt * 5) * Math.sin(dt * 38) * 0.09 : 0)
+          const trem = clamp01((t - TREMBLE_START) / (BURST_T - TREMBLE_START))
+          const idle = Math.sin(t * 1.7) * 0.025
+          eggGroup.rotation.z = idle + jolt(t - STAR_START) + jolt(t - EQ_START) * 0.8 + trem * 0.05 * Math.sin(t * 70)
+          eggGroup.rotation.x = idle * 0.6 + trem * 0.035 * Math.sin(t * 61 + 1)
+          const squash = smoothstep((t - (BURST_T - 0.3)) / 0.3)
+          eggGroup.scale.set(1 + squash * 0.04, 1 - squash * 0.07, 1 + squash * 0.04)
+
+          // A plain loop (not forEach) because React Compiler can't handle
+          // incrementing a counter captured inside a callback, and bails out
+          // of compiling the whole component if it sees one.
+          let cracked = 0
+          for (let i = 0; i < eggVoxels.length; i++) {
+            const ev = eggVoxels[i]
+            const k = t >= ev.crackAt ? clamp01((t - ev.crackAt) / 0.22) : 0
+            if (k > 0) cracked += 1
+            ev.pos.copy(ev.base).addScaledVector(ev.normal, 0.06 * k)
+            ev.scale = 1 - k
+            eggDummy.position.copy(ev.pos); eggDummy.rotation.set(0, 0, 0); eggDummy.scale.setScalar(ev.scale)
+            eggDummy.updateMatrix(); eggMesh.setMatrixAt(i, eggDummy.matrix)
+          }
+          const crackedFrac = cracked / crackTotal
+          eggLight.intensity = 0.6 + Math.sin(t * 3) * 0.2 + crackedFrac * 2.8 + trem * 1.5
+          renderer.toneMappingExposure = INTRO_EXPOSURE_START + crackedFrac * 0.12
+        } else {
+          // ── Burst: the cap flies up, the lower shell falls outward, every
+          // block under gravity with a little bounce, then they shrink away.
+          if (!burstStarted) {
+            burstStarted = true
+            eggGroup.rotation.set(0, 0, 0); eggGroup.scale.setScalar(1)
+            eggVoxels.forEach(ev => {
+              // Kept deliberately tight: a small ring of shell at the pet's
+              // feet, not debris carpeting the whole scene.
+              const rnd = Math.random()
+              if (ev.isCap) ev.vel.copy(ev.normal).multiplyScalar(0.6 + rnd * 0.5).add(new THREE.Vector3(0, 2.4 + Math.random() * 0.8, 0))
+              else ev.vel.copy(ev.normal).multiplyScalar(0.8 + rnd * 0.6).add(new THREE.Vector3(0, 0.7 + Math.random() * 0.6, 0))
+              ev.spin.set((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12)
+            })
+          }
+          const fade = 1 - smoothstep((t - (BURST_T + 0.9)) / 0.8)
+          eggVoxels.forEach((ev, i) => {
+            if (ev.scale > 0 || t < ev.crackAt) {
+              ev.vel.y -= 9.8 * delta
+              ev.pos.addScaledVector(ev.vel, delta)
+              if (ev.pos.y < EGG_VOX / 2) {
+                ev.pos.y = EGG_VOX / 2
+                ev.vel.y *= -0.35; ev.vel.x *= 0.7; ev.vel.z *= 0.7; ev.spin.multiplyScalar(0.8)
+              }
+              ev.rot.x += ev.spin.x * delta; ev.rot.y += ev.spin.y * delta; ev.rot.z += ev.spin.z * delta
+            }
+            const s = t < ev.crackAt ? fade : 0
+            eggDummy.position.copy(ev.pos); eggDummy.rotation.copy(ev.rot); eggDummy.scale.setScalar(s)
+            eggDummy.updateMatrix(); eggMesh.setMatrixAt(i, eggDummy.matrix)
+          })
+          if (fade <= 0) eggMesh.visible = false
+          // The core collapses into the pet as it steps out.
+          const coreK = clamp01((t - BURST_T) / 0.35)
+          eggCore.scale.set(EGG_R * 0.8 * (1 - coreK), EGG_H * 0.8 * (1 - coreK), EGG_R * 0.8 * (1 - coreK))
+          coreMat.opacity = 1 - coreK
+          eggLight.intensity = 6 * Math.exp(-(t - BURST_T) * 3)
+          // Dawn breaks as the shell opens.
+          renderer.toneMappingExposure = INTRO_EXPOSURE_START + 0.12 +
+            (FINAL_EXPOSURE - INTRO_EXPOSURE_START - 0.12) * easeOutCubic((t - BURST_T) / 1.6)
+
+          // ── The pet: pops up with a hop, facing the camera, then turns to
+          // face the world as the camera swings round behind it.
+          const p = clamp01((t - BURST_T - 0.05) / PET_IN_DUR)
+          playerMesh.group.visible = p > 0
+          playerMesh.group.scale.setScalar(Math.max(0.001, easeOutBack(p)))
+          playerMesh.group.position.set(EGG_X, 0.5 + Math.sin(Math.PI * p) * 0.35, EGG_Z)
+          const toCam = Math.atan2(-(orbitPos.x - EGG_X), -(orbitPos.z - EGG_Z))
+          playerMesh.group.rotation.y = toCam * (1 - smoothstep((t - (PULLBACK_START + 0.1)) / 1.3))
+        }
+        eggMesh.instanceMatrix.needsUpdate = true
+
+        if (!titleShown && t >= TITLE_T) { titleShown = true; if (mounted.current) setIntroStep(1) }
+        if (!sceneShown) { sceneShown = true; if (mounted.current) setSceneReady(true) }
+      }
 
       // Audio
       let audioCtx: AudioContext | null = null
@@ -911,7 +884,7 @@ export default function LandingPage() {
       const mobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0
       if (mounted.current) setIsMobile(mobile)
 
-      let elapsed = 0, last = performance.now(), cinematicT = 0
+      let elapsed = 0, last = performance.now()
 
       const tick = () => {
         rafRef.current = requestAnimationFrame(tick)
@@ -921,71 +894,70 @@ export default function LandingPage() {
 
         const uiOpen = activeOverlayRef.current !== null
 
-        if (!controlEnabled) {
-          cinematicT += delta
-          if (cinematicT < 2) { camPos.lerp(new THREE.Vector3(0, 12, 38), 0.03); camLook.lerp(new THREE.Vector3(0, 3, 0), 0.05) }
-          else if (cinematicT < 5) { camPos.lerp(new THREE.Vector3(0, 7, 22), 0.015); camLook.lerp(new THREE.Vector3(0, 2, -4), 0.02) }
-          camera.position.copy(camPos); camera.lookAt(camLook)
-          renderer.render(scene, camera); return
-        }
-
-        if (!uiOpen) {
-          const spd = player.speed; let moved = false
-          if (keys['KeyW'] || keys['ArrowUp']) { player.vel.x -= Math.sin(player.rot) * spd; player.vel.z -= Math.cos(player.rot) * spd; moved = true }
-          if (keys['KeyS'] || keys['ArrowDown']) { player.vel.x += Math.sin(player.rot) * spd; player.vel.z += Math.cos(player.rot) * spd; moved = true }
-          if (keys['KeyA'] || keys['ArrowLeft']) player.rot += 0.045
-          if (keys['KeyD'] || keys['ArrowRight']) player.rot -= 0.045
-          if (joystickRef.current.active) {
-            const { dx, dy } = joystickRef.current
-            player.vel.x -= Math.sin(player.rot) * player.speed * dy; player.vel.z -= Math.cos(player.rot) * player.speed * dy
-            player.rot -= dx * 0.04; if (Math.abs(dy) > 0.1) moved = true
+        // During the intro the loop still runs everything below the player
+        // block (petals, koi, lanterns, day/night...), so the world stays
+        // alive around the egg — only input, player physics, and the follow
+        // camera are held until it hands over.
+        if (!controlEnabled) updateIntro(delta)
+        if (controlEnabled) {
+          if (!uiOpen) {
+            const spd = player.speed; let moved = false
+            if (keys['KeyW'] || keys['ArrowUp']) { player.vel.x -= Math.sin(player.rot) * spd; player.vel.z -= Math.cos(player.rot) * spd; moved = true }
+            if (keys['KeyS'] || keys['ArrowDown']) { player.vel.x += Math.sin(player.rot) * spd; player.vel.z += Math.cos(player.rot) * spd; moved = true }
+            if (keys['KeyA'] || keys['ArrowLeft']) player.rot += 0.045
+            if (keys['KeyD'] || keys['ArrowRight']) player.rot -= 0.045
+            if (joystickRef.current.active) {
+              const { dx, dy } = joystickRef.current
+              player.vel.x -= Math.sin(player.rot) * player.speed * dy; player.vel.z -= Math.cos(player.rot) * player.speed * dy
+              player.rot -= dx * 0.04; if (Math.abs(dy) > 0.1) moved = true
+            }
+            player.isMoving = moved
           }
-          player.isMoving = moved
+
+          player.vel.multiplyScalar(0.72)
+          const next = player.pos.clone().add(player.vel)
+          next.x = Math.max(-28, Math.min(28, next.x)); next.z = Math.max(-28, Math.min(30, next.z)); next.y = 0.5
+          if (!checkCollision(next)) { player.pos.copy(next) } else {
+            const nx = new THREE.Vector3(player.pos.x + player.vel.x, 0.5, player.pos.z)
+            if (!checkCollision(nx)) player.pos.x = nx.x
+            const nz = new THREE.Vector3(player.pos.x, 0.5, player.pos.z + player.vel.z)
+            if (!checkCollision(nz)) player.pos.z = nz.z
+          }
+
+          playerMesh.group.position.copy(player.pos)
+          playerMesh.group.rotation.y = player.rot
+          playerMesh.group.position.y = 0.5 + Math.sin(elapsed * 2.2) * 0.035
+          const swing = player.isMoving ? Math.sin(elapsed * 9) * 0.35 : 0
+          playerMesh.legs.FL.rotation.x = swing; playerMesh.legs.BR.rotation.x = swing
+          playerMesh.legs.FR.rotation.x = -swing; playerMesh.legs.BL.rotation.x = -swing
+
+          if (cameraMode === 'follow') {
+            const offset = new THREE.Vector3(0, 7, 14); offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rot)
+            camPos.lerp(player.pos.clone().add(offset), 0.065)
+            camLook.lerp(player.pos.clone().add(new THREE.Vector3(0, 1, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rot).multiplyScalar(3)), 0.1)
+          } else { camPos.lerp(cinematicPos, 0.04); camLook.lerp(cinematicLook, 0.06) }
+          camera.position.copy(camPos); camera.lookAt(camLook)
+
+          if (!gatePassed && player.pos.z < -8) {
+            gatePassed = true
+            toriiBars.forEach(bar => {
+              bar.material.emissive = new THREE.Color(0xffaa22); bar.material.emissiveIntensity = 3
+              setTimeout(() => { bar.material.emissive = new THREE.Color(0); bar.material.emissiveIntensity = 0 }, 1200)
+            })
+            playChime(523.25, 0.5, 0); playChime(659.25, 0.5, 0.15); playChime(783.99, 0.7, 0.3)
+          }
+
+          if (!leaderStoneRisen && player.pos.distanceTo(new THREE.Vector3(0, 0, -24.5)) < 6) {
+            leaderStoneRisen = true
+            const rise = () => { if (leaderStoneMesh.scale.y < 2.6) { leaderStoneMesh.scale.y += 0.05; leaderStoneMesh.position.y = leaderStoneMesh.scale.y * 0.5 - 0.5; requestAnimationFrame(rise) } }
+            rise()
+          }
+
+          let nearest: Obj | null = null; let nearDist = Infinity
+          interactables.forEach(obj => { const d = player.pos.distanceTo(obj.pos); if (d < obj.radius && d < nearDist) { nearDist = d; nearest = obj } })
+          nearestObj = nearest
+          if (mounted.current) setPromptLabel(nearest ? (nearest as Obj).label : null)
         }
-
-        player.vel.multiplyScalar(0.72)
-        const next = player.pos.clone().add(player.vel)
-        next.x = Math.max(-28, Math.min(28, next.x)); next.z = Math.max(-28, Math.min(30, next.z)); next.y = 0.5
-        if (!checkCollision(next)) { player.pos.copy(next) } else {
-          const nx = new THREE.Vector3(player.pos.x + player.vel.x, 0.5, player.pos.z)
-          if (!checkCollision(nx)) player.pos.x = nx.x
-          const nz = new THREE.Vector3(player.pos.x, 0.5, player.pos.z + player.vel.z)
-          if (!checkCollision(nz)) player.pos.z = nz.z
-        }
-
-        playerMesh.group.position.copy(player.pos)
-        playerMesh.group.rotation.y = player.rot
-        playerMesh.group.position.y = 0.5 + Math.sin(elapsed * 2.2) * 0.035
-        const swing = player.isMoving ? Math.sin(elapsed * 9) * 0.35 : 0
-        playerMesh.legs.FL.rotation.x = swing; playerMesh.legs.BR.rotation.x = swing
-        playerMesh.legs.FR.rotation.x = -swing; playerMesh.legs.BL.rotation.x = -swing
-
-        if (cameraMode === 'follow') {
-          const offset = new THREE.Vector3(0, 7, 14); offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rot)
-          camPos.lerp(player.pos.clone().add(offset), 0.065)
-          camLook.lerp(player.pos.clone().add(new THREE.Vector3(0, 1, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rot).multiplyScalar(3)), 0.1)
-        } else { camPos.lerp(cinematicPos, 0.04); camLook.lerp(cinematicLook, 0.06) }
-        camera.position.copy(camPos); camera.lookAt(camLook)
-
-        if (!gatePassed && player.pos.z < -8) {
-          gatePassed = true
-          toriiBars.forEach(bar => {
-            bar.material.emissive = new THREE.Color(0xffaa22); bar.material.emissiveIntensity = 3
-            setTimeout(() => { bar.material.emissive = new THREE.Color(0); bar.material.emissiveIntensity = 0 }, 1200)
-          })
-          playChime(523.25, 0.5, 0); playChime(659.25, 0.5, 0.15); playChime(783.99, 0.7, 0.3)
-        }
-
-        if (!leaderStoneRisen && player.pos.distanceTo(new THREE.Vector3(0, 0, -24.5)) < 6) {
-          leaderStoneRisen = true
-          const rise = () => { if (leaderStoneMesh.scale.y < 2.6) { leaderStoneMesh.scale.y += 0.05; leaderStoneMesh.position.y = leaderStoneMesh.scale.y * 0.5 - 0.5; requestAnimationFrame(rise) } }
-          rise()
-        }
-
-        let nearest: Obj | null = null; let nearDist = Infinity
-        interactables.forEach(obj => { const d = player.pos.distanceTo(obj.pos); if (d < obj.radius && d < nearDist) { nearDist = d; nearest = obj } })
-        nearestObj = nearest
-        if (mounted.current) setPromptLabel(nearest ? (nearest as Obj).label : null)
 
         // Petals
         petalData.forEach((p, i) => {
@@ -1150,62 +1122,64 @@ export default function LandingPage() {
         animation: 'grain 0.4s steps(1) infinite'
       }} />
 
-      <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 90, opacity: cinematicDone ? 0 : 1, transition: 'opacity 2s ease', pointerEvents: cinematicDone ? 'none' : 'all' }} />
+      {/* Black cover only until the 3D scene's first frame — the intro itself
+          plays out in the real world (see updateIntro in the scene effect). */}
+      <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 90, opacity: sceneReady ? 0 : 1, transition: 'opacity 1.4s ease', pointerEvents: sceneReady ? 'none' : 'all' }} />
 
       {!cinematicDone && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 91, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-          {/* Beat 0: the egg hatches into this visit's pet */}
-          <canvas
-            ref={hatchCanvasRef}
-            style={{ width: 'clamp(120px,20vw,200px)', height: 'clamp(120px,20vw,200px)', display: 'block' }}
-          />
-
-          {/* Beat 1: GIT PET title + subtitle, once the pet's grown in */}
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: '14vh', zIndex: 91, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, pointerEvents: 'none' }}>
+          {/* GIT PET title + subtitle, as the pet steps out of the shell */}
           {introStep === 1 && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               gap: 12,
-              animation: 'fadeInOut 2.5s ease 0s both',
+              padding: '22px 64px',
+              // A soft dark band so the title reads over a bright, busy scene.
+              background: 'radial-gradient(ellipse at center, rgba(8,6,4,0.55) 0%, rgba(8,6,4,0) 70%)',
+              animation: 'fadeInOut 2.2s ease 0s both',
             }}>
               <div style={{
                 fontFamily: "'Press Start 2P', monospace",
-                fontSize: 14,
+                fontSize: 18,
                 color: '#ffd4a0',
-                letterSpacing: 6,
-                textShadow: '0 0 30px rgba(255,180,80,0.5)',
+                letterSpacing: 8,
+                textShadow: '0 2px 0 rgba(0,0,0,0.6), 0 0 30px rgba(255,180,80,0.55)',
               }}>
                 GIT PET
               </div>
               <div style={{
                 fontFamily: "'DM Mono', monospace",
-                fontWeight: 300,
+                fontWeight: 400,
                 fontSize: 11,
-                color: 'rgba(240,235,224,0.5)',
+                color: 'rgba(240,235,224,0.8)',
                 letterSpacing: 2,
+                textShadow: '0 1px 2px rgba(0,0,0,0.7)',
               }}>
                 Your GitHub commits · made alive
               </div>
             </div>
           )}
 
-          {/* Beat 2: Controls hint */}
-          {introStep === 2 && (
-            <div style={{
-              fontFamily: "'DM Mono', monospace",
-              fontWeight: 300,
-              fontSize: 10,
-              color: '#ffd4a0',
-              letterSpacing: 3,
-              textTransform: 'uppercase',
-              animation: 'fadeInOut 2s ease 0s both',
-              textAlign: 'center',
-            }}>
-              WASD TO MOVE  ·  E TO INTERACT  ·  EXPLORE THE WORLD
-            </div>
-          )}
         </div>
+      )}
+
+      {sceneReady && !cinematicDone && (
+        <button
+          onClick={() => { skipIntroRef.current = true }}
+          style={{
+            position: 'fixed', right: 28, bottom: 28, zIndex: 95,
+            fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 10,
+            letterSpacing: 3, textTransform: 'uppercase',
+            color: 'rgba(240,235,224,0.55)', background: 'rgba(8,6,4,0.35)',
+            border: '1px solid rgba(240,200,140,0.18)', padding: '8px 14px',
+            cursor: 'pointer', backdropFilter: 'blur(6px)',
+            animation: 'slideUpFade 0.6s ease 1s both',
+          }}
+        >
+          Skip intro →
+        </button>
       )}
 
       <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 20, padding: '18px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,6,4,0.5)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(240,200,140,0.1)', width: '100%', overflow: 'hidden' }}>
