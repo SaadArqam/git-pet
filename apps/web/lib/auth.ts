@@ -7,6 +7,11 @@ export const authOptions: NextAuthOptions = {
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      // GitHub now returns `iss` on the OAuth callback (RFC 9207), and
+      // openid-client rejects any callback whose `iss` doesn't match the
+      // configured issuer. The built-in GitHub provider sets none, so every
+      // sign-in failed with error=OAuthCallback before the token exchange.
+      issuer: "https://github.com/login/oauth",
       authorization: {
         params: { scope: "read:user repo" },
       },
