@@ -1,6 +1,6 @@
 # CLAUDE.md — git-pet Project Context
 
-This file is the primary context source for AI sessions on this project. It is generated from reading the actual source code. Do not guess from it; if something changed, re-read the code.
+This file is the primary context source for AI sessions on this project. It is written from the actual source code (last synced 2026-09-27). Do not guess from it; if something changed, re-read the code.
 
 ---
 
@@ -8,11 +8,11 @@ This file is the primary context source for AI sessions on this project. It is g
 
 git-pet is a multiplayer 3D world where your GitHub activity drives the appearance and stats of a pixel creature (your "pet"). It is not a dashboard or a stats viewer. The core loop is: sign in with GitHub → GitHub data is fetched via GraphQL → PetState is derived → your pet appears in a shared Three.js world alongside other developers' pets → you walk around and interact with them in real time.
 
-Live URL: https://git-pet-beta.vercel.app  
-GitHub: https://github.com/SaadArqam/git-pet  
+Live URL: https://git-pet-beta.vercel.app
+GitHub: https://github.com/SaadArqam/git-pet
 Author: Saad Arqam (@SaadArqam)
 
-The world is the product, not the dashboard. The dashboard and pet card are secondary surfaces.
+The world is the product, not the dashboard. The dashboard, pet card and public pet page are secondary surfaces.
 
 ---
 
@@ -22,23 +22,29 @@ Exact versions as found in package.json files:
 
 | Layer | Technology | Version |
 |---|---|---|
-| Framework | Next.js | 16.2.1 |
+| Framework | Next.js (App Router, Turbopack) | 16.2.1 |
 | UI library | React | 19.2.4 |
 | 3D rendering | Three.js | r128 (loaded from CDN at runtime, not npm) |
+| Three.js types | @types/three | 0.128.x (types only, devDependency) |
 | CSS2D labels | CSS2DRenderer | r128 (loaded from jsDelivr CDN) |
 | Realtime | PartyKit (partysocket client) | 1.1.16 |
 | PartyKit server SDK | partykit | 0.0.115 (devDependency) |
 | Auth | next-auth | 4.24.13 |
 | Database | @upstash/redis | 1.37.0 |
 | OG image generation | @vercel/og (ImageResponse) | 0.11.1 |
+| Tests | vitest | 4.x (in `packages/core`) |
 | Monorepo tool | Turborepo | latest (in root devDependencies) |
 | TypeScript | typescript | 5.4.x (root), 5.x (web), 5.5.x (web-party) |
 | React Compiler | babel-plugin-react-compiler | 1.0.0 (devDependency, enabled via next.config.ts) |
-| Deployment | Vercel (Next.js app) + PartyKit cloud (WebSocket server) |
+| Deployment | Vercel Hobby (Next.js app) + PartyKit cloud (WebSocket server) |
 | Node requirement | 18+ |
 | Package manager | npm 10.8.2 (enforced via packageManager field) |
 
-Three.js is NOT installed as an npm package. It is loaded at runtime via CDN in WorldClient.tsx using a dynamic script loader, then accessed as `(window as any).THREE`. This is intentional and load-bearing — do not attempt to npm-install three.js.
+Root scripts: `npm run dev`, `build`, `lint`, `type-check`, `test` (all via Turborepo).
+
+Three.js is NOT installed as an npm runtime package. It is loaded at runtime via CDN, then accessed through `getThree()` from `apps/web/lib/three-global.ts`, which returns `window.THREE` typed as `ThreeGlobal` (the `@types/three` namespace plus `CSS2DObject`/`CSS2DRenderer`). `@types/three` is types-only — `import type` is erased, nothing is bundled. Do not npm-install `three` itself.
+
+`apps/web/AGENTS.md` warns that this Next.js version has breaking changes vs. training data — read `node_modules/next/dist/docs/` before writing Next.js-specific code.
 
 ---
 
@@ -46,83 +52,54 @@ Three.js is NOT installed as an npm package. It is loaded at runtime via CDN in 
 
 ```
 git-pet/
-├── package.json                   Root workspace config, Turborepo scripts
+├── package.json                   Root workspace config, Turborepo scripts (dev/build/lint/type-check/test)
 ├── turbo.json                     Turborepo pipeline config
 ├── .env.example                   Template for required environment variables
-├── README.md                      Public-facing project docs
-├── CONTRIBUTING.md                Contributor guidelines
+├── ISSUES.md                      QA/optimisation audit (24 items, all fixed; notes on #13 and #20)
+├── README.md / CONTRIBUTING.md
 ├── CLAUDE.md                      This file — AI context
 ├── apps/
 │   └── web/                       Next.js 16 app (App Router)
 │       ├── app/
 │       │   ├── page.tsx           Root route — renders LandingPage
-│       │   ├── LandingPage.tsx    Full landing page with animated pet preview
-│       │   ├── layout.tsx         Root layout, SessionProvider wrapper
-│       │   ├── providers.tsx      Client-side SessionProvider
-│       │   ├── globals.css        Minimal global CSS
-│       │   ├── dashboard/
-│       │   │   └── page.tsx       Dashboard: shows PetCard, handles species selection for new users
-│       │   ├── world/
-│       │   │   └── page.tsx       World entry: fetches GitHub data server-side, renders WorldClient
-│       │   ├── settings/          Species switching UI (SpeciesSwitch component)
-│       │   ├── signin/            Sign-in redirect page
+│       │   ├── LandingPage.tsx    Landing page with its own Three.js scene + Hall of Legends overlay
+│       │   ├── layout.tsx / providers.tsx   Root layout, client SessionProvider
+│       │   ├── dashboard/page.tsx New users → SpeciesSelect; returning → PetCard; error state on Redis failure
+│       │   ├── world/page.tsx     Fetches GitHub data server-side, renders WorldClient
+│       │   ├── pet/[username]/page.tsx  Public pet lookup page (no auth) — PetCard in "public" mode + fight wins
+│       │   ├── settings/          Species switching (SpeciesSwitch)
 │       │   ├── about/             About page
+│       │   ├── signin/            Empty directory (no route file)
 │       │   └── api/
 │       │       ├── auth/[...nextauth]/  NextAuth GitHub OAuth handler
-│       │       ├── card/[username]/
-│       │       │   └── route.tsx  OG image API, edge runtime, renders pet card as PNG
-│       │       ├── species/
-│       │       │   └── route.ts   GET/POST species preference for current user
-│       │       ├── friends/
-│       │       │   └── route.ts   GET friends list, POST to add a friend (used by PartyKit too)
-│       │       ├── ghosts/
-│       │       │   └── route.ts   GET offline ghost positions, POST to save last position
-│       │       ├── leaderboard/
-│       │       │   └── route.ts   GET real leaderboard data (top streak/commits/friends), live GitHub fetch, HTTP-cached 1h
-│       │       ├── pet/           Pet data endpoint (partially wired)
-│       │       ├── user/          User data endpoint
-│       │       └── online-users/  Online user count endpoint
+│       │       ├── card/[username]/route.tsx  OG image PNG, edge runtime
+│       │       ├── species/route.ts     GET ?username= (public) or own species (session); POST own species
+│       │       ├── friends/route.ts     GET ?userId= (public) or own (session); POST internal-secret only
+│       │       ├── fights/route.ts      GET ?userId= wins; POST increments wins (session-as-winner or secret)
+│       │       ├── ghosts/route.ts      GET offline ghosts (session); POST own last position (session)
+│       │       ├── leaderboard/route.ts GET top streak/commits/friends, HTTP-cached 1h
+│       │       └── pet/[username]/route.ts  Public PetState JSON, HTTP-cached 1h
 │       ├── components/
-│       │   ├── world/
-│       │   │   └── WorldClient.tsx  The entire 3D world (2700+ lines, single file)
-│       │   ├── PetCanvas.tsx      Canvas-based pet renderer component (for dashboard/card)
-│       │   ├── PetCard.tsx        Dashboard pet card with stats and links
-│       │   ├── SpeciesSelect.tsx  First-time species selection screen
-│       │   ├── SpeciesSwitch.tsx  Species re-selection screen (settings)
-│       │   └── StatBar.tsx        Reusable stat bar UI
+│       │   ├── world/WorldClient.tsx  The entire 3D world (~2800 lines, single file, fully typed)
+│       │   ├── PetCanvas.tsx      Canvas pet renderer (dashboard/card)
+│       │   ├── PetCard.tsx        Pet card; `mode` = "owner" | "public", optional `wins`
+│       │   ├── SpeciesSelect.tsx / SpeciesSwitch.tsx / StatBar.tsx
 │       ├── lib/
-│       │   ├── redis.ts           Upstash Redis client + key helpers + LANGUAGE_TO_SPECIES map
-│       │   └── auth.ts            NextAuth config (GitHub provider)
-│       ├── party/
-│       │   └── world.ts           Old/stub PartyKit server (not the active one — see web-party)
-│       ├── web-party/             Active standalone PartyKit server project
-│       │   ├── partykit.json      PartyKit config — name: "web-party", main: src/server.ts
-│       │   ├── src/
-│       │   │   ├── server.ts      The real PartyKit WebSocket server (169 lines)
-│       │   │   └── client.ts      Minimal PartyKit browser client stub
-│       │   └── package.json       Separate package for partykit deploy
-│       └── next.config.ts         Enables React Compiler (reactCompiler: true)
+│       │   ├── redis.ts           Upstash client, key helpers, species/friends/wins helpers
+│       │   ├── auth.ts            NextAuth config + getSessionUsername() + isAuthorizedAs()
+│       │   ├── three-global.ts    ThreeGlobal type + getThree()
+│       │   └── types.ts           NextAuth Session augmentation (accessToken, login)
+│       ├── party/world.ts         DEAD old stub — not deployed; the real server is web-party/
+│       ├── web-party/             Active standalone PartyKit server (deployed separately)
+│       │   ├── partykit.json      name: "web-party", main: src/server.ts
+│       │   └── src/server.ts      The real WebSocket server (~260 lines)
+│       └── next.config.ts         Enables React Compiler
 ├── packages/
-│   ├── core/                      Shared TypeScript types and pet derivation logic
-│   │   └── src/
-│   │       ├── types.ts           PetState, PetStats, GitData, Mood, Stage interfaces
-│   │       ├── stats.ts           deriveStats, deriveMood, deriveStage, derivePrimaryColor, derivePetState
-│   │       └── index.ts           Re-exports
-│   ├── renderer/                  Canvas pet renderer (used in 2D contexts: dashboard, landing, card)
-│   │   └── src/
-│   │       ├── speciesRects.ts    getSpeciesRects() — returns [x,y,w,h,color][] for 5 species × 3 views
-│   │       ├── draw.ts            drawPet() — draws to a 2D canvas context
-│   │       ├── sprites.ts         Fallback pixel sprite data (used when species is unknown)
-│   │       ├── species.ts         Additional species data
-│   │       ├── colors.ts          Color utilities
-│   │       └── index.ts           Re-exports drawPet, getSpeciesRects
-│   └── github/                    GitHub data fetching package
-│       └── src/
-│           ├── client.ts          GitHubClient class — fetchUserStats() via GraphQL
-│           ├── query.ts           USER_STATS_QUERY GraphQL query
-│           ├── transform.ts       transformToGitData() — converts raw GraphQL → GitData
-│           └── types.ts           GitHubGraphQLResponse type
-└── tooling/                       Shared tooling configs (ESLint, TypeScript base configs)
+│   ├── core/                      PetState types + derivation (deriveStats/Mood/Stage/PrimaryColor/PetState)
+│   │   └── src/stats.test.ts      Vitest suite (10 tests) — `npm test`
+│   ├── renderer/                  2D canvas renderer: drawPet(), getSpeciesRects(), CANON_COLORS, sprites
+│   └── github/                    GitHubClient.fetchUserStats() via GraphQL → transformToGitData()
+└── tooling/                       Shared ESLint + tsconfig bases
 ```
 
 ---
@@ -131,15 +108,15 @@ git-pet/
 
 These are load-bearing patterns. Changing them carelessly will break the project.
 
-### 4.1 Three.js loaded from CDN, not npm
+### 4.1 Three.js loaded from CDN, typed via getThree()
 
-Three.js r128 and CSS2DRenderer are loaded at runtime inside the `init()` async function in WorldClient.tsx using a `loadScript()` helper. After loading, the library is accessed as `(window as any).THREE`. This pattern exists because Next.js SSR would fail if Three.js were imported at module level (it requires `window`). The CDN approach also avoids bundling a large library. Every Three.js call inside `init()` uses the local `const THREE = (window as any).THREE` variable, never a module import.
+`init()` in WorldClient.tsx (and the equivalent in LandingPage.tsx) calls `loadScript()` for Three.js r128 (cdnjs) and CSS2DRenderer (jsDelivr), then does `const loadedThree = getThree()` and re-binds it as a local `const THREE = loadedThree` after a null check (hoisted inner functions lose TypeScript narrowing otherwise). SSR would fail on a module-level import because Three.js needs `window`.
 
-If you add new Three.js features, they must go inside `init()` and use the local `THREE` variable. Do not npm-install three.
+New Three.js code goes inside `init()` and uses the local `THREE`. Use `ThreeNS.*` types (from `@/lib/three-global`) for annotations — do not reintroduce `any`.
 
 ### 4.2 The RAF loop structure and movement block pattern
 
-The main render loop (`tick()`) runs via `requestAnimationFrame`. It has a strict structure:
+The main render loop (`tick()`) runs via `requestAnimationFrame`:
 
 ```
 if (p.controlEnabled && !movementBlocked.current) {
@@ -149,295 +126,270 @@ if (p.controlEnabled && !movementBlocked.current) {
 }
 ```
 
-The `else if (!movementBlocked.current)` branch is the cinematic intro walk. It must not be touched. When the interaction menu opens, `movementBlocked.current = true` freezes both branches simultaneously. This prevents drift or lurch when opening the menu mid-walk.
-
-`movementBlocked.current` is set to `true` in `openInteractionMenu()` and cleared in `closeInteractionMenu()`. These two refs must stay in sync. If movement is re-enabled without clearing velocity, the player lurches.
+The `else if` branch is the cinematic intro walk — do not touch it. `movementBlocked.current = true` (set when the interaction menu opens) freezes both branches. `closeInteractionMenu()` clears it and hard-clears keys and velocity; if movement is re-enabled without clearing velocity, the player lurches. A `cinematicSignaled` flag makes `setCinematicDone(true)` fire once, not every frame.
 
 ### 4.3 interactionTargetRef and interactionTarget state sync
 
-There are two parallel references to the current interaction target:
-- `interactionTargetRef` — a `useRef` used inside the RAF loop and event handlers (synchronous, always current)
-- `interactionTarget` state — a `useState` used by React to conditionally render the HUD
+- `interactionTargetRef` — `useRef`, read inside the RAF loop and key handlers (always current)
+- `interactionTarget` — `useState`, drives HUD rendering
 
-Both must be set together in `openInteractionMenu()` and cleared together in `closeInteractionMenu()`. The ref is necessary because closures inside the RAF loop and `onKD` handler capture the ref but not the stale state. The state is necessary for React to render the HUD. If you update only one without the other, the HUD shows when no target exists, or interaction keys fire with no target.
+Both must be set together when opening the menu and cleared together in `closeInteractionMenu()`.
 
 ### 4.4 All interaction logic inlined inside onKD
 
-The keyboard handler `onKD` is defined inside the `init()` async function and closed over the Three.js `THREE` variable and scene-level objects. Moving any interaction logic (fight, befriend, emoji) outside of this closure would break access to `THREE`, `scene`, `remotePlayersRef`, etc. This is a known constraint documented in both CONTRIBUTING.md and code comments.
+`onKD` is defined inside `init()` and closes over `THREE`, `scene`, `remotePlayersRef`, etc. Interaction logic (fight Z, befriend F, emoji X then 1–6) must stay inside it. Things that don't need the closure and must be stable for the effect deps (e.g. `persistFightWin`) are `useCallback`s in component scope and listed in the main effect's dependency array.
 
-### 4.5 Multiplayer player tracking: two separate Maps
+### 4.5 Effect lifecycle and cleanup
 
-Remote players are tracked in `remotePlayersRef.current` (a `Record<string, { bb, targetPos, targetRot, species }>`), which holds active live players. Ghost pets (offline users at their last position) are tracked separately in `ghostsRef.current` (a `Map<string, { group }>`).
+- Each run of the main effect captures `const cleanups = cleanupFns.current`, `init()` pushes into it, and the effect cleanup runs and empties exactly that array. Do not push cleanups from outside a run.
+- Three.js objects removed from the scene must go through `disposeGroup()` (geometries, materials, textures) — use `removeRemotePlayer(uid)` / `removeGhost(username)` rather than bare `scene.remove`.
+- On `snapshot`, remote players not present in the snapshot are removed (stale-player diff).
+- Pending befriend timers are cleared on unmount.
+- `selectedPet` is derived once from the server-fetched `initialSpecies` prop and never re-read from localStorage (that re-read used to cause a double init for returning users).
 
-This split is load-bearing for proximity detection and interaction: the RAF loop's proximity check only iterates `remotePlayersRef.current`, automatically excluding ghosts. Ghost meshes never appear as interaction targets. Any code that iterates over remote players for interaction, animation, or proximity must use `remotePlayersRef.current`, not `ghostsRef.current`.
+### 4.6 Multiplayer player tracking: two separate collections
 
-### 4.6 Pet rendering via getSpeciesRects — two paths in draw.ts
+- `remotePlayersRef.current` — `Record<string, RemotePlayer>` (`{ bb: Billboard, targetPos, targetRot, species }`), live players only.
+- `ghostsRef.current` — `Map<string, { group }>`, offline ghosts.
 
-`drawPet()` in the renderer package has two codepaths:
-1. If `species` is a known species and `getSpeciesRects()` returns non-null, it draws rectangles directly. This path is used for known species (wolf, sabertooth, capybara, dragon, axolotl).
-2. If `getSpeciesRects()` returns null, it falls back to `getSpriteView()` which returns pixel-by-pixel sprite data.
+The RAF proximity check only iterates `remotePlayersRef.current`, so ghosts are never interaction targets. Anything that iterates players for interaction, animation or proximity must use `remotePlayersRef.current`.
 
-In WorldClient.tsx, the 3D voxel pets in the world are built with `buildVoxelPet()`, which calls `getSpeciesRects()` directly and creates `THREE.BoxGeometry` meshes for each rect. The billboard sprites (floating 2D canvases above players) use `drawPet()` in the RAF loop via `updateBillboard()`. These are two completely different rendering paths for the same visual.
+### 4.7 Two pet rendering paths
 
-### 4.7 Billboard camera-facing behavior
+- **Live players (local and remote)** are 2D billboards: a canvas redrawn with `drawPet()` (renderer package) as a texture on a camera-facing `PlaneGeometry`. `drawPet()` applies `STAGE_SCALE` (egg smallest → legend 1.15×) and a glow for legends, so stage is visible here.
+- **Ghosts** are 3D voxel pets from `buildVoxelPet()`, which turns each `getSpeciesRects()` rect into a `BoxGeometry` mesh. Voxel pets currently ignore stage.
 
-Remote player sprites are rendered as `THREE.Mesh` with `PlaneGeometry` on a canvas texture. The plane faces the camera via:
+Remote billboards are redrawn every `BILLBOARD_REDRAW_INTERVAL` (3) frames, staggered by each billboard's random `redrawOffset` so they don't all redraw on the same frame.
+
+`drawPet()` itself has two codepaths: known species → `getSpeciesRects()` rects; unknown species → `getSpriteView()` pixel sprites.
+
+### 4.8 Billboard camera-facing behavior
+
 ```js
 plane.onBeforeRender = (renderer, scene, camera) => {
   plane.quaternion.copy(camera.quaternion);
 };
 ```
-This is the Three.js r128 compatible billboard approach. Do not replace it with `THREE.Sprite` or later-version billboard APIs; r128 does not support them the same way.
 
-### 4.8 PartyKit server mismatch: two server files
+This is the r128-compatible approach. Do not replace it with `THREE.Sprite` or later-version APIs.
 
-There are two PartyKit server files:
-- `apps/web/party/world.ts` — an old stub with a minimal interface (position, join, leave messages). This is NOT the active server.
-- `apps/web/web-party/src/server.ts` — the active PartyKit server deployed separately via `partykit.json` with name `"web-party"`. This handles snapshot, pet_update, pet_left, befriend, fight, emoji, presence_update messages.
+### 4.9 PartyKit server (web-party/src/server.ts)
 
-The `NEXT_PUBLIC_PARTYKIT_HOST` env var must point to the web-party deployment. The client connects to room `"world"` in that host. The `onRequest` handler in the server exposes `GET /parties/web-party/world` (with `x-internal` auth) to return the list of currently online usernames, used by the ghosts API.
+`apps/web/party/world.ts` is a dead stub. The active server is `apps/web/web-party/src/server.ts`, deployed with `cd apps/web/web-party && npx partykit deploy` — **it is not deployed by Vercel; every server change needs a manual PartyKit deploy.** The client connects to room `"world"` on `NEXT_PUBLIC_PARTYKIT_HOST`.
 
-### 4.9 Species stored in Redis, not derived from GitHub data
+Server behavior:
+- **Identity is server-side.** `join` binds `connection.id → username` (`connToUser`, `userToConns`). All interaction messages use that `senderUsername` as `fromId` and ignore any client-supplied `fromId`; messages from a connection that hasn't joined are dropped.
+- **Hardening:** `onMessage` is wrapped in try/catch, bad JSON is dropped, per-connection rate limit of 20 messages/second, `move` x/y/rot and `fight` damage must be finite numbers.
+- **Messages handled:** `join`, `move`, `befriend_request`, `befriend_confirmed`, `befriend_expired`, `fight`, `emoji`. Legacy `befriend`/`presence_update`/`interaction` handlers were removed.
+- **Sent:** `snapshot` (on connect), `pet_update`, `pet_left`, `befriend_request`, `befriend_confirmed`, `befriend_expired`, `fight_received`, `emoji_received`.
+- `onClose` and `onError` both run the same cleanup (remove connection; drop the pet only when the user has no connections left; broadcast `pet_left`).
+- `onRequest` `GET /parties/web-party/world` with header `x-internal: INTERNAL_SECRET` returns `{ online: string[] }` — used by the ghosts API.
+- On `befriend_confirmed`, `persistFriendship()` POSTs to `${NEXT_PUBLIC_APP_URL}/api/friends` with the shared secret, 5s timeout, one retry after 500ms, then logs on failure. The client is not told if both attempts fail (ISSUES.md #13, partial).
 
-Each user's chosen species is stored as `species:{username}` in Upstash Redis. It is NOT automatically derived from their GitHub languages at login time. The auto-assignment (`autoAssignSpecies()`) only runs as a suggestion on the first-time species selection screen. After the user picks a species, it is saved via `POST /api/species` and read on every subsequent page load.
+WorldClient still has a harmless client-side `befriend_received` branch from the legacy flow; the server never sends it.
 
-The Redis key structure is:
-- `species:{username}` — string, the chosen species
-- `friends:{username}` — Redis Set, list of friend usernames (bi-directional)
-- `last_seen:{username}` — JSON object `{ timestamp, x, z }` for ghost positioning
+### 4.10 Species stored in Redis, not derived from GitHub data
 
-### 4.10 Ghost system: offline user persistence
+`species:{username}` holds the chosen species. `autoAssignSpecies()` only produces the suggestion on the first-time selection screen. The dashboard uses `getUserSpeciesOrThrow()` for its new-user check so a Redis outage shows an error state instead of bouncing an existing user back to onboarding; everywhere else uses best-effort `getUserSpecies()`.
 
-When a user disconnects (beforeunload event, socket close, or React cleanup), their position is POSTed to `POST /api/ghosts`. On world load, `GET /api/ghosts` returns all users who have a `last_seen:` entry, are not currently in the PartyKit room (queried via `onRequest`), and whose entry is less than 7 days old. These are rendered as translucent (opacity 0.4) voxel pets with a slate-gray (#64748b) CSS2D label. Ghosts sway with the same `sin(frame * 0.04) * 0.06` rotation as live pets but do not move. They are removed when the real user connects (snapshot or move message arrives for their username).
+Redis keys (always build them with the helpers in `lib/redis.ts`):
+- `species:{username}` — string (`speciesKey`)
+- `friends:{username}` — Set, bi-directional (`friendKey`)
+- `last_seen:{username}` — JSON `{ timestamp, x, z, mood? }` (`lastSeenKey`)
+- `wins:{username}` — integer fight-win counter (`winsKey`, `incrementWins`, `getWins`)
 
-### 4.11 Reciprocal befriend flow (two-sided, 5-second window)
+### 4.11 Ghost system: offline user persistence
 
-Befriending is NOT instant. Pressing F on a target sends a `befriend_request` WS message. The receiver gets a toast and has 5 seconds (tracked in `pendingBefriendRef`) to press F on the same sender while that sender is their interaction target. If they do, `befriend_confirmed` is broadcast and both clients update `friendsRef` and play an enhanced midpoint heart animation. If the window expires, `befriend_expired` is broadcast and both sides see a fizzle animation (broken heart particles, 600ms fade). Friends state is only updated on `befriend_confirmed`, never on the initial request.
+Position is POSTed to `/api/ghosts` on beforeunload, socket close and React cleanup. `GET /api/ghosts` scans `species:*`, excludes the caller and anyone currently online (PartyKit roster), and fetches each candidate's `last_seen` + species concurrently (`Promise.all`), keeping entries younger than 7 days. Ghosts are translucent (opacity 0.4) voxel pets with a slate-gray (#64748b) CSS2D label, sway with `sin(frame * 0.04) * 0.06`, and are removed when the real user shows up in a snapshot or move.
 
-The PartyKit server (`web-party/src/server.ts`) still has the old `befriend` → `befriend_received` handler but does NOT yet have `befriend_request`, `befriend_confirmed`, or `befriend_expired` handlers. The client sends these new message types and the server needs to be updated to route them. Currently these messages only work if the server broadcasts them generically or if the recipient happens to receive the broadcast. This is a current gap (see Section 7).
+### 4.12 Reciprocal befriend flow (two-sided, 5-second window)
 
-### 4.12 Ambient proximity interaction system
+Pressing F sends `befriend_request`. The receiver gets a toast and has 5 seconds (`pendingBefriendRef`) to press F on that sender while they are the interaction target → `befriend_confirmed` is sent, both clients update `friendsRef` and play the midpoint heart animation, and the server persists the friendship. If the window expires, `befriend_expired` is sent and both sides see the fizzle animation. Friend state is only updated on confirmation.
 
-Two new refs track proximity state:
-- `proximityTimers` (Map<string, number>) — seconds each remote player has been continuously within 4 units
-- `ambientTiltActive` (Set<string>) — which players currently have an active head-tilt animation
+### 4.13 Fights
 
-Each RAF frame, for each remote player within 4 units: the timer increments by `delta`. At 3 continuous seconds, a 2-second head-tilt animation fires (increased sway amplitude, fires once per proximity window). At 6 continuous seconds, there is a 1-in-600 frame chance of spawning an ambient emoji (👋 😊 ✨ 🌸) above one of the two pets. Real interactions (interactionOpen is true for that pair) suppress ambient checks. Ghosts are excluded automatically.
+- Damage comes from `computeFightDamage(attackerStats, defenderStats)`: attack scales with the attacker's (health + energy), defense with the defender's health, clamped to 5–35 on a 100-HP scale. So a healthy commit streak hits harder and takes less.
+- HP is per-session, in `remotePlayerHealth` (resets on reconnect). Knocking a target to 0 shows "You won! 🏆", calls `persistFightWin()` (`POST /api/fights`, session-authenticated as the winner), and resets the target's HP after 3s.
+- Wins are shown on the public pet page via `PetCard`'s `wins` prop.
+- Cooldowns: 700ms on the Z key path.
+
+### 4.14 Ambient proximity interaction
+
+- `proximityTimers` (Map<string, number>) — seconds each remote player has been within 4 units.
+- `ambientTiltActive` (Set<string>) — players with an active head-tilt.
+
+At 3 continuous seconds a 2-second head-tilt fires (once per proximity window). At 6 seconds there's a 1-in-600-frame chance of an ambient emoji (👋 😊 ✨ 🌸). Suppressed while a real interaction is open. Ghosts are excluded automatically.
+
+### 4.15 Auth
+
+`lib/auth.ts`:
+- GitHub provider with scope `read:user repo` and **`issuer: "https://github.com/login/oauth"`** — required. GitHub sends `iss` on the OAuth callback and openid-client rejects it if the provider has no matching issuer; without this line every sign-in fails with `error=OAuthCallback`.
+- The `jwt` callback fetches `https://api.github.com/user` once at sign-in to store the real `login`; `session.login` is the username used everywhere.
+- `getSessionUsername()` — the one way routes read the current user.
+- `isAuthorizedAs(username, secret)` — true if `INTERNAL_SECRET` is set **and** matches, or the session user equals `username`. An unset secret never matches.
 
 ---
 
 ## Section 5: Feature Inventory
 
-### Interaction system
-- **Press E to interact**: proximity detection in RAF loop (within 4 units of a remote player) shows hint; E opens the interaction menu. Interactables (shrines, pond, well, campfires, etc.) take priority over player interaction.
-- **Fight (Z key)**: sends `fight` WS message with 20 damage, updates remote HP bar, triggers screen shake and knockback, plays floating damage number. Has 800ms (key handler) and 700ms (HUD button) cooldowns.
-- **Befriend (F key)**: two-sided reciprocal flow. Sends `befriend_request`, receiver has 5 seconds to press F. On confirmation, `befriend_confirmed` is sent, friends state updated, midpoint heart animation plays.
-- **Emoji picker (X key, then 1-6)**: opens emoji picker HUD, digit key sends emoji via WS, arced emoji animation plays.
-- **Fight HP tracking**: `remotePlayerHealth` ref tracks per-player HP (in-memory only, resets on reconnect). In-world CSS2D HP bars shown above remote players. Fight state persists to Redis only when befriend is confirmed (via friends POST).
-- **Interaction menu escape**: ESC or physical menu close clears interaction state, re-enables movement, hard-clears velocity and keys.
+### Interaction system (world)
+- **E to interact**: proximity (within 4 units) shows a prompt; interactables (shrines, pond, well, campfires, etc.) take priority over players and show narrative text overlays.
+- **Fight (Z)**: stat-driven damage, HP bars, screen shake, knockback, floating damage numbers, persisted wins.
+- **Befriend (F)**: reciprocal 5-second flow, persisted to Redis by the PartyKit server.
+- **Emoji (X then 1–6)**: arced emoji animation on both clients.
+- **ESC** closes the menu, re-enables movement, clears velocity and keys.
 
 ### Multiplayer
-- **PartyKit WebSocket**: client connects to room "world" on mount. Sends `join` with species and position, `move` every 100ms when moving, `befriend/fight/emoji` messages for interactions.
-- **Snapshot on connect**: server sends current room state as `snapshot` on connection. Client renders all existing players.
-- **pet_update on join/move**: new and moving players broadcast `pet_update` to other clients.
-- **pet_left on disconnect**: server detects close and broadcasts `pet_left`; client removes the player from scene and refs.
-- **Species syncing**: species is sent in join and move messages, remote clients update the billboard if species changes.
-- **Online count**: updated every time a WS message arrives by counting `Object.keys(remotePlayersRef.current).length + 1`.
+- `join` on connect, `move` every 100ms while moving, `snapshot` on connect, `pet_update` / `pet_left` broadcasts.
+- Species changes arrive on `move` (`petType`) and update the remote billboard.
+- Online count = remote players + 1.
 
-### Ghost NPCs
-- Offline users appear as translucent (opacity 0.4) voxel pets at their last position.
-- Slate-gray #64748b CSS2D label, no HP bar.
-- Idle sway: `sin(frameCount * 0.04) * 0.06` rotation Y each frame.
-- Ghost appears on world load, disappears when the real user connects.
-- Position is saved on beforeunload, socket close, and React cleanup.
+### Ghost NPCs, ambient proximity — see 4.11 and 4.14.
 
-### Ambient proximity
-- 3-second proximity threshold: head-tilt animation (increased sway amplitude for 2 seconds).
-- 6-second proximity threshold: 1/600 frame chance of ambient emoji float.
-- Suppressed when real interaction is in progress.
+### Pet rendering
+- Five species: wolf, sabertooth, capybara, dragon, axolotl. Front/side/back views with bob and animation offsets driven by frame count.
+- Stages (from `deriveStage`): egg (<10 commits), hatchling (≥10), adult (≥100 commits and ≥2 languages), legend (≥1000 commits and ≥4 languages). 2D renderer scales by stage and glows for legends; the voxel renderer does not yet.
 
-### Pet rendering (world)
-- 3D voxel pets built from `getSpeciesRects()` rects, each rect becomes a `BoxGeometry` mesh.
-- 2D billboard sprites (canvas textures on PlaneGeometry) for local and remote players, updated every frame via `drawPet()`.
-- Five species: wolf, sabertooth, capybara, dragon, axolotl. Each has front/side/back views with bob and animation offsets driven by frame count.
+### Pet card (shareable PNG)
+- `GET /api/card/[username]`, edge runtime, div-based sprite from `getSpeciesRects()`.
+- Level is derived from stage; footer shows the current year; colors from renderer's `CANON_COLORS`.
+- Embeddable as `![Pet](https://git-pet-beta.vercel.app/api/card/username)`.
 
-### Pet card (shareable)
-- `GET /api/card/[username]` returns a PNG image response (edge runtime, Next.js ImageResponse).
-- Uses `getSpeciesRects()` to render the sprite as div-based boxes (no canvas, compatible with edge runtime).
-- Fetches live GitHub data if `GITHUB_CARD_TOKEN` is set; renders minimal fallback if no species found in Redis.
-- Shows: species name, role class (AGGRO/TANK/SUPPORT/LEGEND/REGEN), streak, total commits, health %, activity score.
-- Embeddable as `![Pet](https://git-pet-beta.vercel.app/api/card/username)` in GitHub README.
+### Public pet page and API
+- `/pet/[username]` — anyone can look up any GitHub user's pet (PetCard in public mode, with fight wins).
+- `GET /api/pet/[username]` — public PetState JSON + species, cached 1h (shares the card/leaderboard GitHub token quota).
 
 ### Dashboard
-- Server-side: fetches GitHub data, derives PetState, reads saved species from Redis.
-- New users: shows `SpeciesSelect` with auto-suggested species based on top GitHub language.
-- Returning users: shows `PetCard` with stats, links to world and settings.
+- Server-side GitHub fetch + PetState; species color overrides the language-derived `primaryColor`.
+- New users → `SpeciesSelect`; returning → `PetCard`; Redis failure → explicit error state.
 
 ### Landing page
-- Large animated pet preview using `PetCanvas` component with `drawPet()`.
-- Static marketing content, sign-in CTA.
-
-### Species selection / settings
-- First-time: `SpeciesSelect` component (shown from dashboard if no species in Redis).
-- Returning: `SpeciesSwitch` at `/settings`.
-- Both POST to `/api/species` which writes to Redis.
+- Its own Three.js scene (typed via `getThree()`), marketing content, sign-in CTA.
+- **Hall of Legends**: walk to the leaderboard stone at Z:-24.5 and press E. Fetches `/api/leaderboard` once per open; tabs 🔥 Streak / ⚡ Commits / ❤️ Friends.
 
 ### World environment
-- Hand-built Three.js scene with: ground plane (vertex color terrain), cherry trees, shrine, ponds, torii gates, stone lanterns, campfires, crystal clusters, waterfalls, ancient ruins, stone circles, totem poles, desert zone, forest zone, mountain zone, plains zone.
-- Collision system: `Box3` colliders for walls, trees, structures. Sliding collision (X and Z tested independently).
-- Day/night cycle: 75-second full cycle, adjusts sun light, ambient light, sky color, fog, lantern glow.
-- Fireflies, falling petals, sway animation for reeds, shide, waterfalls, campfire flames.
-- Minimap: 120×120 canvas in corner showing player position.
-
-### Hall of Legends (leaderboard)
-- Accessible in the landing page world by walking near the leaderboard stone at Z:-24.5 and pressing E.
-- `GET /api/leaderboard` discovers all onboarded users from `species:*` Redis keys, fetches live GitHub stats via `GitHubClient.fetchUserStats()` + `derivePetState()` (same pattern as the card route), reads friend counts via `redis.scard()` on `friends:*` keys.
-- Returns three ranked lists: `topStreak` (current commit streak, days), `topCommits` (total lifetime commits), `topFriends` (friend count from Redis Set), each descending, top 10 entries.
-- Scale cap: if known username count exceeds 50, only the 50 most recently active users (by `last_seen:` timestamp) are processed. A `console.warn` fires so the cap can be revisited.
-- Response cached with `Cache-Control: public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400`. No new Redis writes — purely computed on read.
-- Client-side in `LandingPage.tsx`: fetched once when the overlay opens (`lbData` state, guarded to prevent re-fetch). Three tabs — 🔥 Streak / ⚡ Commits / ❤️ Friends — switched instantly. Shows loading and empty states. No fake data.
+- Hand-built scene: terrain, cherry trees, shrine, ponds, torii gates, lanterns, campfires, crystals, waterfalls, ruins, stone circles, totems, desert/forest/mountain/plains zones.
+- `Box3` sliding collision; 75-second day/night cycle; fireflies, petals, swaying reeds/shide, flames; 120×120 minimap.
 
 ---
 
-## Section 6: Known Bugs Fixed
+## Section 6: Known Bugs Fixed (don't reintroduce)
 
-### Velocity drift on interaction menu open
-The `closeInteractionMenu()` function hard-clears `keysRef.current = {}` and sets `vel.x = vel.z = 0`. This was added to fix a bug where the player would lurch or drift after closing the interaction menu, because key-down events during the menu were buffered in `keysRef` and velocity was not zeroed.
-
-### Freeze both RAF branches with movementBlocked
-Using a single `movementBlocked.current` ref that gates both the `if (controlEnabled)` and the cinematic `else if` branch prevents the cinematic walk from continuing when the menu is open. Before this pattern, opening the menu during the cinematic intro would freeze movement incorrectly or allow the intro walk to continue.
-
-### Species color mismatch between GitHub-derived color and species appearance
-In the dashboard page, `primaryColor` is overridden with `SPECIES_PRIMARY_COLOR[savedSpecies]` after derivation. The GitHub-derived primary color (based on top language) would otherwise produce the wrong palette for the species sprite. The comment in dashboard/page.tsx explains this explicitly.
-
-### Interaction target ref/state desync
-The dual ref+state pattern for `interactionTarget` exists because an earlier version used only state, which caused stale closure bugs where the key handler would fire on a target that React had already cleared. The ref is always current and used in event handlers; the state drives rendering only.
+- **Velocity drift on menu close** — `closeInteractionMenu()` clears `keysRef` and velocity.
+- **Cinematic walk continuing under the menu** — single `movementBlocked` gate on both RAF branches.
+- **Species color mismatch** — dashboard overrides `primaryColor` with the species canon color.
+- **Stale interaction target** — ref + state pair (4.3).
+- **Spoofed identities over WebSocket** — server now uses `connToUser`, never client `fromId`.
+- **One-sided friendships via direct API calls** — `POST /api/friends` accepts only the internal secret.
+- **Unset secret matching unset secret** — `isAuthorizedAs()` requires `INTERNAL_SECRET` to be set.
+- **One bad message crashing a connection** and leaking its pet into room state — try/catch + `onError` cleanup.
+- **Three.js memory leaks** on player leave / ghost removal — `disposeGroup()`.
+- **Double world init for returning users** — no localStorage re-read of the selected pet.
+- **Cleanups accumulating across effect runs** — per-run captured cleanup array.
+- **`/api/species?username=` returning the caller's species** — public lookup branch fixed.
+- **Every card showing level 1** — level derived from stage.
+- **Emoji animation crash when the player is null** — guarded.
+- **Sign-in failing with `error=OAuthCallback`** — GitHub provider `issuer` (4.15).
 
 ---
 
 ## Section 7: Current State and Gaps
 
 ### Fully working
-- GitHub OAuth sign-in
-- PetState derivation from GitHub data (commits, streak, language, stars, repos, PRs)
-- Species selection and Redis persistence
-- Dashboard with pet card
-- Shareable PNG pet card (edge API)
-- Three.js 3D world with collision, camera, day/night cycle
-- Local player movement and control (WASD, cinematic intro)
-- Remote player rendering via PartyKit WebSockets (snapshot, join, move, leave)
-- Fight system (damage, HP bars, screen shake, knockback, floating numbers)
-- Emoji send/receive with arc animation
-- Ghost NPC system (offline users, position saved, fetched on load, removed on reconnect)
-- Ambient proximity interaction (head-tilt sway at 3s, ambient emoji at 6s)
-- Reciprocal befriend client-side flow (request, confirm, expire, animations)
-- Real leaderboard (Hall of Legends) — live GitHub stats, tab-based ranking, HTTP-cached
+GitHub sign-in, PetState derivation, species selection, dashboard, public pet page and API, shareable PNG card, 3D world (collision, camera, day/night), multiplayer presence, fights with persisted wins, emoji, reciprocal befriend with server routing and Redis persistence, ghosts, ambient proximity, Hall of Legends leaderboard.
+
+### Quality baseline
+- `tsc` clean across the web app; ESLint down to 4 deferred warnings in LandingPage.tsx (left by the owner's choice, documented in ISSUES.md #20).
+- `npm test` runs 10 Vitest tests for `packages/core`.
+- Scale target is tens of concurrent users in one room.
 
 ### Partially wired
-- **Reciprocal befriend on the server**: the PartyKit server (`web-party/src/server.ts`) does not have handlers for `befriend_request`, `befriend_confirmed`, or `befriend_expired` message types. The server only handles the legacy `befriend` type. The client sends the new types, but the server will not route them to the intended recipient. For the new befriend flow to work in production, the server needs to add routing for these three message types, similar to how it routes `fight` and `emoji`.
-- **Friend persistence**: the PartyKit server calls `POST /api/friends` on old-style `befriend` messages to persist to Redis. This path is not called for the new `befriend_confirmed` messages yet. Friends are tracked in-memory per session only unless the server is updated.
-- **Fight health persistence**: HP is tracked in-memory per session via `remotePlayerHealth` ref. It resets when either player reconnects. No database persistence exists.
+- **Friend-save failure feedback** (ISSUES.md #13): the server retries once and logs, but clients are not told if the save ultimately fails.
+- **Fight HP** is session-only by design; only wins persist.
+- **Stage in the 3D voxel pets**: ghosts don't reflect stage.
+- `/world` has not been exercised by automated tests (needs a real login); verify multiplayer manually with two accounts.
 
 ### Missing entirely
-- Pet evolution based on commit streaks (roadmap item)
-- Sound and ambient audio (audioCtx is initialized but only footstep/interact sounds exist, both minimal)
-- Mobile touch controls (no implementation exists)
-- AI-driven pet behavior (roadmap item)
-- The `OnboardingScreen` component referenced in the prompt does not exist in the codebase
-- `apps/web/party/world.ts` is a dead stub; the active server is in `web-party/`
+- Visible pet evolution moments (stage-up celebration, voxel scaling) — roadmap
+- Sound beyond minimal footstep/interact effects
+- Mobile touch controls
+- AI-driven pet behavior
+- `apps/web/party/world.ts` is a dead stub; `app/signin/` is an empty directory
 
 ---
 
 ## Section 8: Environment Variables
 
-All variables used in `apps/web` unless noted.
+All in `apps/web` unless noted. Vercel needs the app vars; PartyKit needs its own (`npx partykit env add <NAME>` from `apps/web/web-party`).
 
 | Variable | Where used | Purpose |
 |---|---|---|
-| `GITHUB_CLIENT_ID` | `lib/auth.ts` | GitHub OAuth App client ID for NextAuth |
-| `GITHUB_CLIENT_SECRET` | `lib/auth.ts` | GitHub OAuth App client secret for NextAuth |
-| `NEXTAUTH_SECRET` | `lib/auth.ts` | Random secret for NextAuth session encryption |
-| `NEXTAUTH_URL` | `lib/auth.ts` | Base URL of the Next.js app (e.g. http://localhost:3000) |
-| `GITHUB_CARD_TOKEN` | `app/api/card/[username]/route.tsx` | GitHub PAT for fetching live data in card endpoint (needs read:user). Falls back to `GITHUB_TOKEN` if not set. |
-| `GITHUB_TOKEN` | `app/api/card/[username]/route.tsx` | Fallback PAT if GITHUB_CARD_TOKEN is absent |
-| `NEXT_PUBLIC_PARTYKIT_HOST` | `WorldClient.tsx` | PartyKit host URL for WebSocket connection (e.g. web-party.username.partykit.dev). Public prefix means it is exposed to the browser. |
-| `UPSTASH_REDIS_REST_URL` | `lib/redis.ts` | Upstash Redis REST API URL |
-| `UPSTASH_REDIS_REST_TOKEN` | `lib/redis.ts` | Upstash Redis REST token |
-| `INTERNAL_SECRET` | `app/api/friends/route.ts`, `app/api/ghosts/route.ts`, `web-party/src/server.ts` | Shared secret between the PartyKit server and the Next.js API routes. Used by PartyKit to call `/api/friends` for persistence and to authenticate `/api/ghosts` roster requests. Must be the same value in both environments. |
-| `NEXT_PUBLIC_APP_URL` | `web-party/src/server.ts` | The Next.js app base URL, used by the PartyKit server to call back to `/api/friends`. Defaults to `http://localhost:3000` if not set. Not defined in `.env.example` — must be added manually for production. |
+| `GITHUB_CLIENT_ID` | `lib/auth.ts` | GitHub OAuth App client ID (production and local use different OAuth apps) |
+| `GITHUB_CLIENT_SECRET` | `lib/auth.ts` | GitHub OAuth App client secret |
+| `NEXTAUTH_SECRET` | NextAuth | Session encryption secret |
+| `NEXTAUTH_URL` | NextAuth | App base URL (e.g. http://localhost:3000) |
+| `GITHUB_CARD_TOKEN` | card, pet, leaderboard routes | Server-side GitHub PAT (read:user). Falls back to `GITHUB_TOKEN` |
+| `GITHUB_TOKEN` | same | Fallback PAT |
+| `NEXT_PUBLIC_PARTYKIT_HOST` | `WorldClient.tsx`, `api/ghosts` | PartyKit host (web-party deployment). Exposed to the browser |
+| `UPSTASH_REDIS_REST_URL` | `lib/redis.ts` | Upstash REST URL |
+| `UPSTASH_REDIS_REST_TOKEN` | `lib/redis.ts` | Upstash REST token |
+| `INTERNAL_SECRET` | `lib/auth.ts`, `api/friends`, `api/ghosts`, **and PartyKit** | Shared secret between PartyKit and the Next.js API. Must be identical in Vercel and PartyKit, or friendships silently won't save and ghosts can't see who's online |
+| `NEXT_PUBLIC_APP_URL` | **PartyKit** (`server.ts`) | App base URL the PartyKit server calls back to. Defaults to http://localhost:3000 |
 
 ---
 
 ## Section 9: Conventions and Patterns
 
 ### API route structure
-Every API route in `apps/web/app/api/` follows the same pattern:
-1. Import `getServerSession` from `next-auth` and `authOptions` from `@/lib/auth`
-2. Authenticate via session (or shared secret for internal calls)
-3. Import helper functions from `@/lib/redis`
-4. Return `NextResponse.json()`
+1. Read the user with `getSessionUsername()` (or `isAuthorizedAs()` for routes the PartyKit server also calls). Don't call `getServerSession` directly in routes.
+2. Use helpers from `@/lib/redis` — no inline key strings, no business logic in routes.
+3. Return `NextResponse.json()`.
+4. Public read-only data (species, friends, wins, pet) may be looked up by `?username=`/`?userId=` without auth; writes are always session- or secret-authenticated.
+5. Endpoints that hit the GitHub API with the shared PAT must send `Cache-Control: public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400`.
 
-Avoid putting business logic in routes. Helper functions go in `lib/redis.ts`.
+### Redis
+Best-effort reads go through `safeRedis()` (log + fallback). Use a throwing variant only where "missing" and "unavailable" must be distinguished (see `getUserSpeciesOrThrow`).
 
-### Redis key naming
-All Redis keys use the format `{type}:{username}`:
-- `species:{username}` — string
-- `friends:{username}` — Redis Set
-- `last_seen:{username}` — JSON object
-
-Helper functions `speciesKey()`, `friendKey()`, `lastSeenKey()` in `lib/redis.ts` generate these. Always use these helpers rather than constructing key strings inline.
+### Colors
+`CANON_COLORS` is exported from the renderer package — import it; don't redefine species color maps.
 
 ### WorldClient.tsx is a single large file
-Everything in the 3D world lives in one component file (~2700 lines). This is intentional: Three.js scene objects, event handlers, and the RAF loop all need access to the same closure. New world features, interaction types, or visual effects go in this file, not in separate components.
+Three.js scene objects, event handlers and the RAF loop share one closure, so new world features go in this file. Keep it typed (interfaces at the top: `Billboard`, `RemotePlayer`, `InteractionTarget`, `AnimationStep`, `RemotePresence`).
 
 ### Adding a new WebSocket message type
-1. Add the client message type to the union in `web-party/src/server.ts`
-2. Add a handler in `onMessage()` in the server that routes to the target connection
-3. Add the server message type to the server's union
-4. Handle the incoming message in the `socket.addEventListener("message", ...)` block in WorldClient.tsx
-
-For interaction messages (fight, befriend, emoji), the pattern is: client sends `{ type, fromId, toId, ...payload }` → server looks up `userToConns.get(toId)` and sends to those connections → client receives `{ type: "*_received", fromId, ...payload }`.
+1. Add it to `ClientMessage` (and the outgoing shape to `ServerMessage`) in `web-party/src/server.ts`.
+2. Handle it in `handleMessage()`: require `senderUsername`, validate every field (use `isFiniteNumber` for numbers), route via `userToConns.get(toId)`, and send `fromId: senderUsername`.
+3. Handle the incoming message in the `socket.addEventListener("message", ...)` block in WorldClient.tsx.
+4. Redeploy PartyKit.
 
 ### New interaction types
-All new interaction logic must be:
-- Inlined inside the `onKD` key handler within `init()` (not in outer component scope)
-- Guarded by `if (interactionOpen.current)` so they only fire when the menu is open
-- Paired with `closeInteractionMenu()` at the end if they should close the menu
-
-### Species and color system
-`getSpeciesRects()` accepts a `baseColor` parameter but uses `CANON_COLORS[species]` internally, ignoring `baseColor` for known species. When building voxel pets in WorldClient.tsx, use `SPECIES_PRIMARY` map to look up the canonical color to pass in. The GitHub-derived `primaryColor` from PetState is used only in the 2D renderer (`drawPet`) when the species is not recognized.
+- Inline inside `onKD` within `init()`.
+- Guard with `if (interactionOpen.current)`.
+- Call `closeInteractionMenu()` at the end if the menu should close.
 
 ### Leaderboard data-fetch pattern (read-heavy, no writes)
-The leaderboard route (`app/api/leaderboard/route.ts`) is the canonical example of a read-heavy endpoint that fetches live external data:
-1. Discover users from Redis key scan (`redis.keys("species:*")`)
-2. Cap the set by recency using `last_seen:` keys if the count exceeds the limit
-3. Fan out `Promise.allSettled()` calls to GitHub + Redis per user
-4. Sort and slice the results in memory
-5. Return with `Cache-Control: public, max-age=3600` to amortize external API cost
-6. Never write to Redis
+1. Discover users via `redis.keys("species:*")`.
+2. Cap by recency (`last_seen:`) above 50 users.
+3. Fan out GitHub + Redis calls in batches of 8 with `Promise.allSettled()`, logging failures.
+4. Sort and slice in memory; return with the 1h cache header; never write to Redis.
 
-Follow this pattern for any future endpoint that ranks or aggregates across all users.
+### Tests
+Pure logic in `packages/*` gets Vitest tests next to the source (`*.test.ts`, excluded from `tsconfig` builds). Run `npm test` from the root.
+
+### Commits and deploys
+The repo-local git email must be `179401569+SaadArqam@users.noreply.github.com`, or Vercel Hobby blocks the deploy.
 
 ---
 
 ## Section 10: Files to Read First for Future Work
 
-In priority order:
-
-1. `apps/web/components/world/WorldClient.tsx` — the entire 3D world, interaction system, RAF loop, PartyKit client. If you are changing anything about the world experience, this is the file.
-
-2. `apps/web/web-party/src/server.ts` — the active PartyKit WebSocket server. Read this to understand what message types exist, how player presence is tracked, and how to add new message routing.
-
-3. `apps/web/lib/redis.ts` — all Redis key definitions, type definitions, and helper functions. Read before adding any new persistence.
-
-4. `packages/core/src/types.ts` and `packages/core/src/stats.ts` — the PetState data model and the derivation functions. Read before changing how GitHub data maps to pet properties.
-
-5. `packages/renderer/src/speciesRects.ts` — the species sprite rect data. Read before adding new species or changing visual appearance.
-
-6. `apps/web/app/api/leaderboard/route.ts` — canonical example of a read-heavy, cached, multi-user aggregation endpoint that fans out GitHub API calls without writing to Redis.
-
-7. `apps/web/app/api/ghosts/route.ts` — example of a session-authenticated route using the internal PartyKit roster query pattern.
-
-8. `apps/web/app/api/card/[username]/route.tsx` — the OG image generation route. Read before modifying the shareable card.
-
-9. `apps/web/app/LandingPage.tsx` — the landing page world (Three.js scene, overlays, Hall of Legends). Read before changing the landing experience or adding new interactable objects.
+1. `apps/web/components/world/WorldClient.tsx` — the world, interactions, RAF loop, PartyKit client.
+2. `apps/web/web-party/src/server.ts` — message types, identity, rate limiting, friend persistence.
+3. `apps/web/lib/redis.ts` and `apps/web/lib/auth.ts` — persistence and auth helpers.
+4. `packages/core/src/types.ts` and `stats.ts` (+ `stats.test.ts`) — PetState model and derivation.
+5. `packages/renderer/src/draw.ts` and `speciesRects.ts` — 2D rendering, stage scaling, sprite rects.
+6. `apps/web/app/api/leaderboard/route.ts` — canonical cached multi-user aggregation.
+7. `apps/web/app/api/ghosts/route.ts` — session auth + internal PartyKit roster query.
+8. `apps/web/app/api/card/[username]/route.tsx` — OG card.
+9. `apps/web/app/LandingPage.tsx` — landing scene and Hall of Legends.
+10. `ISSUES.md` — what was audited and fixed, and the two items with caveats.
