@@ -7,141 +7,260 @@ import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 import { getThree, type ThreeNS } from '@/lib/three-global'
 import { getSpeciesRects, CANON_COLORS } from '@git-pet/renderer'
 
-// ─── Hatch intro: a blocky pixel-art egg that shakes, cracks, and pops open
+// ─── Hatch intro: a smooth, vector-drawn egg (not a pixel grid — the blocky
+// look and the visible bounding "square" during the pop both came from
+// filling a coarse row/column grid) that gently breathes, cracks, and opens
 // into the actual species sprite (getSpeciesRects — the same rects used for
 // every pet in the world). Runs once per page load in its own tiny canvas,
 // independent of the main Three.js scene, so it can start animating on the
 // very first frame instead of waiting on the CDN script loads below.
 const INTRO_SPECIES_LIST = ['wolf', 'sabertooth', 'capybara', 'dragon', 'axolotl'] as const
 
-// [col, row] pairs, in a 13x16 pixel grid, that render as light species-tinted
-// speckles on the shell — a subtle foreshadow of what's about to hatch.
-const HATCH_SPECKLES: [number, number][] = [[3, 3], [9, 3], [6, 4], [5, 6], [8, 6], [2, 9], [10, 9], [6, 10], [4, 12], [8, 12]]
+// A closed egg silhouette, sampled from a limaçon-style polar curve
+// (r(t) = 1 - k·cos t) — narrower "top", rounder "bottom" — as 100 smooth
+// points in normalized [-1,1]-ish local space. Computed once; scaled,
+// rotated, and translated per frame instead of redrawn from scratch.
+const EGG_K = 0.26
+const EGG_SAMPLES = 100
+const EGG_POINTS: [number, number][] = Array.from({ length: EGG_SAMPLES + 1 }, (_, i) => {
+  const t = (i / EGG_SAMPLES) * Math.PI * 2
+  const r = 1 - EGG_K * Math.cos(t)
+  return [r * Math.sin(t), -r * Math.cos(t)]
+})
+// The curve's parameter runs right side (t: 0→π) then left side (t: π→2π),
+// each starting and ending exactly on the vertical centerline — so each half
+// is already a closable polygon on its own, for the shell-burst halves.
+const EGG_RIGHT_HALF = EGG_POINTS.slice(0, EGG_SAMPLES / 2 + 1)
+const EGG_LEFT_HALF = EGG_POINTS.slice(EGG_SAMPLES / 2)
 
-// Three jagged crack lines (same 13x16 grid), each revealed progressively
-// once its entry in HATCH_CRACK_TIMES has passed.
-const HATCH_CRACKS: [number, number][][] = [
-  [[6, 1], [5, 4], [7, 6], [4, 9], [6, 12]],
-  [[7, 3], [9, 5], [8, 8], [10, 11]],
-  [[2, 8], [5, 7], [8, 9], [11, 8]],
+// Speckle positions, in the same normalized local space as EGG_POINTS,
+// hand-placed to sit within the silhouette.
+const HATCH_SPECKLES: [number, number][] = [[0.12, -0.5], [-0.35, -0.2], [0.4, -0.05], [-0.15, 0.35], [0.3, 0.55], [-0.4, 0.75]]
+
+// Cracks all radiate from one impact point — a real eggshell fractures from
+// a single tap, it doesn't grow several unrelated lines on its own schedule.
+// Each entry is [points-from-the-shared-origin, startOffset-after-impact,
+// revealDuration]; the 4th is a fork branching off partway along crack C,
+// which is what actually sells "one fracturing shell" instead of "shapes
+// laid on top of it".
+const HATCH_CRACK_ORIGIN: [number, number] = [0.02, -0.52]
+const HATCH_CRACKS: { pts: [number, number][]; delay: number; dur: number }[] = [
+  { pts: [HATCH_CRACK_ORIGIN, [-0.10, -0.30], [-0.28, -0.05], [-0.18, 0.25], [-0.38, 0.55], [-0.30, 0.85]], delay: 0, dur: 0.95 },
+  { pts: [HATCH_CRACK_ORIGIN, [0.15, -0.28], [0.35, -0.02], [0.22, 0.28], [0.48, 0.5], [0.34, 0.78]], delay: 0.06, dur: 0.9 },
+  { pts: [HATCH_CRACK_ORIGIN, [-0.05, -0.25], [0.05, 0.0], [-0.08, 0.25], [0.02, 0.5]], delay: 0.1, dur: 0.8 },
+  { pts: [[-0.08, 0.25], [-0.25, 0.35], [-0.22, 0.55]], delay: 0.1 + 0.8 * 0.5, dur: 0.45 },
 ]
-const HATCH_CRACK_TIMES = [0.9, 1.35, 1.8]
-const HATCH_POP_START = 2.15
-const HATCH_POP_DUR = 0.35
+
+// Timeline (seconds) — slow enough to actually read as a sequence rather
+// than a flicker. Cracks spread from one impact, then the shell holds for a
+// beat before the pop lingers instead of flashing, and the grow-in eases in
+// over a full second.
+const HATCH_IMPACT_T = 1.7
+const HATCH_POP_START = 3.4
+const HATCH_POP_DUR = 0.75
 const HATCH_GROW_START = HATCH_POP_START + HATCH_POP_DUR
-const HATCH_GROW_DUR = 0.55
-// Stop scheduling frames a beat before the world reveal (controlEnabled
-// flips ~7s in) — no point animating a canvas about to be unmounted.
-const HATCH_STOP_AT = 6.9
+const HATCH_GROW_DUR = 1.0
+// Stop scheduling frames a beat before the world reveal — no point animating
+// a canvas about to be unmounted (kept in sync with the ~8.6s reveal timeout
+// inside the Three.js init() below).
+const HATCH_STOP_AT = 8.4
 
-// Egg silhouette: how many of the 13 columns are filled on a given row,
-// tapering faster at the top (pointier) than the bottom (rounder) — a
-// classic egg profile, computed instead of hand-tabled per row.
-function eggRowSpan(row: number, rows: number, cols: number): [number, number] | null {
-  const t = row / (rows - 1)
-  const topTaper = Math.min(1, t / 0.3)
-  const bottomTaper = Math.min(1, (1 - t) / 0.22)
-  const frac = Math.max(0, Math.min(topTaper, bottomTaper, 1))
-  if (frac <= 0) return null
-  const halfW = Math.max(1, Math.round((cols / 2) * Math.max(frac, 0.18)))
-  const center = (cols - 1) / 2
-  return [Math.max(0, Math.round(center - halfW)), Math.min(cols - 1, Math.round(center + halfW))]
-}
-
-// Standard "overshoot then settle" ease — the pop-out bounce when the pet
-// grows from the cracked shell.
+function clamp01(x: number): number { return Math.max(0, Math.min(1, x)) }
+// Smooth start-and-end easing for reveals/fades — no linear "ticking".
+function smoothstep(x: number): number { const t = clamp01(x); return t * t * (3 - 2 * t) }
+function easeOutCubic(x: number): number { return 1 - Math.pow(1 - x, 3) }
+// "Overshoot then settle" — the bounce when the pet grows in from the shell.
 function easeOutBack(x: number): number {
   const c1 = 1.70158, c3 = c1 + 1
   return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
 }
 
-function drawCrackPath(ctx: CanvasRenderingContext2D, pts: [number, number][], gx0: number, gy0: number, px: number, revealFrac: number) {
-  if (revealFrac <= 0) return
-  const toXY = ([c, r]: [number, number]): [number, number] => [gx0 + c * px + px / 2, gy0 + r * px + px / 2]
-  const segTotal = pts.length - 1
-  const exact = revealFrac * segTotal
-  const fullSegs = Math.floor(exact)
-  const partial = exact - fullSegs
-  ctx.beginPath()
-  const [sx, sy] = toXY(pts[0])
-  ctx.moveTo(sx, sy)
-  for (let i = 1; i <= fullSegs; i++) { const [x, y] = toXY(pts[i]); ctx.lineTo(x, y) }
-  if (fullSegs < segTotal) {
-    const [x0, y0] = toXY(pts[fullSegs]), [x1, y1] = toXY(pts[fullSegs + 1])
-    ctx.lineTo(x0 + (x1 - x0) * partial, y0 + (y1 - y0) * partial)
-  }
-  ctx.stroke()
+// Local-space point -> world pixel, applying the egg's current scale/rotation.
+function toWorld(p: [number, number], cx: number, cy: number, rx: number, ry: number, rot: number): [number, number] {
+  const ex = p[0] * rx, ey = p[1] * ry
+  const cos = Math.cos(rot), sin = Math.sin(rot)
+  return [cx + ex * cos - ey * sin, cy + ex * sin + ey * cos]
 }
 
+function pathFromPoints(ctx: CanvasRenderingContext2D, pts: [number, number][], cx: number, cy: number, rx: number, ry: number, rot: number) {
+  ctx.beginPath()
+  pts.forEach((p, i) => {
+    const [x, y] = toWorld(p, cx, cy, rx, ry, rot)
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+  })
+}
+
+// A real crack is angular (not a smooth flowing curve — that's what read as
+// "a doodle laid on top" of the shell) and tapers from a wide mouth at the
+// impact point to a hairline at its tip. Drawn as straight jagged segments,
+// each with its own width, plus a thin warm highlight offset to one side of
+// every segment to suggest a lit groove edge instead of a flat ink line.
+function drawCrack(ctx: CanvasRenderingContext2D, pts: [number, number][], cx: number, cy: number, rx: number, ry: number, rot: number, revealFrac: number, baseWidth: number) {
+  if (revealFrac <= 0) return
+  const world = pts.map((p) => toWorld(p, cx, cy, rx, ry, rot))
+  const segTotal = world.length - 1
+  const exact = smoothstep(revealFrac) * segTotal
+  const fullSegs = Math.max(0, Math.floor(exact))
+  const partial = exact - fullSegs
+  const visible: [number, number][] = [world[0]]
+  for (let i = 1; i <= fullSegs && i < world.length; i++) visible.push(world[i])
+  if (fullSegs < segTotal) {
+    const [x0, y0] = world[fullSegs], [x1, y1] = world[fullSegs + 1]
+    visible.push([x0 + (x1 - x0) * partial, y0 + (y1 - y0) * partial])
+  }
+  ctx.lineCap = 'round'
+  for (let i = 1; i < visible.length; i++) {
+    const segT = i / segTotal
+    const w = baseWidth * (1 - segT * 0.75)
+    const [x0, y0] = visible[i - 1], [x1, y1] = visible[i]
+    ctx.strokeStyle = '#241608'
+    ctx.lineWidth = w
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
+
+    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1
+    const nx = -dy / len, ny = dx / len, off = w * 0.35
+    ctx.strokeStyle = 'rgba(255,214,150,0.5)'
+    ctx.lineWidth = Math.max(0.6, w * 0.35)
+    ctx.beginPath(); ctx.moveTo(x0 + nx * off, y0 + ny * off); ctx.lineTo(x1 + nx * off, y1 + ny * off); ctx.stroke()
+  }
+}
+
+// The egg's shell body (ground shadow + gradient-filled silhouette).
+function drawEggShell(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, rot: number, alpha: number) {
+  ctx.globalAlpha = alpha
+  ctx.beginPath()
+  ctx.ellipse(cx, cy + ry * 1.05, rx * 0.75, rx * 0.22, 0, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(10,8,6,0.28)'
+  ctx.filter = 'blur(3px)'
+  ctx.fill()
+  ctx.filter = 'none'
+
+  const grad = ctx.createRadialGradient(cx - rx * 0.4, cy - ry * 0.45, rx * 0.15, cx, cy, rx * 1.4)
+  grad.addColorStop(0, '#fff7e8')
+  grad.addColorStop(0.6, '#f3e2c2')
+  grad.addColorStop(1, '#e2c99a')
+  ctx.shadowColor = 'rgba(0,0,0,0.3)'
+  ctx.shadowBlur = 14
+  ctx.shadowOffsetY = 6
+  pathFromPoints(ctx, EGG_POINTS, cx, cy, rx, ry, rot)
+  ctx.closePath()
+  ctx.fillStyle = grad
+  ctx.fill()
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0
+}
+
+// The egg sequence: breathe → crack → pop → grow.
 function drawHatchFrame(ctx: CanvasRenderingContext2D, size: number, t: number, species: string) {
   ctx.clearRect(0, 0, size, size)
+  const cx = size / 2, cy = size / 2 + size * 0.04
+  const rx = size * 0.22, ry = size * 0.29
+  const tint = CANON_COLORS[species] ?? '#94a3b8'
 
-  if (t < HATCH_GROW_START) {
-    const cols = 13, rows = 16
-    const px = Math.floor((size * 0.8) / rows)
-    const gridW = cols * px, gridH = rows * px
-    const gx0 = (size - gridW) / 2, gy0 = (size - gridH) / 2
-    const center = (cols - 1) / 2
+  if (t < HATCH_POP_START) {
+    // ── Whole, breathing, cracking ──
+    const introAlpha = smoothstep(t / 0.5)
+    // A gentle idle rock until the impact, then one decaying jolt (like a
+    // bell struck once) exactly when the cracks start spreading — not a
+    // shake that vaguely builds over several unrelated events.
+    const sinceImpact = t - HATCH_IMPACT_T
+    const jolt = sinceImpact >= 0 ? Math.exp(-sinceImpact * 4.5) * Math.sin(sinceImpact * 42) * 0.07 : 0
+    const rot = Math.sin(t * 2.1) * 0.02 + jolt
+    const breathe = 1 + Math.sin(t * 1.6) * 0.012
 
-    const introAlpha = Math.min(1, t / 0.35)
-    const inPop = t >= HATCH_POP_START
-    const popT = inPop ? Math.min(1, (t - HATCH_POP_START) / HATCH_POP_DUR) : 0
-    const cracksPassed = HATCH_CRACK_TIMES.filter((ct) => t >= ct).length
-    const shakeAmp = inPop ? 0 : Math.min(3.2, cracksPassed * 1.4 + (t > HATCH_CRACK_TIMES[0] - 0.15 ? 0.3 : 0))
-    const shakeX = shakeAmp ? Math.sin(t * 42) * shakeAmp : 0
-    const shakeY = shakeAmp ? Math.cos(t * 55) * shakeAmp * 0.6 : 0
-    const speckles = new Set(HATCH_SPECKLES.map(([c, r]) => `${c},${r}`))
+    ctx.save()
+    drawEggShell(ctx, cx, cy, rx * breathe, ry * breathe, rot, introAlpha)
 
-    for (let row = 0; row < rows; row++) {
-      const span = eggRowSpan(row, rows, cols)
-      if (!span) continue
-      const [lo, hi] = span
-      for (let col = lo; col <= hi; col++) {
-        const half = col < center ? -1 : 1
-        let ox = shakeX, oy = shakeY, alpha = introAlpha
-        if (inPop) {
-          ox = half * popT * px * 4.2
-          oy = -popT * px * 3
-          alpha = introAlpha * (1 - popT)
-        }
-        ctx.globalAlpha = alpha
-        ctx.fillStyle = speckles.has(`${col},${row}`) ? (CANON_COLORS[species] ?? '#94a3b8') : (row % 5 === 0 ? '#f0dfc0' : '#f7ead2')
-        ctx.fillRect(gx0 + col * px + ox, gy0 + row * px + oy, px, px)
-      }
-    }
-    ctx.globalAlpha = 1
+    // Speckles — soft tinted dots, foreshadowing the species inside
+    HATCH_SPECKLES.forEach(([sx, sy]) => {
+      const [wx, wy] = toWorld([sx, sy], cx, cy, rx * breathe, ry * breathe, rot)
+      ctx.beginPath()
+      ctx.arc(wx, wy, size * 0.014, 0, Math.PI * 2)
+      ctx.fillStyle = tint
+      ctx.globalAlpha = introAlpha * 0.3
+      ctx.fill()
+    })
+    ctx.globalAlpha = introAlpha
 
-    if (!inPop) {
-      ctx.strokeStyle = '#2a1c10'
-      ctx.lineWidth = Math.max(1.5, px * 0.28)
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round'
-      HATCH_CRACKS.forEach((pts, i) => {
-        const reveal = Math.max(0, Math.min(1, (t - HATCH_CRACK_TIMES[i]) / 0.25))
-        if (reveal > 0) drawCrackPath(ctx, pts, gx0, gy0, px, reveal)
-      })
-    } else {
-      ctx.globalAlpha = (1 - popT) * 0.85
-      ctx.fillStyle = '#fff8ec'
-      ctx.fillRect(0, 0, size, size)
-      ctx.globalAlpha = 1
-    }
+    // Cracks — clipped to the shell's own silhouette so they read as the
+    // shell fracturing, not as lines drawn over a separate layer.
+    ctx.save()
+    pathFromPoints(ctx, EGG_POINTS, cx, cy, rx * breathe, ry * breathe, rot)
+    ctx.closePath()
+    ctx.clip()
+    ctx.shadowColor = 'rgba(255,190,110,0.45)'
+    ctx.shadowBlur = 4
+    HATCH_CRACKS.forEach(({ pts, delay, dur }) => {
+      const reveal = clamp01((t - HATCH_IMPACT_T - delay) / dur)
+      drawCrack(ctx, pts, cx, cy, rx * breathe, ry * breathe, rot, reveal, size * 0.02)
+    })
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0
+    ctx.restore()
+    ctx.restore()
     return
   }
 
-  // Shell's cleared — grow the real species sprite in with an overshoot
-  // bounce, then hold a small idle bob (same rects buildVoxelPet/drawPet
+  if (t < HATCH_GROW_START) {
+    // ── Popping open: shell halves drift apart on a soft light burst ──
+    const popT = easeOutCubic(clamp01((t - HATCH_POP_START) / HATCH_POP_DUR))
+    const burstStrength = Math.sin(Math.PI * clamp01((t - HATCH_POP_START) / HATCH_POP_DUR))
+
+    // A restrained glow behind the halves — just enough to read as "light
+    // spilling out", not so bright it washes the halves into one blob.
+    // Fades to fully transparent well inside the canvas, so (unlike the old
+    // full-canvas rect flash) nothing ever reads as a "visible square".
+    const burst = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx * 1.3)
+    burst.addColorStop(0, `rgba(255,248,230,${0.4 * burstStrength})`)
+    burst.addColorStop(0.6, `rgba(255,238,200,${0.16 * burstStrength})`)
+    burst.addColorStop(1, 'rgba(255,238,200,0)')
+    ctx.fillStyle = burst
+    ctx.beginPath()
+    ctx.arc(cx, cy, rx * 1.3, 0, Math.PI * 2)
+    ctx.fill()
+
+    const alpha = popT < 0.65 ? 1 : 1 - (popT - 0.65) / 0.35
+    const grad = ctx.createRadialGradient(cx - rx * 0.4, cy - ry * 0.45, rx * 0.15, cx, cy, rx * 1.4)
+    grad.addColorStop(0, '#fff7e8'); grad.addColorStop(0.6, '#f3e2c2'); grad.addColorStop(1, '#e2c99a')
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = grad
+    ctx.strokeStyle = `rgba(120,70,20,${alpha * 0.55})`
+    ctx.lineWidth = Math.max(1, size * 0.008)
+
+    const drift = popT * rx * 0.95
+    const lift = popT * ry * 0.5
+    const spin = popT * 0.7
+    // Fill then stroke each half on its own path (fill/stroke re-use the
+    // current path) so the split stays legible even while everything else
+    // stays soft-edged — a thin rim rather than a hard silhouette.
+    pathFromPoints(ctx, EGG_RIGHT_HALF, cx + drift, cy - lift, rx, ry, spin)
+    ctx.fill(); ctx.stroke()
+    pathFromPoints(ctx, EGG_LEFT_HALF, cx - drift, cy - lift, rx, ry, -spin)
+    ctx.fill(); ctx.stroke()
+    ctx.globalAlpha = 1
+    return
+  }
+
+  // ── Shell's cleared — grow the real species sprite in with a gentle
+  // overshoot, then hold a slow idle bob (same rects buildVoxelPet/drawPet
   // use everywhere else, so the hatchling matches the one in the world).
-  const growT = Math.min(1, (t - HATCH_GROW_START) / HATCH_GROW_DUR)
+  const growT = clamp01((t - HATCH_GROW_START) / HATCH_GROW_DUR)
   const scale = easeOutBack(growT)
-  const rects = getSpeciesRects(species, Math.floor(t * 20), CANON_COLORS[species] ?? '#94a3b8', 'front') ?? []
-  const finalScale = Math.max(0, (size / 90) * scale)
-  const bob = growT >= 1 ? Math.sin(t * 3) * 3 : 0
-  const ox = size / 2 - 20 * finalScale
-  const oy = size / 2 - 22 * finalScale + bob
-  ctx.globalAlpha = 1
-  rects.forEach(([rx, ry, rw, rh, color]) => {
+  const rects = getSpeciesRects(species, Math.floor(t * 20), tint, 'front') ?? []
+  const finalScale = Math.max(0, (size / 100) * scale)
+  const bob = growT >= 1 ? Math.sin(t * 1.6) * 4 : 0
+
+  // Soft glow + ground shadow beneath the pet for a bit of polish
+  ctx.beginPath()
+  ctx.ellipse(cx, cy + ry * 0.95, rx * 0.7 * scale, rx * 0.2 * scale, 0, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(10,8,6,0.25)'
+  ctx.filter = 'blur(3px)'
+  ctx.fill()
+  ctx.filter = 'none'
+
+  const ox = cx - 20 * finalScale
+  const oy = cy - 22 * finalScale + bob - ry * 0.15
+  rects.forEach(([rx2, ry2, rw, rh, color]) => {
     ctx.fillStyle = color
-    ctx.fillRect(ox + rx * finalScale, oy + ry * finalScale, rw * finalScale, rh * finalScale)
+    ctx.fillRect(ox + rx2 * finalScale, oy + ry2 * finalScale, rw * finalScale, rh * finalScale)
   })
 }
 
@@ -225,11 +344,11 @@ export default function LandingPage() {
   }, [triggerWorldEnter, status, router])
 
   // Intro sequence beats — timed to land just after the hatch animation
-  // (HATCH_GROW_START + HATCH_GROW_DUR ≈ 2.7s) finishes, and to clear before
-  // the 7s world-reveal timeout inside the Three.js init() below.
+  // (HATCH_GROW_START + HATCH_GROW_DUR ≈ 5.15s) finishes, and to clear
+  // before the ~8.6s world-reveal timeout inside the Three.js init() below.
   useEffect(() => {
-    const t1 = setTimeout(() => setIntroStep(1), 3300)
-    const t2 = setTimeout(() => setIntroStep(2), 5400)
+    const t1 = setTimeout(() => setIntroStep(1), 5500)
+    const t2 = setTimeout(() => setIntroStep(2), 7200)
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [])
 
@@ -758,7 +877,7 @@ export default function LandingPage() {
       setTimeout(() => {
         controlEnabled = true
         if (mounted.current) { setCinematicDone(true); setTimeout(() => { if (mounted.current) setControlsHint(false) }, 8000) }
-      }, 7000)
+      }, 8600)
 
       const camPos = new THREE.Vector3(0, 14, 40)
       const camLook = new THREE.Vector3(0, 2, 0)
