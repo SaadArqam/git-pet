@@ -5,6 +5,145 @@ import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 import { getThree, type ThreeNS } from '@/lib/three-global'
+import { getSpeciesRects, CANON_COLORS } from '@git-pet/renderer'
+
+// ─── Hatch intro: a blocky pixel-art egg that shakes, cracks, and pops open
+// into the actual species sprite (getSpeciesRects — the same rects used for
+// every pet in the world). Runs once per page load in its own tiny canvas,
+// independent of the main Three.js scene, so it can start animating on the
+// very first frame instead of waiting on the CDN script loads below.
+const INTRO_SPECIES_LIST = ['wolf', 'sabertooth', 'capybara', 'dragon', 'axolotl'] as const
+
+// [col, row] pairs, in a 13x16 pixel grid, that render as light species-tinted
+// speckles on the shell — a subtle foreshadow of what's about to hatch.
+const HATCH_SPECKLES: [number, number][] = [[3, 3], [9, 3], [6, 4], [5, 6], [8, 6], [2, 9], [10, 9], [6, 10], [4, 12], [8, 12]]
+
+// Three jagged crack lines (same 13x16 grid), each revealed progressively
+// once its entry in HATCH_CRACK_TIMES has passed.
+const HATCH_CRACKS: [number, number][][] = [
+  [[6, 1], [5, 4], [7, 6], [4, 9], [6, 12]],
+  [[7, 3], [9, 5], [8, 8], [10, 11]],
+  [[2, 8], [5, 7], [8, 9], [11, 8]],
+]
+const HATCH_CRACK_TIMES = [0.9, 1.35, 1.8]
+const HATCH_POP_START = 2.15
+const HATCH_POP_DUR = 0.35
+const HATCH_GROW_START = HATCH_POP_START + HATCH_POP_DUR
+const HATCH_GROW_DUR = 0.55
+// Stop scheduling frames a beat before the world reveal (controlEnabled
+// flips ~7s in) — no point animating a canvas about to be unmounted.
+const HATCH_STOP_AT = 6.9
+
+// Egg silhouette: how many of the 13 columns are filled on a given row,
+// tapering faster at the top (pointier) than the bottom (rounder) — a
+// classic egg profile, computed instead of hand-tabled per row.
+function eggRowSpan(row: number, rows: number, cols: number): [number, number] | null {
+  const t = row / (rows - 1)
+  const topTaper = Math.min(1, t / 0.3)
+  const bottomTaper = Math.min(1, (1 - t) / 0.22)
+  const frac = Math.max(0, Math.min(topTaper, bottomTaper, 1))
+  if (frac <= 0) return null
+  const halfW = Math.max(1, Math.round((cols / 2) * Math.max(frac, 0.18)))
+  const center = (cols - 1) / 2
+  return [Math.max(0, Math.round(center - halfW)), Math.min(cols - 1, Math.round(center + halfW))]
+}
+
+// Standard "overshoot then settle" ease — the pop-out bounce when the pet
+// grows from the cracked shell.
+function easeOutBack(x: number): number {
+  const c1 = 1.70158, c3 = c1 + 1
+  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
+}
+
+function drawCrackPath(ctx: CanvasRenderingContext2D, pts: [number, number][], gx0: number, gy0: number, px: number, revealFrac: number) {
+  if (revealFrac <= 0) return
+  const toXY = ([c, r]: [number, number]): [number, number] => [gx0 + c * px + px / 2, gy0 + r * px + px / 2]
+  const segTotal = pts.length - 1
+  const exact = revealFrac * segTotal
+  const fullSegs = Math.floor(exact)
+  const partial = exact - fullSegs
+  ctx.beginPath()
+  const [sx, sy] = toXY(pts[0])
+  ctx.moveTo(sx, sy)
+  for (let i = 1; i <= fullSegs; i++) { const [x, y] = toXY(pts[i]); ctx.lineTo(x, y) }
+  if (fullSegs < segTotal) {
+    const [x0, y0] = toXY(pts[fullSegs]), [x1, y1] = toXY(pts[fullSegs + 1])
+    ctx.lineTo(x0 + (x1 - x0) * partial, y0 + (y1 - y0) * partial)
+  }
+  ctx.stroke()
+}
+
+function drawHatchFrame(ctx: CanvasRenderingContext2D, size: number, t: number, species: string) {
+  ctx.clearRect(0, 0, size, size)
+
+  if (t < HATCH_GROW_START) {
+    const cols = 13, rows = 16
+    const px = Math.floor((size * 0.8) / rows)
+    const gridW = cols * px, gridH = rows * px
+    const gx0 = (size - gridW) / 2, gy0 = (size - gridH) / 2
+    const center = (cols - 1) / 2
+
+    const introAlpha = Math.min(1, t / 0.35)
+    const inPop = t >= HATCH_POP_START
+    const popT = inPop ? Math.min(1, (t - HATCH_POP_START) / HATCH_POP_DUR) : 0
+    const cracksPassed = HATCH_CRACK_TIMES.filter((ct) => t >= ct).length
+    const shakeAmp = inPop ? 0 : Math.min(3.2, cracksPassed * 1.4 + (t > HATCH_CRACK_TIMES[0] - 0.15 ? 0.3 : 0))
+    const shakeX = shakeAmp ? Math.sin(t * 42) * shakeAmp : 0
+    const shakeY = shakeAmp ? Math.cos(t * 55) * shakeAmp * 0.6 : 0
+    const speckles = new Set(HATCH_SPECKLES.map(([c, r]) => `${c},${r}`))
+
+    for (let row = 0; row < rows; row++) {
+      const span = eggRowSpan(row, rows, cols)
+      if (!span) continue
+      const [lo, hi] = span
+      for (let col = lo; col <= hi; col++) {
+        const half = col < center ? -1 : 1
+        let ox = shakeX, oy = shakeY, alpha = introAlpha
+        if (inPop) {
+          ox = half * popT * px * 4.2
+          oy = -popT * px * 3
+          alpha = introAlpha * (1 - popT)
+        }
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = speckles.has(`${col},${row}`) ? (CANON_COLORS[species] ?? '#94a3b8') : (row % 5 === 0 ? '#f0dfc0' : '#f7ead2')
+        ctx.fillRect(gx0 + col * px + ox, gy0 + row * px + oy, px, px)
+      }
+    }
+    ctx.globalAlpha = 1
+
+    if (!inPop) {
+      ctx.strokeStyle = '#2a1c10'
+      ctx.lineWidth = Math.max(1.5, px * 0.28)
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+      HATCH_CRACKS.forEach((pts, i) => {
+        const reveal = Math.max(0, Math.min(1, (t - HATCH_CRACK_TIMES[i]) / 0.25))
+        if (reveal > 0) drawCrackPath(ctx, pts, gx0, gy0, px, reveal)
+      })
+    } else {
+      ctx.globalAlpha = (1 - popT) * 0.85
+      ctx.fillStyle = '#fff8ec'
+      ctx.fillRect(0, 0, size, size)
+      ctx.globalAlpha = 1
+    }
+    return
+  }
+
+  // Shell's cleared — grow the real species sprite in with an overshoot
+  // bounce, then hold a small idle bob (same rects buildVoxelPet/drawPet
+  // use everywhere else, so the hatchling matches the one in the world).
+  const growT = Math.min(1, (t - HATCH_GROW_START) / HATCH_GROW_DUR)
+  const scale = easeOutBack(growT)
+  const rects = getSpeciesRects(species, Math.floor(t * 20), CANON_COLORS[species] ?? '#94a3b8', 'front') ?? []
+  const finalScale = Math.max(0, (size / 90) * scale)
+  const bob = growT >= 1 ? Math.sin(t * 3) * 3 : 0
+  const ox = size / 2 - 20 * finalScale
+  const oy = size / 2 - 22 * finalScale + bob
+  ctx.globalAlpha = 1
+  rects.forEach(([rx, ry, rw, rh, color]) => {
+    ctx.fillStyle = color
+    ctx.fillRect(ox + rx * finalScale, oy + ry * finalScale, rw * finalScale, rh * finalScale)
+  })
+}
 
 const PROMPT_SUBTITLES: Record<string, string> = {
   'What is Git-Pet?': 'NOTICE BOARD',
@@ -35,6 +174,9 @@ const overlayBtnStyle: React.CSSProperties = {
 export default function LandingPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const minimapRef = useRef<HTMLCanvasElement>(null)
+  const hatchCanvasRef = useRef<HTMLCanvasElement>(null)
+  // Picked once per page load — "which pet hatches today?"
+  const [introSpecies] = useState(() => INTRO_SPECIES_LIST[Math.floor(Math.random() * INTRO_SPECIES_LIST.length)])
   const mounted = useRef(true)
   const rafRef = useRef<number>(0)
   const rendererRef = useRef<ThreeNS.WebGLRenderer | null>(null)
@@ -53,7 +195,8 @@ export default function LandingPage() {
   >(null)
   const [cinematicDone, setCinematicDone] = useState(false)
   const [controlsHint, setControlsHint] = useState(true)
-  const [introStep, setIntroStep] = useState<0|1|2|3>(0)
+  // 0 = hatch animation only, 1 = title beat, 2 = controls-hint beat
+  const [introStep, setIntroStep] = useState<0|1|2>(0)
   const [questStep, setQuestStep] = useState<0|1|2|'done'|'hidden'>(0)
   const [hasSeenAbout, setHasSeenAbout] = useState(false)
   const [hintIndex, setHintIndex] = useState(0)
@@ -81,13 +224,40 @@ export default function LandingPage() {
     return () => clearTimeout(t)
   }, [triggerWorldEnter, status, router])
 
-  // Intro sequence beats
+  // Intro sequence beats — timed to land just after the hatch animation
+  // (HATCH_GROW_START + HATCH_GROW_DUR ≈ 2.7s) finishes, and to clear before
+  // the 7s world-reveal timeout inside the Three.js init() below.
   useEffect(() => {
-    const t1 = setTimeout(() => setIntroStep(1), 2500)
-    const t2 = setTimeout(() => setIntroStep(2), 5000)
-    const t3 = setTimeout(() => setIntroStep(3), 6500)
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
+    const t1 = setTimeout(() => setIntroStep(1), 3300)
+    const t2 = setTimeout(() => setIntroStep(2), 5400)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [])
+
+  // Hatch intro animation — its own tiny canvas and RAF loop, independent of
+  // the main Three.js scene, so it starts drawing on the very first frame
+  // instead of waiting on the CDN script loads in the effect below.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hatchCanvasRef.current) return
+    const canvas = hatchCanvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const cssSize = 200
+    canvas.width = cssSize * dpr
+    canvas.height = cssSize * dpr
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    const start = performance.now()
+    let raf = 0
+    const loop = () => {
+      const t = (performance.now() - start) / 1000
+      drawHatchFrame(ctx, cssSize, t, introSpecies)
+      if (t < HATCH_STOP_AT) raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [introSpecies])
 
   // Hint rotation
   useEffect(() => {
@@ -865,22 +1035,14 @@ export default function LandingPage() {
 
       {!cinematicDone && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 91, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-          {/* Beat 0 -> 1: Only the original serif line */}
-          {introStep < 2 && (
-            <div style={{
-              fontFamily: "'Instrument Serif', serif",
-              fontStyle: 'italic',
-              fontSize: 'clamp(20px,3vw,36px)',
-              color: 'rgba(240,235,224,0.85)',
-              animation: 'fadeInOut 4s ease 0.5s both',
-              textAlign: 'center',
-            }}>
-              Your GitHub activity is waiting inside.
-            </div>
-          )}
+          {/* Beat 0: the egg hatches into this visit's pet */}
+          <canvas
+            ref={hatchCanvasRef}
+            style={{ width: 'clamp(120px,20vw,200px)', height: 'clamp(120px,20vw,200px)', display: 'block' }}
+          />
 
-          {/* Beat 2: GIT PET title + subtitle */}
-          {introStep === 2 && (
+          {/* Beat 1: GIT PET title + subtitle, once the pet's grown in */}
+          {introStep === 1 && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -909,8 +1071,8 @@ export default function LandingPage() {
             </div>
           )}
 
-          {/* Beat 3: Controls hint */}
-          {introStep === 3 && (
+          {/* Beat 2: Controls hint */}
+          {introStep === 2 && (
             <div style={{
               fontFamily: "'DM Mono', monospace",
               fontWeight: 300,
