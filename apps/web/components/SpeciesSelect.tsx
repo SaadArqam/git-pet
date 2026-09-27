@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { CANON_COLORS } from "@git-pet/renderer";
 
-import type { Species } from "@/lib/redis";
+import { SPECIES_LIST, type Species } from "@/lib/redis";
+
+const PRESELECTED_SPECIES_KEY = "gitpet_preselected_species";
 
 interface Props {
   username: string;
@@ -256,7 +258,16 @@ function SpeciesCanvas({ species, isSelected, isHovered }: {
 
 export function SpeciesSelect({ username, suggestedSpecies, topLanguage }: Props) {
 
-  const [selected, setSelected] = useState<Species | null>(null);
+  // If they already picked a creature on the landing page before signing in,
+  // arrive here with it pre-selected instead of asking the same question
+  // twice — they can still change their mind, this only pre-fills "choose"
+  // (already the default mode). A lazy initializer, not an effect, since
+  // this only ever needs to run once, before the first paint.
+  const [selected, setSelected] = useState<Species | null>(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(PRESELECTED_SPECIES_KEY); } catch { /* private mode etc. */ }
+    return stored && (SPECIES_LIST as string[]).includes(stored) ? (stored as Species) : null;
+  });
   const [hovered, setHovered] = useState<Species | null>(null);
   const [mode, setMode] = useState<"choose" | "auto">("choose");
   const [saving, setSaving] = useState(false);
@@ -273,6 +284,9 @@ export function SpeciesSelect({ username, suggestedSpecies, topLanguage }: Props
       id: `${effectiveSpecies}-${Date.now()}`
     };
     localStorage.setItem("selectedPet", JSON.stringify(petObject));
+    // Consumed — clear it so a later species switch in /settings never
+    // finds a stale pre-pick from this first sign-in.
+    try { localStorage.removeItem(PRESELECTED_SPECIES_KEY); } catch { /* private mode etc. */ }
 
     await fetch("/api/species", {
       method: "POST",

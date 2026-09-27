@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { SpeciesCanvas } from '@/components/SpeciesSwitch'
 import { getThree, type ThreeNS } from '@/lib/three-global'
+import { CANON_COLORS } from '@git-pet/renderer'
+import type { Species } from '@/lib/redis'
 
 // The hatch intro plays in full once per browser session. Storage can throw
 // (private mode, blocked site data), in which case the intro just plays.
@@ -14,6 +16,52 @@ function hasSeenIntro(): boolean {
 }
 function markIntroSeen(): void {
   try { sessionStorage.setItem(INTRO_SEEN_KEY, '1') } catch { /* ignore */ }
+}
+
+// Role words match the shareable pet card's canonical class labels
+// (apps/web/app/api/card/[username]/route.tsx) — one flavor per species,
+// not a third independent set of descriptions.
+const SPECIES_PREVIEW: { id: Species; name: string; role: string; tagline: string }[] = [
+  { id: 'wolf', name: 'Wolf', role: 'Aggro', tagline: 'Strikes first, hits hard.' },
+  { id: 'sabertooth', name: 'Saber', role: 'Tank', tagline: 'Built to endure.' },
+  { id: 'capybara', name: 'Capy', role: 'Support', tagline: 'Keeps the group together.' },
+  { id: 'dragon', name: 'Dragon', role: 'Legend', tagline: 'Master of everything.' },
+  { id: 'axolotl', name: 'Axolotl', role: 'Regen', tagline: 'Recovers from anything.' },
+]
+
+type LBEntry = { username: string; species: string; value: number }
+type LBData = { topStreak: LBEntry[]; topCommits: LBEntry[]; topFriends: LBEntry[] }
+type SamplePet = { username: string; species: string; health: number; happiness: number; streak: number }
+
+// Plain top-level helper (not a hook/component), so its own try/catch and
+// optional-chaining aren't something React Compiler ever needs to lower —
+// only the effect that calls it, which has no try/catch of its own, is.
+async function fetchSamplePets(existingLb: LBData | null): Promise<{ lb: LBData; pets: SamplePet[] }> {
+  try {
+    const lb: LBData = existingLb ?? await fetch('/api/leaderboard').then(r => r.json())
+    const usernames = Array.from(new Set(
+      [...lb.topCommits, ...lb.topStreak, ...lb.topFriends].map(e => e.username)
+    )).slice(0, 3)
+
+    const pets = await Promise.all(usernames.map(async (username): Promise<SamplePet | null> => {
+      try {
+        const res = await fetch(`/api/pet/${username}`)
+        if (!res.ok) return null
+        const d = await res.json()
+        if (!d.species) return null
+        return {
+          username,
+          species: d.species as string,
+          health: (d.stats?.health as number | undefined) ?? 0,
+          happiness: (d.stats?.happiness as number | undefined) ?? 0,
+          streak: (d.gitData?.streak as number | undefined) ?? 0,
+        }
+      } catch { return null }
+    }))
+    return { lb, pets: pets.filter((p): p is SamplePet => p !== null) }
+  } catch {
+    return { lb: existingLb ?? { topStreak: [], topCommits: [], topFriends: [] }, pets: [] }
+  }
 }
 
 const PROMPT_SUBTITLES: Record<string, string> = {
@@ -78,11 +126,19 @@ export default function LandingPage() {
   const [joystick, setJoystick] = useState({ active: false, dx: 0, dy: 0 })
 
   // Leaderboard state
-  type LBEntry = { username: string; species: string; value: number }
-  type LBData = { topStreak: LBEntry[]; topCommits: LBEntry[]; topFriends: LBEntry[] }
   const [lbData, setLbData] = useState<LBData | null>(null)
   const [lbLoading, setLbLoading] = useState(false)
   const [lbTab, setLbTab] = useState<'streak' | 'commits' | 'friends'>('streak')
+
+  // Species picker: a real pre-signup choice, not a redirect-on-click. The
+  // pick is carried into onboarding via localStorage (see SpeciesSelect.tsx).
+  const [pickedSpecies, setPickedSpecies] = useState<Species | null>(null)
+  const [hoveredSpecies, setHoveredSpecies] = useState<Species | null>(null)
+
+  // "Meet the pets": real onboarded users' real stats, fetched from the same
+  // public endpoints the leaderboard and shareable card use — not mockup data.
+  const [samplePets, setSamplePets] = useState<SamplePet[] | null>(null)
+  const [samplePetsLoading, setSamplePetsLoading] = useState(false)
 
   useEffect(() => {
     if (!triggerWorldEnter || status === 'loading') return
@@ -124,6 +180,24 @@ export default function LandingPage() {
       .then((data: LBData) => { setLbData(data); setLbLoading(false) })
       .catch(() => { setLbData({ topStreak: [], topCommits: [], topFriends: [] }); setLbLoading(false) })
   }, [activeOverlay, lbData, lbLoading])
+
+  // Fetch a few real pets when "Meet the pets" opens. Discovers real
+  // usernames from the leaderboard (reusing it if already loaded from the
+  // Hall of Legends), then reads each one's real stats from the same public
+  // /api/pet/[username] endpoint the shareable card uses — no mockup data.
+  // The actual fetching (and its try/catch) lives in the plain top-level
+  // fetchSamplePets() above; this effect body is just a promise chain, no
+  // try/catch of its own, which is what keeps it compilable.
+  useEffect(() => {
+    if (activeOverlay !== 'pets') return
+    if (samplePets !== null || samplePetsLoading) return
+    setSamplePetsLoading(true)
+    fetchSamplePets(lbData).then(({ lb, pets }) => {
+      if (!lbData) setLbData(lb)
+      setSamplePets(pets)
+      setSamplePetsLoading(false)
+    })
+  }, [activeOverlay, samplePets, samplePetsLoading, lbData])
 
   useEffect(() => {
     if (activeOverlay === 'about' && !hasSeenAbout) {
@@ -1347,20 +1421,52 @@ export default function LandingPage() {
 
             {activeOverlay === 'species' && <>
               <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 40, color: '#f0ebe0', marginBottom: 8 }}>Choose your creature</div>
-              <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 11, color: 'rgba(240,235,224,0.4)', marginBottom: 28, letterSpacing: 1 }}>Sign in first — your species is selected in settings after.</p>
+              <p style={{ fontFamily: "'DM Mono', monospace", fontWeight: 300, fontSize: 11, color: 'rgba(240,235,224,0.4)', marginBottom: 28, letterSpacing: 1 }}>Pick one — it comes with you when you sign in.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
-                {[{ name: 'Wolf', id: 'wolf' as const, col: '#7a8070', role: 'Aggro' }, { name: 'Saber', id: 'sabertooth' as const, col: '#c5c0b8', role: 'Tank' }, { name: 'Capy', id: 'capybara' as const, col: '#8a6a3a', role: 'Support' }, { name: 'Dragon', id: 'dragon' as const, col: '#3d4a33', role: 'Legend' }, { name: 'Axolotl', id: 'axolotl' as const, col: '#8a5a60', role: 'Regen' }].map(s => (
-                  <div key={s.name} style={{ border: `1px solid ${s.col}44`, padding: '16px 8px', textAlign: 'center', cursor: 'pointer', transition: 'background 0.2s', overflow: 'hidden' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = `${s.col}22`)}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    onClick={() => signIn('github', { callbackUrl: '/dashboard' })}>
-                    <div style={{ display: 'flex', justifyContent: 'center', transform: 'scale(0.8)', transformOrigin: 'top center', marginBottom: -8, marginTop: -4 }}><SpeciesCanvas species={s.id} isSelected={false} isHovered={true} /></div>
-                    <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: 15, color: '#f0ebe0', marginBottom: 4 }}>{s.name}</div>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)' }}>{s.role}</div>
-                  </div>
-                ))}
+                {SPECIES_PREVIEW.map(s => {
+                  const col = CANON_COLORS[s.id]
+                  const isSelected = pickedSpecies === s.id
+                  const isHovered = hoveredSpecies === s.id
+                  return (
+                    <div key={s.id}
+                      style={{
+                        border: `1px solid ${isSelected ? col : `${col}44`}`,
+                        background: isSelected ? `${col}2a` : isHovered ? `${col}15` : 'transparent',
+                        padding: '16px 8px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', overflow: 'hidden',
+                      }}
+                      onMouseEnter={() => setHoveredSpecies(s.id)}
+                      onMouseLeave={() => setHoveredSpecies(null)}
+                      onClick={() => setPickedSpecies(s.id)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'center', transform: 'scale(0.8)', transformOrigin: 'top center', marginBottom: -8, marginTop: -4 }}>
+                        <SpeciesCanvas species={s.id} isSelected={isSelected} isHovered={isHovered} />
+                      </div>
+                      <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: 15, color: isSelected ? col : '#f0ebe0', marginBottom: 4 }}>{s.name}</div>
+                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>{s.role}</div>
+                    </div>
+                  )
+                })}
               </div>
-              <button onClick={() => signIn('github', { callbackUrl: '/dashboard' })} style={{ ...overlayBtnStyle, marginTop: 24, width: '100%' }}>Sign In to Choose →</button>
+              <div style={{ minHeight: 34, marginTop: 16, textAlign: 'center' }}>
+                {pickedSpecies && (
+                  <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'rgba(240,235,224,0.6)', letterSpacing: 1 }}>
+                    {SPECIES_PREVIEW.find(s => s.id === pickedSpecies)?.tagline}
+                  </p>
+                )}
+              </div>
+              <button
+                disabled={!pickedSpecies}
+                onClick={() => {
+                  if (!pickedSpecies) return
+                  // Carried into onboarding — SpeciesSelect.tsx reads this so
+                  // signing in doesn't ask the same question twice.
+                  try { localStorage.setItem('gitpet_preselected_species', pickedSpecies) } catch { /* private mode etc. */ }
+                  signIn('github', { callbackUrl: '/dashboard' })
+                }}
+                style={{ ...overlayBtnStyle, marginTop: 8, width: '100%', opacity: pickedSpecies ? 1 : 0.4, cursor: pickedSpecies ? 'pointer' : 'not-allowed' }}
+              >
+                {pickedSpecies ? `Continue as ${SPECIES_PREVIEW.find(s => s.id === pickedSpecies)?.name} →` : 'Pick a creature first'}
+              </button>
             </>}
 
             {activeOverlay === 'leaderboard' && <>
@@ -1428,17 +1534,32 @@ export default function LandingPage() {
 
             {activeOverlay === 'pets' && <>
               <div style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: 40, color: '#f0ebe0', marginBottom: 24 }}>The creatures</div>
-              {[{ name: '@saad', species: 'Dragon', streak: 14, health: 87, mood: 92, col: '#3d4a33' }, { name: '@alice', species: 'Wolf', streak: 30, health: 95, mood: 88, col: '#7a8070' }, { name: '@bob', species: 'Axolotl', streak: 3, health: 42, mood: 61, col: '#8a5a60' }].map(p => (
-                <div key={p.name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(240,200,140,0.1)', padding: '20px 24px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 20 }}>
-                  <div style={{ width: 40, height: 40, background: p.col, borderRadius: 2, flexShrink: 0 }} />
+
+              {samplePetsLoading && (
+                <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'rgba(240,235,224,0.3)', letterSpacing: 2 }}>
+                  loading...
+                </div>
+              )}
+
+              {!samplePetsLoading && samplePets?.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: "'DM Mono', monospace", fontSize: 11, color: 'rgba(240,235,224,0.3)', letterSpacing: 2 }}>
+                  no pets hatched yet — you could be the first
+                </div>
+              )}
+
+              {/* Real onboarded users' real stats — same public endpoint the
+                  shareable card uses. No mockup data. */}
+              {!samplePetsLoading && samplePets?.map(p => (
+                <div key={p.username} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(240,200,140,0.1)', padding: '20px 24px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 20 }}>
+                  <div style={{ width: 40, height: 40, background: CANON_COLORS[p.species] ?? '#666', borderRadius: 2, flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#f0ebe0', marginBottom: 6 }}>{p.name} · {p.species}</div>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: '#f0ebe0', marginBottom: 6 }}>@{p.username} · {p.species}</div>
                     <div style={{ display: 'flex', gap: 12 }}>
-                      {[['Health', p.health, '#3d8a4a'], ['Mood', p.mood, '#c8930a']].map(([label, val, col]) => (
-                        <div key={String(label)} style={{ flex: 1 }}>
+                      {([['Health', p.health, '#3d8a4a'], ['Happiness', p.happiness, '#c8930a']] as const).map(([label, val, col]) => (
+                        <div key={label} style={{ flex: 1 }}>
                           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'rgba(240,235,224,0.4)', marginBottom: 4, letterSpacing: 1 }}>{label}</div>
                           <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
-                            <div style={{ height: '100%', width: `${val}%`, background: String(col), borderRadius: 2, transition: 'width 0.8s ease' }} />
+                            <div style={{ height: '100%', width: `${val}%`, background: col, borderRadius: 2, transition: 'width 0.8s ease' }} />
                           </div>
                         </div>
                       ))}
